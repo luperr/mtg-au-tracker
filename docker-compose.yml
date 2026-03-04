@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-mtg_tracker}
+      POSTGRES_USER: ${DB_USER:-mtg}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-mtg}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  scraper:
+    build:
+      context: .
+      dockerfile: apps/scraper/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-mtg}:${DB_PASSWORD:-changeme}@db:5432/${DB_NAME:-mtg_tracker}
+      SCRYFALL_BULK_URL: https://api.scryfall.com/bulk-data
+      SCRAPE_CRON_SCRYFALL: "${SCRAPE_CRON_SCRYFALL:-0 3 * * *}"
+      SCRAPE_CRON_STORES: "${SCRAPE_CRON_STORES:-0 5 * * *}"
+      USER_AGENT: ${USER_AGENT:-MTGAUTracker/1.0}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # web:
+  #   build:
+  #     context: .
+  #     dockerfile: apps/web/Dockerfile
+  #   restart: unless-stopped
+  #   environment:
+  #     DATABASE_URL: postgresql://${DB_USER:-mtg}:${DB_PASSWORD:-changeme}@db:5432/${DB_NAME:-mtg_tracker}
+  #     NEXT_PUBLIC_SITE_URL: ${SITE_URL:-http://localhost:3000}
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+
+volumes:
+  pgdata:

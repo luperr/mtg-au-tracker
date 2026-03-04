@@ -1,0 +1,29 @@
+{
+  "name": "@mtg-au/scraper",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "scryfall": "tsx src/scryfall/bulk-import.ts",
+    "stores": "tsx src/stores/run-all.ts",
+    "seed": "tsx src/seed.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mtg-au/shared": "workspace:*",
+    "cheerio": "^1.0.0",
+    "drizzle-orm": "^0.39.0",
+    "node-cron": "^3.0.3",
+    "postgres": "^3.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/node-cron": "^3.0.11",
+    "drizzle-kit": "^0.30.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}
