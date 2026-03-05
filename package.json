@@ -2,13 +2,7 @@
   "name": "mtg-au-tracker",
   "private": true,
   "scripts": {
-    "dev:web": "pnpm --filter @mtg-au/web dev",
-    "dev:scraper": "pnpm --filter @mtg-au/scraper dev",
-    "build": "pnpm -r build",
-    "db:generate": "pnpm --filter @mtg-au/web drizzle-kit generate",
-    "db:migrate": "pnpm --filter @mtg-au/web drizzle-kit migrate",
-    "db:studio": "pnpm --filter @mtg-au/web drizzle-kit studio",
-    "scrape:scryfall": "pnpm --filter @mtg-au/scraper scryfall",
-    "scrape:stores": "pnpm --filter @mtg-au/scraper stores"
+    "scrape:scryfall": "pnpm --filter @mtg-au/scraper scrape:scryfall",
+    "import:scryfall": "pnpm --filter @mtg-au/scraper import:scryfall"
   }
 }

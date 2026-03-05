@@ -3,48 +3,32 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${DB_NAME:-mtg_tracker}
-      POSTGRES_USER: ${DB_USER:-mtg}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_DB: mtg_tracker
+      POSTGRES_USER: mtg
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - pgdata:/var/lib/postgresql/data  # persists DB data between restarts
     ports:
-      - "5432:5432"
+      - "5432:5432"                      # exposes postgres on your Mac at localhost:5432
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-mtg}"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD-SHELL", "pg_isready -U mtg"]
+      interval: 5s
       retries: 5
 
-  scraper:
+  dev:
     build:
       context: .
-      dockerfile: apps/scraper/Dockerfile
-    restart: unless-stopped
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/app                          # your code folder, live-mounted
+      - node_modules:/app/node_modules  # deps cached in Docker, not on your Mac
+    working_dir: /app
     environment:
-      DATABASE_URL: postgresql://${DB_USER:-mtg}:${DB_PASSWORD:-changeme}@db:5432/${DB_NAME:-mtg_tracker}
-      SCRYFALL_BULK_URL: https://api.scryfall.com/bulk-data
-      SCRAPE_CRON_SCRYFALL: "${SCRAPE_CRON_SCRYFALL:-0 3 * * *}"
-      SCRAPE_CRON_STORES: "${SCRAPE_CRON_STORES:-0 5 * * *}"
-      USER_AGENT: ${USER_AGENT:-MTGAUTracker/1.0}
+      DATABASE_URL: postgresql://mtg:${DB_PASSWORD}@db:5432/mtg_tracker
     depends_on:
       db:
-        condition: service_healthy
-
-  # web:
-  #   build:
-  #     context: .
-  #     dockerfile: apps/web/Dockerfile
-  #   restart: unless-stopped
-  #   environment:
-  #     DATABASE_URL: postgresql://${DB_USER:-mtg}:${DB_PASSWORD:-changeme}@db:5432/${DB_NAME:-mtg_tracker}
-  #     NEXT_PUBLIC_SITE_URL: ${SITE_URL:-http://localhost:3000}
-  #   ports:
-  #     - "3000:3000"
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
+        condition: service_healthy      # wait for postgres to be ready before starting
 
 volumes:
+  node_modules:
   pgdata:

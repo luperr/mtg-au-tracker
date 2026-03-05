@@ -1,3 +1,2 @@
-export * from "./types/index.js";
-export * from "./utils/matching.js";
-export * from "./utils/currency.js";
+// Shared types and utilities — populated as we build each feature
+export {};

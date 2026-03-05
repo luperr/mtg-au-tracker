@@ -1,77 +1,26 @@
 # MTG AU Tracker
 
-Australian Magic: The Gathering price tracker. Aggregates card prices from AU stores into a single AUD market price.
+> Work in progress
 
-## Quick Start
+AUD price tracker for Magic: The Gathering singles in Australia. Pulls card data from Scryfall, scrapes AU store prices, and eventually serves them through a web UI.
 
-### Prerequisites
+## Requirements
 
-- Node.js 20+
-- pnpm 9+
-- Docker & Docker Compose
+- Docker & Docker Compose (nothing else needed locally)
 
-### Setup
 
-```bash
-# Clone and install
-git clone <repo-url> && cd mtg-au-tracker
-pnpm install
+## Stack
 
-# Copy env and edit as needed
-cp .env.example .env
+TypeScript · PostgreSQL · Drizzle ORM · Docker
 
-# Start the database
-docker compose up db -d
-
-# Run migrations
-pnpm db:generate
-pnpm db:migrate
-
-# Seed AU stores
-pnpm --filter @mtg-au/scraper seed
-
-# Run initial Scryfall import (~5 min depending on connection)
-pnpm scrape:scryfall
+```
+apps/scraper/   — Scryfall importer + store scrapers (in progress)
+apps/web/       — Next.js front-end (not started)
+packages/shared/ — shared types and utilities
 ```
 
-### Running
+## Progress
 
-```bash
-# Full stack via Docker
-docker compose up -d
-
-# Or run services individually for development
-docker compose up db -d          # database
-pnpm dev:scraper                  # scraper with file watching
-pnpm dev:web                      # next.js dev server (milestone 3)
-```
-
-### Useful Commands
-
-```bash
-pnpm db:studio          # Open Drizzle Studio (DB browser)
-pnpm scrape:scryfall    # Manual Scryfall import
-pnpm scrape:stores      # Manual store scrape
-```
-
-## Architecture
-
-See `mtg-price-tracker-architecture.md` for the full architecture document.
-
-**Stack:** TypeScript everywhere — Next.js (frontend + API), Node.js (scraper), PostgreSQL, Drizzle ORM, Docker.
-
-**Structure:**
-```
-apps/
-  web/        → Next.js app (frontend + API routes)
-  scraper/    → Scryfall importer + AU store scrapers
-packages/
-  shared/     → Types, utilities shared across apps
-```
-
-## Milestones
-
-- [x] **M1:** Monorepo, DB schema, Scryfall importer
-- [ ] **M2:** MTG Mate scraper, card matching
-- [ ] **M3:** Search UI, card detail page
-- [ ] **M4:** Second store, AUD market price calculation
+- [x] Scryfall bulk import (32k cards, 141k printings)
+- [ ] AU store scrapers
+- [ ] Web UI

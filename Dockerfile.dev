@@ -1,0 +1,6 @@
+FROM node:20-alpine
+
+# corepack is bundled with Node 20 and manages package managers like pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+WORKDIR /app

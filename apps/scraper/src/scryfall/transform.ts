@@ -1,13 +1,22 @@
-import { normalizeName } from "@mtg-au/shared";
-
 /**
- * Raw Scryfall card object — we only extract the fields we need.
- * Full spec: https://scryfall.com/docs/api/cards
+ * Transform raw Scryfall card objects into clean rows ready for the database.
+ *
+ * Two things happen here:
+ *   1. shouldImport() — decides whether to keep or skip a card
+ *   2. transform()    — picks only the fields we need and splits foil/nonfoil
+ *                       into separate printing rows
  */
+
+// ─── Raw Scryfall shape ───────────────────────────────────────────────────────
+// We only declare the fields we actually use. Scryfall sends ~60 fields per card.
+
 export interface ScryfallCard {
   id: string;
   oracle_id?: string;
   name: string;
+  lang: string;
+  layout: string;
+  digital: boolean;
   mana_cost?: string;
   type_line?: string;
   oracle_text?: string;
@@ -18,141 +27,114 @@ export interface ScryfallCard {
   set_name: string;
   collector_number: string;
   rarity: string;
-  finishes?: string[];
-  image_uris?: { normal?: string; small?: string };
-  card_faces?: Array<{
-    image_uris?: { normal?: string; small?: string };
+  finishes: string[];            // e.g. ["nonfoil", "foil"]
+  image_uris?: { normal?: string };
+  card_faces?: Array<{           // double-faced cards store images here
+    image_uris?: { normal?: string };
   }>;
   scryfall_uri: string;
   prices?: {
     usd?: string | null;
     usd_foil?: string | null;
-    eur?: string | null;
-    eur_foil?: string | null;
   };
-  // We skip digital-only, tokens, and other non-paper cards
-  digital?: boolean;
-  layout?: string;
 }
 
-/** Card row ready for DB upsert */
+// ─── Output shapes ────────────────────────────────────────────────────────────
+// These represent the rows we'll insert into the database later.
+
 export interface CardRow {
-  id: string;
+  id: string;           // oracle_id — one row per unique card name/rules
   name: string;
-  nameNormalized: string;
   manaCost: string | null;
   typeLine: string;
   oracleText: string | null;
   colors: string[];
   colorIdentity: string[];
   legalities: Record<string, string>;
-  updatedAt: Date;
 }
 
-/** Printing row ready for DB upsert */
 export interface PrintingRow {
-  id: string;
-  cardId: string;
+  id: string;           // scryfall card id (+ "_foil" suffix for foil variants)
+  cardId: string;       // FK to CardRow.id (oracle_id)
   setCode: string;
   setName: string;
   collectorNumber: string;
-  rarity: "common" | "uncommon" | "rare" | "mythic" | "special" | "bonus";
+  rarity: string;
   isFoil: boolean;
   imageUri: string | null;
   scryfallUri: string;
-  usdPrice: string | null;
-  eurPrice: string | null;
-  updatedAt: Date;
+  usdPrice: string | null;   // stored as string to avoid float rounding issues
 }
 
-const VALID_RARITIES = new Set([
-  "common",
-  "uncommon",
-  "rare",
-  "mythic",
-  "special",
-  "bonus",
-]);
+// ─── Layouts we skip entirely ─────────────────────────────────────────────────
 
-/** Layouts we want to skip entirely */
 const SKIP_LAYOUTS = new Set([
   "token",
   "double_faced_token",
-  "emblem",
   "art_series",
+  "emblem",
+  "vanguard",
+  "scheme",
+  "planar",
 ]);
 
-function normalizeRarity(
-  rarity: string
-): "common" | "uncommon" | "rare" | "mythic" | "special" | "bonus" {
-  if (VALID_RARITIES.has(rarity)) {
-    return rarity as "common" | "uncommon" | "rare" | "mythic" | "special" | "bonus";
-  }
-  return "special";
+// ─── Filter ───────────────────────────────────────────────────────────────────
+
+export function shouldImport(card: ScryfallCard): boolean {
+  // Skip digital-only cards (Arena/MTGO exclusives with no paper version)
+  if (card.digital) return false;
+
+  // Skip non-English cards — we only want one copy of each printing
+  if (card.lang !== "en") return false;
+
+  // Skip tokens, emblems, art cards, etc.
+  if (SKIP_LAYOUTS.has(card.layout)) return false;
+
+  // Skip cards without an oracle_id (the 81 reversible_card layout cards)
+  if (!card.oracle_id) return false;
+
+  return true;
 }
 
+// ─── Transform ────────────────────────────────────────────────────────────────
+
 function getImageUri(card: ScryfallCard): string | null {
-  // Prefer normal image, fall back to small
+  // Normal cards have image_uris at the top level
   if (card.image_uris?.normal) return card.image_uris.normal;
-  if (card.image_uris?.small) return card.image_uris.small;
-  // Double-faced cards store images on faces
+  // Double-faced cards (transform, modal_dfc) store images on each face
   if (card.card_faces?.[0]?.image_uris?.normal) {
     return card.card_faces[0].image_uris.normal;
   }
   return null;
 }
 
-/**
- * Determine if this Scryfall card should be imported.
- * We skip digital-only cards, tokens, emblems, etc.
- */
-export function shouldImport(card: ScryfallCard): boolean {
-  if (card.digital) return false;
-  if (card.layout && SKIP_LAYOUTS.has(card.layout)) return false;
-  if (!card.oracle_id) return false;
-  return true;
-}
-
-/**
- * Transform a Scryfall card object into card + printing rows.
- * A single Scryfall object produces one card row and one or more printing rows
- * (one per finish — foil and non-foil are separate printings).
- */
-export function transformScryfallCard(card: ScryfallCard): {
+export function transform(card: ScryfallCard): {
   cardRow: CardRow;
   printingRows: PrintingRow[];
 } {
-  const now = new Date();
-
   const cardRow: CardRow = {
     id: card.oracle_id!,
     name: card.name,
-    nameNormalized: normalizeName(card.name),
     manaCost: card.mana_cost ?? null,
     typeLine: card.type_line ?? "Unknown",
     oracleText: card.oracle_text ?? null,
     colors: card.colors ?? [],
     colorIdentity: card.color_identity ?? [],
     legalities: card.legalities ?? {},
-    updatedAt: now,
   };
 
-  const finishes = card.finishes ?? ["nonfoil"];
+  const imageUri = getImageUri(card);
   const printingRows: PrintingRow[] = [];
 
-  for (const finish of finishes) {
+  for (const finish of card.finishes) {
     const isFoil = finish === "foil" || finish === "etched";
 
-    // Determine price based on finish
-    const usdPrice = isFoil
-      ? card.prices?.usd_foil ?? null
-      : card.prices?.usd ?? null;
-    const eurPrice = isFoil
-      ? card.prices?.eur_foil ?? null
-      : card.prices?.eur ?? null;
-
-    // Use a composite ID for foil variants to keep them distinct
+    // Give foil printings a distinct id so they don't collide with nonfoil
     const printingId = isFoil ? `${card.id}_foil` : card.id;
+
+    const usdPrice = isFoil
+      ? (card.prices?.usd_foil ?? null)
+      : (card.prices?.usd ?? null);
 
     printingRows.push({
       id: printingId,
@@ -160,13 +142,11 @@ export function transformScryfallCard(card: ScryfallCard): {
       setCode: card.set,
       setName: card.set_name,
       collectorNumber: card.collector_number,
-      rarity: normalizeRarity(card.rarity),
+      rarity: card.rarity,
       isFoil,
-      imageUri: getImageUri(card),
+      imageUri,
       scryfallUri: card.scryfall_uri,
       usdPrice,
-      eurPrice,
-      updatedAt: now,
     });
   }
 
