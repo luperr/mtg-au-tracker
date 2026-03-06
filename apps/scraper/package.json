@@ -5,11 +5,19 @@
   "type": "module",
   "scripts": {
     "scrape:scryfall": "tsx src/scryfall/fetch.ts",
+    "import:scryfall": "tsx src/scryfall/import.ts",
+    "scrape:stores": "tsx src/stores/run-all.ts",
+    "test:mtgmate": "tsx src/stores/test-mtgmate.ts",
+    "seed": "tsx src/seed.ts",
     "db:push": "drizzle-kit push",
-    "import:scryfall": "tsx src/scryfall/import.ts"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
+    "@mtg-au/shared": "workspace:*",
+    "cheerio": "^1.0.0",
     "drizzle-orm": "^0.39.0",
+    "playwright": "1.48.0",
     "postgres": "^3.4.0"
   },
   "devDependencies": {

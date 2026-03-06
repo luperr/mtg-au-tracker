@@ -1,6 +1,8 @@
-FROM node:20-alpine
+# Playwright's official image ships with Chromium + all OS dependencies pre-installed.
+# IMPORTANT: the version here must match the "playwright" version in apps/scraper/package.json.
+FROM mcr.microsoft.com/playwright:v1.48.0-noble
 
-# corepack is bundled with Node 20 and manages package managers like pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# corepack is bundled with Node and manages pnpm
+RUN npm install -g pnpm
 
 WORKDIR /app
