@@ -14,6 +14,7 @@
  *   docker compose run --rm dev pnpm --filter @mtg-au/scraper scrape:stores
  */
 
+import { fileURLToPath } from "url";
 import { eq } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
 import { CardMatcher } from "../matching/card-matcher.js";
@@ -152,7 +153,7 @@ function buildUnmatchedRow(
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-async function main(): Promise<void> {
+export async function runAllStores(): Promise<void> {
   console.log("[run-all] Building card matcher index...");
   const matcher = new CardMatcher();
   await matcher.build();
@@ -189,7 +190,10 @@ async function main(): Promise<void> {
   console.log("\n[run-all] All stores done.");
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Only run when invoked directly (pnpm scrape:stores), not when imported by index.ts
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  runAllStores().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

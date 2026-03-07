@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: mtg_tracker
+      POSTGRES_USER: mtg
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Not exposed externally — only reachable by scraper/web on the Docker network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mtg"]
+      interval: 5s
+      retries: 5
+
+  scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile.scraper
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://mtg:${DB_PASSWORD}@db:5432/mtg_tracker
+      NODE_ENV: production
+    volumes:
+      - scraper_data:/app/apps/scraper/data   # persists downloaded Scryfall JSON between runs
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: always
+    ports:
+      - "127.0.0.1:3000:3000"   # localhost only — Cloudflare tunnel connects here
+    environment:
+      DATABASE_URL: postgresql://mtg:${DB_PASSWORD}@db:5432/mtg_tracker
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  scraper_data:

@@ -1,0 +1,33 @@
+# Web production image — multi-stage Next.js build.
+# Stage 1: install deps
+# Stage 2: build (next build → .next/standalone)
+# Stage 3: minimal runtime image
+
+FROM node:20-alpine AS deps
+RUN npm install -g pnpm
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/web/package.json apps/web/
+COPY packages/shared/package.json packages/shared/
+RUN pnpm install --frozen-lockfile
+
+FROM node:20-alpine AS builder
+RUN npm install -g pnpm
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+COPY apps/web/ apps/web/
+COPY packages/shared/ packages/shared/
+COPY package.json pnpm-workspace.yaml ./
+RUN pnpm --filter @mtg-au/web build
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
+
+# Standalone output includes only what's needed to run
+COPY --from=builder /app/apps/web/.next/standalone ./
+COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder /app/apps/web/public ./apps/web/public
+
+CMD ["node", "apps/web/server.js"]

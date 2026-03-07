@@ -80,11 +80,21 @@ function parseSetCodes(html: string): string[] {
   return codes;
 }
 
+// Extract collector number from link_path: "/cards/Lightning_Bolt/M11/149" → "149"
+// Strips ":foil" suffix that MTG Mate appends to foil link_paths: "305:foil" → "305"
+function parseCollectorNumber(linkPath: string): string | null {
+  const parts = linkPath.split("/");
+  const last = parts[parts.length - 1];
+  const num = last?.split(":")[0];
+  return num && num.length > 0 ? num : null;
+}
+
 function mapEntry(entry: MtgMateCardEntry): ScrapedCard {
   return {
     rawName: entry.name,
     setCode: entry.set_code || null,
     setName: entry.set_name || null,
+    collectorNumber: parseCollectorNumber(entry.link_path),
     price: (entry.price / 100).toFixed(2),
     priceType: "sell",
     condition: normaliseCondition(entry.condition),

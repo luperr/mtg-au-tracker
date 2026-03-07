@@ -5,7 +5,9 @@
 ### Scraper pipeline — end-to-end verified ✓
 - **Scryfall import**: 141,656 printings, 32,330 unique card names in DB
 - **MTG Mate scraper**: 108,206 cards scraped, 97.3% match rate, ~10–12 min runtime
-- **Card matcher**: exact (name+set+foil) → name+foil → name-only → fuzzy (Levenshtein ≤ 2)
+- **Card matcher**: set+collector#+foil (primary, O(1)) → name+set+foil → name+foil → name-only → fuzzy (Levenshtein ≤ 2)
+- **ScrapedCard**: now has `collectorNumber: string | null` field
+- **MTG Mate**: extracts collector number from `link_path` last segment (e.g. `/cards/X/M11/149` → `"149"`)
 - **run-all.ts**: deletes stale prices, scrapes, matches, batch-inserts store_prices + price_history + unmatched_cards
 
 ### Confirmed DB state (post first real scrape)
@@ -59,11 +61,13 @@
   4. `apps/scraper/src/ebay/ebay-import.ts` — search → parse → match → upsert
   5. Wire into scheduler + add ebay_au store to seed
 
-### 5. Next.js web UI (Milestone 5)
-- Card search page: search by name, show all printings + prices across stores
-- Price comparison table: side-by-side store prices for a printing
-- Price history chart: sparkline or line chart using price_history table
-- Stack: Next.js App Router, Amplify Hosting target
+### 5. Next.js web UI (Milestone 5) — basic scaffold done ✓
+- **Built**: `apps/web/` with Next.js 15.5 + Tailwind v4 + postgres raw SQL
+- **Pages**: `/` (search `?q=`) + `/cards/[id]` (printings + store prices table)
+- **Docker**: `web` service on port 3000 — shares Dockerfile.dev + node_modules volume
+- **Key files**: `apps/web/src/lib/db.ts` (queries), `apps/web/src/app/page.tsx`, `apps/web/src/app/cards/[id]/page.tsx`
+- **Tested**: Lightning Bolt search → 76 printings, $10.00 AUD; card detail 200 OK
+- **Next**: price history sparkline, pagination for search, mobile nav improvements
 
 ---
 
@@ -93,9 +97,11 @@ Plan:
 
 ---
 
+## Deployment path
+1. **Proxmox (next)** — Docker Compose on a Proxmox VM/LXC. Same compose file as dev, add web service. Nginx/Traefik for reverse proxy + HTTPS. Scraper runs on cron inside the container.
+2. **AWS (later)** — when public access or managed infra is needed: Next.js → Amplify Hosting, Scraper → ECS Fargate Scheduled Tasks (EventBridge), DB → RDS PostgreSQL t4g.micro.
+
 ## Architecture decisions
-- **AWS**: Next.js → Amplify Hosting. Scraper → ECS Fargate Scheduled Tasks (EventBridge). DB → RDS PostgreSQL t4g.micro. Single VPC, single region.
 - **Images**: Never stored. Scryfall CDN URLs from `scryfall_id`. No S3.
 - **price_history**: Partition by month BEFORE data accumulates. Drop partitions >2 years. Cron for partition drops in scraper.
-- **Monitoring**: CloudWatch alarm RDS `FreeStorageSpace` < 20% → SNS email. RDS Performance Insights (7d free tier).
 - **DB workflow**: `db:push` for schema changes (no migration files yet). Scripts: `db:push`, `db:generate`, `db:migrate`.

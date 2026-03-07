@@ -1,0 +1,20 @@
+# Scraper production image.
+# Must use the Playwright base image — it ships with Chromium and all OS dependencies.
+# IMPORTANT: version must match "playwright" in apps/scraper/package.json.
+FROM mcr.microsoft.com/playwright:v1.48.0-noble
+
+RUN npm install -g pnpm
+
+WORKDIR /app
+
+# Install dependencies (layer-cached separately from source)
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/scraper/package.json apps/scraper/
+COPY packages/shared/package.json packages/shared/
+RUN pnpm install --frozen-lockfile
+
+# Copy source
+COPY apps/scraper/ apps/scraper/
+COPY packages/shared/ packages/shared/
+
+CMD ["pnpm", "--filter", "@mtg-au/scraper", "start"]
