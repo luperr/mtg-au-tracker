@@ -1,164 +1,305 @@
 /**
- * eBay import orchestrator.
+ * eBay import orchestrator — hybrid search strategy.
  *
- * Full pipeline:
- *   1. Build CardMatcher index from DB (all printings in memory)
- *   2. Delete all existing store_prices and unmatched_cards for ebay_au
- *   3. Search eBay AU via Browse API (async generator, page by page)
- *   4. Transform each listing title into a ScrapedCard
- *   5. Match each ScrapedCard to a Scryfall printing via CardMatcher
- *   6. Bulk-insert matched prices into store_prices
- *   7. Upsert today's snapshot into price_history (ON CONFLICT DO NOTHING)
- *   8. Bulk-insert unmatched listings into unmatched_cards
+ * Search strategy (in order):
+ *   1. Recent sets (within EBAY_RECENT_MONTHS, default 12 months):
+ *      Search eBay by each unique card name in those sets.
+ *      More targeted — ensures we capture the specific cards people want prices for.
  *
- * Run manually:
- *   tsx src/ebay/ebay-import.ts
+ *   2. High-value cards (usdPrice >= EBAY_HIGH_VALUE_USD, default $10):
+ *      Search eBay by card name for any card across all sets worth this much.
+ *      Ensures expensive singles in older sets are always tracked.
  *
- * Called by the scheduler in index.ts at 6 AM daily.
+ *   3. Older sets (outside recent window, no high-value cards):
+ *      Search eBay by set name. Broader sweep, 5 pages per set.
+ *
+ * All three passes deduplicate by eBay item ID in memory.
+ * Sets are processed newest-first (by releasedAt DESC).
+ *
+ * Environment variables:
+ *   EBAY_RECENT_MONTHS     — months back to consider "recent" (default: 12)
+ *   EBAY_HIGH_VALUE_USD    — USD price threshold for card-name search (default: 10)
+ *   EBAY_PAGES_PER_SET     — pages per set-name search (default: 5 = 1,000 items)
+ *   EBAY_PAGES_PER_CARD    — pages per card-name search (default: 1 = 200 items)
  */
 
 import { fileURLToPath } from "url";
-import { eq } from "drizzle-orm";
+import { eq, gte, sql } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
 import { CardMatcher } from "../matching/card-matcher.js";
-import { searchEbayAU } from "./browse-client.js";
+import { searchEbayBySet, searchEbayByCardName } from "./browse-client.js";
 import { transformEbayItem } from "./transform.js";
+import type { EbayItemSummary } from "./browse-client.js";
 
 const STORE_ID = "ebay_au";
-
-// Batch size for DB inserts — keeps memory bounded
 const BATCH_SIZE = 500;
+
+// ── Config ────────────────────────────────────────────────────────────────────
+
+function getConfig() {
+  return {
+    recentMonths: parseInt(process.env.EBAY_RECENT_MONTHS ?? "12", 10),
+    highValueUsd: parseFloat(process.env.EBAY_HIGH_VALUE_USD ?? "10"),
+  };
+}
+
+function recentCutoffDate(months: number): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() - months);
+  return d.toISOString().slice(0, 10); // "YYYY-MM-DD"
+}
+
+// ── DB helpers ────────────────────────────────────────────────────────────────
+
+/** All distinct sets, newest first */
+async function getAllSets(): Promise<Array<{ setName: string; releasedAt: string }>> {
+  const rows = await db.execute(sql`
+    SELECT set_name, MAX(released_at) as released_at
+    FROM printings
+    GROUP BY set_name
+    ORDER BY MAX(released_at) DESC
+  `);
+  return (rows as Array<{ set_name: string; released_at: string }>).map((r) => ({
+    setName: r.set_name,
+    releasedAt: r.released_at,
+  }));
+}
+
+/** Unique card names in a set */
+async function getCardNamesForSet(setName: string): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ name: schema.cards.name })
+    .from(schema.printings)
+    .innerJoin(schema.cards, eq(schema.printings.cardId, schema.cards.id))
+    .where(eq(schema.printings.setName, setName));
+  return rows.map((r) => r.name);
+}
+
+/** Unique card names where any printing has usdPrice >= threshold, in sets older than cutoff */
+async function getHighValueCardNames(
+  minUsd: number,
+  olderThan: string,
+): Promise<string[]> {
+  const rows = await db.execute(sql`
+    SELECT DISTINCT c.name
+    FROM printings p
+    JOIN cards c ON p.card_id = c.id
+    WHERE p.usd_price IS NOT NULL
+      AND p.usd_price != ''
+      AND p.usd_price::numeric >= ${minUsd}
+      AND p.released_at < ${olderThan}
+    ORDER BY c.name
+  `);
+  return (rows as Array<{ name: string }>).map((r) => r.name);
+}
+
+// ── Batch flush helpers ───────────────────────────────────────────────────────
+
+type PriceRow = typeof schema.storePrices.$inferInsert;
+type HistoryRow = typeof schema.priceHistory.$inferInsert;
+type UnmatchedRow = typeof schema.unmatchedCards.$inferInsert;
+
+interface Batches {
+  prices: PriceRow[];
+  history: HistoryRow[];
+  unmatched: UnmatchedRow[];
+}
+
+async function flushAll(batches: Batches): Promise<void> {
+  if (batches.prices.length > 0) {
+    await db.insert(schema.storePrices).values(batches.prices);
+    batches.prices.length = 0;
+  }
+  if (batches.history.length > 0) {
+    await db.insert(schema.priceHistory).values(batches.history).onConflictDoNothing();
+    batches.history.length = 0;
+  }
+  if (batches.unmatched.length > 0) {
+    await db.insert(schema.unmatchedCards).values(batches.unmatched);
+    batches.unmatched.length = 0;
+  }
+}
+
+// ── Per-item processor ────────────────────────────────────────────────────────
+
+interface Stats {
+  fetched: number;
+  dupes: number;
+  skipped: number;
+  matched: number;
+  unmatched: number;
+}
+
+function processItem(
+  item: EbayItemSummary,
+  seenIds: Set<string>,
+  matcher: CardMatcher,
+  batches: Batches,
+  stats: Stats,
+  today: string,
+): void {
+  stats.fetched++;
+
+  if (seenIds.has(item.itemId)) {
+    stats.dupes++;
+    return;
+  }
+  seenIds.add(item.itemId);
+
+  const card = transformEbayItem(item);
+  if (!card) {
+    stats.skipped++;
+    return;
+  }
+
+  const result = matcher.match(card);
+
+  if (result.printingId) {
+    batches.prices.push({
+      printingId: result.printingId,
+      storeId: STORE_ID,
+      priceAud: card.price,
+      priceType: card.priceType,
+      condition: card.condition,
+      inStock: card.inStock,
+      url: card.sourceUrl,
+    });
+    batches.history.push({
+      printingId: result.printingId,
+      storeId: STORE_ID,
+      priceAud: card.price,
+      priceType: card.priceType,
+      recordedAt: today,
+    });
+    stats.matched++;
+  } else {
+    batches.unmatched.push({
+      storeId: STORE_ID,
+      rawName: card.rawName,
+      rawSetName: card.setName,
+      rawPrice: card.price,
+      sourceUrl: card.sourceUrl,
+    });
+    stats.unmatched++;
+  }
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 export async function runEbayImport(): Promise<void> {
   console.log("[eBay Import] Starting eBay AU price import...");
 
-  // ── Step 1: Build card matcher index ──────────────────────────────────────
+  const { recentMonths, highValueUsd } = getConfig();
+  const cutoff = recentCutoffDate(recentMonths);
+  const today = new Date().toISOString().slice(0, 10);
+
+  console.log(`[eBay Import] Config: recent = last ${recentMonths} months (since ${cutoff}), high-value >= $${highValueUsd} USD`);
+
+  // Build card matcher index
   console.log("[eBay Import] Building card matcher index...");
   const matcher = new CardMatcher();
   await matcher.build();
 
-  // ── Step 2: Clear stale data ───────────────────────────────────────────────
-  // Per design decision in CLAUDE.md: delete-then-insert, no upsert complexity.
+  // Clear stale data
   console.log("[eBay Import] Clearing existing eBay prices...");
   await db.delete(schema.storePrices).where(eq(schema.storePrices.storeId, STORE_ID));
   await db.delete(schema.unmatchedCards).where(eq(schema.unmatchedCards.storeId, STORE_ID));
 
-  const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+  const seenIds = new Set<string>();
+  const batches: Batches = { prices: [], history: [], unmatched: [] };
+  const stats: Stats = { fetched: 0, dupes: 0, skipped: 0, matched: 0, unmatched: 0 };
 
-  type PriceRow = typeof schema.storePrices.$inferInsert;
-  type HistoryRow = typeof schema.priceHistory.$inferInsert;
-  type UnmatchedRow = typeof schema.unmatchedCards.$inferInsert;
-
-  const priceBatch: PriceRow[] = [];
-  const historyBatch: HistoryRow[] = [];
-  const unmatchedBatch: UnmatchedRow[] = [];
-
-  let totalFetched = 0;
-  let totalSkipped = 0;
-  let matched = 0;
-  let unmatched = 0;
-
-  async function flushPrices(): Promise<void> {
-    if (priceBatch.length === 0) return;
-    await db.insert(schema.storePrices).values(priceBatch);
-    priceBatch.length = 0;
+  async function processGenerator(gen: AsyncGenerator<EbayItemSummary>): Promise<void> {
+    for await (const item of gen) {
+      processItem(item, seenIds, matcher, batches, stats, today);
+      if (batches.prices.length >= BATCH_SIZE || batches.unmatched.length >= BATCH_SIZE) {
+        await flushAll(batches);
+      }
+    }
   }
 
-  async function flushHistory(): Promise<void> {
-    if (historyBatch.length === 0) return;
-    await db.insert(schema.priceHistory).values(historyBatch).onConflictDoNothing();
-    historyBatch.length = 0;
+  // ── Pass 1: Recent sets — search by card name ──────────────────────────────
+  const allSets = await getAllSets();
+  const recentSets = allSets.filter((s) => s.releasedAt >= cutoff);
+  const olderSets = allSets.filter((s) => s.releasedAt < cutoff);
+
+  console.log(`\n[eBay Import] Pass 1: ${recentSets.length} recent sets → search by card name`);
+
+  // Collect unique card names across all recent sets to avoid redundant searches
+  const recentCardNames = new Set<string>();
+  for (const { setName } of recentSets) {
+    const names = await getCardNamesForSet(setName);
+    names.forEach((n) => recentCardNames.add(n));
   }
 
-  async function flushUnmatched(): Promise<void> {
-    if (unmatchedBatch.length === 0) return;
-    await db.insert(schema.unmatchedCards).values(unmatchedBatch);
-    unmatchedBatch.length = 0;
+  console.log(`[eBay Import] ${recentCardNames.size} unique card names in recent sets`);
+
+  let cardIdx = 0;
+  for (const cardName of recentCardNames) {
+    cardIdx++;
+    if (cardIdx % 100 === 0) {
+      console.log(`[eBay Import] Pass 1: ${cardIdx}/${recentCardNames.size} cards searched`);
+    }
+    try {
+      await processGenerator(searchEbayByCardName(cardName));
+    } catch (err) {
+      console.error(`[eBay Import] Error searching card "${cardName}":`, err);
+    }
   }
 
-  // ── Step 3-7: Stream, transform, match, insert ────────────────────────────
-  for await (const item of searchEbayAU()) {
-    totalFetched++;
+  // ── Pass 2: High-value cards in older sets — search by card name ──────────
+  const highValueNames = await getHighValueCardNames(highValueUsd, cutoff);
+  console.log(`\n[eBay Import] Pass 2: ${highValueNames.length} high-value cards (>= $${highValueUsd} USD) in older sets → search by card name`);
 
-    // Transform raw eBay listing → ScrapedCard (returns null for non-singles)
-    const card = transformEbayItem(item);
-    if (!card) {
-      totalSkipped++;
-      continue;
+  let hvIdx = 0;
+  for (const cardName of highValueNames) {
+    hvIdx++;
+    if (hvIdx % 100 === 0) {
+      console.log(`[eBay Import] Pass 2: ${hvIdx}/${highValueNames.length} cards searched`);
     }
-
-    // Match scraped card → Scryfall printing
-    const result = matcher.match(card);
-
-    if (result.printingId) {
-      priceBatch.push({
-        printingId: result.printingId,
-        storeId: STORE_ID,
-        priceAud: card.price,
-        priceType: card.priceType,
-        condition: card.condition,
-        inStock: card.inStock,
-        url: card.sourceUrl,
-      });
-      historyBatch.push({
-        printingId: result.printingId,
-        storeId: STORE_ID,
-        priceAud: card.price,
-        priceType: card.priceType,
-        recordedAt: today,
-      });
-      matched++;
-    } else {
-      unmatchedBatch.push({
-        storeId: STORE_ID,
-        rawName: card.rawName,
-        rawSetName: card.setName,
-        rawPrice: card.price,
-        sourceUrl: card.sourceUrl,
-      });
-      unmatched++;
+    try {
+      await processGenerator(searchEbayByCardName(cardName));
+    } catch (err) {
+      console.error(`[eBay Import] Error searching card "${cardName}":`, err);
     }
+  }
 
-    // Flush to DB in batches to keep memory bounded
-    if (priceBatch.length >= BATCH_SIZE) {
-      await flushPrices();
-      await flushHistory();
-    }
-    if (unmatchedBatch.length >= BATCH_SIZE) {
-      await flushUnmatched();
-    }
+  // ── Pass 3: Older sets without high-value coverage — search by set name ───
+  console.log(`\n[eBay Import] Pass 3: ${olderSets.length} older sets → search by set name`);
 
-    // Progress log every 1000 items
-    if (totalFetched % 1000 === 0) {
-      console.log(
-        `[eBay Import] Progress: ${totalFetched} fetched, ${totalSkipped} skipped, ${matched} matched, ${unmatched} unmatched`,
-      );
+  for (let i = 0; i < olderSets.length; i++) {
+    const { setName } = olderSets[i];
+    if ((i + 1) % 50 === 0) {
+      console.log(`[eBay Import] Pass 3: ${i + 1}/${olderSets.length} sets searched`);
+    }
+    try {
+      await processGenerator(searchEbayBySet(setName));
+    } catch (err) {
+      console.error(`[eBay Import] Error searching set "${setName}":`, err);
     }
   }
 
   // Final flush
-  await flushPrices();
-  await flushHistory();
-  await flushUnmatched();
+  await flushAll(batches);
 
   // ── Summary ───────────────────────────────────────────────────────────────
-  const matchPct = matched + unmatched > 0
-    ? (((matched) / (matched + unmatched)) * 100).toFixed(1)
+  const matchPct = stats.matched + stats.unmatched > 0
+    ? ((stats.matched / (stats.matched + stats.unmatched)) * 100).toFixed(1)
     : "0";
 
   console.log(`\n[eBay Import] Done.`);
-  console.log(`  Fetched:   ${totalFetched}`);
-  console.log(`  Skipped:   ${totalSkipped} (non-singles, auctions, bulk lots)`);
-  console.log(`  Matched:   ${matched} (${matchPct}%)`);
-  console.log(`  Unmatched: ${unmatched}`);
+  console.log(`  Recent sets searched by card: ${recentCardNames.size} names`);
+  console.log(`  High-value cards searched:    ${highValueNames.length} names`);
+  console.log(`  Older sets searched by set:   ${olderSets.length} sets`);
+  console.log(`  Total fetched:  ${stats.fetched}`);
+  console.log(`  Duplicates:     ${stats.dupes}`);
+  console.log(`  Skipped:        ${stats.skipped} (sealed, bulk, accessories)`);
+  console.log(`  Matched:        ${stats.matched} (${matchPct}%)`);
+  console.log(`  Unmatched:      ${stats.unmatched}`);
 }
 
-// ── Run directly to test ───────────────────────────────────────────────────────
-// tsx src/ebay/ebay-import.ts
+// ── Run directly ──────────────────────────────────────────────────────────────
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const { config } = await import("dotenv");
-  config({ path: new URL("../../../../.env", import.meta.url).pathname });
-
   runEbayImport()
     .then(() => process.exit(0))
     .catch((err) => {

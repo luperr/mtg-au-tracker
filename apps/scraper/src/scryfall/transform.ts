@@ -25,6 +25,7 @@ export interface ScryfallCard {
   legalities?: Record<string, string>;
   set: string;
   set_name: string;
+  released_at: string;           // ISO date string e.g. "2022-09-09"
   collector_number: string;
   rarity: string;
   finishes: string[];            // e.g. ["nonfoil", "foil"]
@@ -58,6 +59,7 @@ export interface PrintingRow {
   cardId: string;       // FK to CardRow.id (oracle_id)
   setCode: string;
   setName: string;
+  releasedAt: string;   // ISO date string "YYYY-MM-DD" — when the set was released
   collectorNumber: string;
   rarity: string;
   isFoil: boolean;
@@ -141,6 +143,7 @@ export function transform(card: ScryfallCard): {
       cardId: card.oracle_id!,
       setCode: card.set,
       setName: card.set_name,
+      releasedAt: card.released_at,
       collectorNumber: card.collector_number,
       rarity: card.rarity,
       isFoil,

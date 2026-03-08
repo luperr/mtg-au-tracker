@@ -88,9 +88,6 @@ export async function getAccessToken(): Promise<string> {
 // ── Run directly to test ───────────────────────────────────────────────────────
 // tsx src/ebay/oauth.ts
 if (process.argv[1]?.endsWith("oauth.ts") || process.argv[1]?.endsWith("oauth.js")) {
-  const { config } = await import("dotenv");
-  config({ path: new URL("../../../../.env", import.meta.url).pathname });
-
   try {
     const token = await getAccessToken();
     console.log("\nSuccess! Token (first 40 chars):", token.slice(0, 40) + "...");

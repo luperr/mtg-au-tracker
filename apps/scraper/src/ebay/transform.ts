@@ -40,15 +40,53 @@ const SKIP_PATTERNS = [
   /\b\d+\s*card[s]?\s+lot/i, // "100 cards lot"
   /\bcomplete\s+set\b/i,   // Complete set listings
   /\bcomplete\s+playset\b/i,
+  /\bchoose\s+your\b/i,    // "Choose your card" multi-listings
+  /\bpick\s+your\b/i,      // "Pick your" multi-listings
+  /\bpick\s+a\b/i,         // "Pick a card" multi-listings
+  /\bmultibuy\b/i,         // "Multibuy selection" listings
+  /\byou\s+pick\b/i,       // "You pick" multi-listings
+  /\bselect\s+multibuy\b/i,
+  /\d+%\s*off/i,           // Discount promo listings "35% off"
+  /\bnon[-\s]*singles\b/i, // "Non Singles" bulk packs
+  // Other TCGs listed in the MTG category
+  /\btmnt\b/i,             // Teenage Mutant Ninja Turtles TCG
+  /\bteenage\s+mutant\s+ninja\b/i,
+  /\byugioh\b/i,
+  /\bpokemon\b/i,
+  /\bdigimon\b/i,
+  /\bforce\s+of\s+will\b/i,
+  // Sealed product
+  /\bfactory\s*sealed\b/i,
+  /\bsealed\b/i,           // "sealed pack", "sealed box", "sealed product"
   /\bbooster\b/i,          // Booster packs/boxes
   /\bdraft\s+pack/i,
-  /\bsleeve[s]?\b/i,       // Accessories
+  /\bbooster\s*box/i,
+  /\bbundle\b/i,           // "Bundle", "Bundle box"
+  /\bcommander\s*deck/i,   // Precon decks
+  /commander\s*(–|-)\s/i,  // "Commander Deck – Legends' Legacy"
+  /\bprecon\b/i,
+  /\bprerelease\b/i,       // Prerelease packs/kits
+  /\bstarter\s*kit/i,
+  /\bgift\s*edition/i,
+  /\bcollect[ors]?\s*box/i,
+  /\bset\s*booster/i,
+  /\bdraft\s*booster/i,
+  /\bplay\s*booster/i,
+  /\bjump\s*start/i,
+  /\bbinder\b/i,           // Binders, binder pages
+  /\balbum\b/i,
+  /\bsticker[s]?\b/i,
+  /\bsuppl[ies]+\b/i,
+  // Accessories
+  /\bsleeve[s]?\b/i,
   /\bdeck\s+box/i,
   /\bplaymat\b/i,
-  /\btoken\b/i,            // Tokens (not singles)
+  /\bdice\b/i,
+  /\bgift\s+card/i,
+  // Non-singles
+  /\btoken\b/i,
   /\bemblem\b/i,
   /\bcounter[s]?\b/i,
-  /\bgift\s+card/i,
 ];
 
 /**
@@ -86,6 +124,7 @@ const CONDITION_MAP: Array<[RegExp, string]> = [
   [/\bdamaged\b/i, "DMG"],
   [/\bpoor\b/i, "DMG"],
   [/\bexcellent\b/i, "LP"],      // eBay's "Excellent" maps to LP
+  [/\bex\b/i, "LP"],             // "EX" shorthand used on eBay AU
   [/\bvery\s*good\b/i, "LP"],    // eBay's "Very Good"
   [/\bgood\b/i, "MP"],
 ];
@@ -122,6 +161,7 @@ const SET_PATTERNS: Array<[RegExp, string]> = [
   [/\b3rd\s*ed/i, "Revised Edition"],
   [/\barabian\s*nights\b/i, "Arabian Nights"],
   [/\bantiquitie[s]?\b/i, "Antiquities"],
+  [/\bmultiverse\s*legends\b/i, "March of the Machine: The Multiverse Legends"],
   [/\blegends\b/i, "Legends"],
   [/\bthe\s*dark\b/i, "The Dark"],
   [/\bfallen\s*empires\b/i, "Fallen Empires"],
@@ -230,6 +270,24 @@ const SET_PATTERNS: Array<[RegExp, string]> = [
   [/\bbloomburrow\b/i, "Bloomburrow"],
   [/\bduskmourn\b/i, "Duskmourn: House of Horror"],
   [/\bfoundations\b/i, "Magic: The Gathering Foundations"],
+  [/\btarkir\s*dragonstorm\b/i, "Tarkir: Dragonstorm"],
+  [/\bfinal\s*fantasy\b/i, "Final Fantasy"],
+  [/\bfca\b/i, "Final Fantasy"],           // common eBay AU abbreviation for Final Fantasy
+  [/\baetherdrift\b/i, "Aetherdrift"],
+  [/\bone\s*ring\b/i, "The Lord of the Rings: Tales of Middle-earth"],
+  [/\blord[s]?\s*of\s*the\s*rings\b/i, "The Lord of the Rings: Tales of Middle-earth"],
+  [/\blotr\b/i, "The Lord of the Rings: Tales of Middle-earth"],
+  [/\bsecret\s*lair\b/i, "Secret Lair Drop"],
+  [/\bsld\b/i, "Secret Lair Drop"],
+  [/\bafter(math)?\b/i, "March of the Machine: The Aftermath"],
+  [/\bmul\b/i, "March of the Machine: The Multiverse Legends"],
+  [/\bwoe\b/i, "Wilds of Eldraine"],
+  [/\blci\b/i, "The Lost Caverns of Ixalan"],
+  [/\bmkm\b/i, "Murders at Karlov Manor"],
+  [/\botj\b/i, "Outlaws of Thunder Junction"],
+  [/\bblb\b/i, "Bloomburrow"],
+  [/\bdsk\b/i, "Duskmourn: House of Horror"],
+  [/\bfdn\b/i, "Magic: The Gathering Foundations"],
   // Starter/core sets
   [/\bm10\b/i, "Magic 2010"],
   [/\bm11\b/i, "Magic 2011"],
@@ -250,6 +308,12 @@ export function extractSetName(title: string): string | null {
 // Words to strip before extracting the card name.
 
 const NOISE_WORDS = [
+  // Bracketed content: "[SLD]", "[March of the Machine: Multiverse ]", "[ ] [ ]"
+  /\[[^\]]*\]/g,
+  // Numeric-only parentheses: collector numbers like "(20)", "(136)", "(200/500)"
+  /\(\s*[\d/]+\s*\)/g,
+  // Inline collector number references: "#0150", "# 38"
+  /#\s*\d+/g,
   // MTG branding
   /\bmagic\s*(the\s*gathering|:?\s*the\s*gathering)?\b/gi,
   /\bmtg\b/gi,
@@ -266,6 +330,17 @@ const NOISE_WORDS = [
   /\bplayset\b/gi,
   // Condition (already extracted)
   /\b(near\s*mint|nm[-/]?m?|light[ly]?\s*played|lp|slight[ly]?\s*played|sp|mod[erately]*\s*played|mp|heavily?\s*played|hp|damaged|dmg|poor|mint|excellent|very\s*good)\b/gi,
+  /\bex\b/gi,                  // "EX" — Excellent (used on some eBay AU listings)
+  // Card treatment / art variant labels (not part of the canonical card name)
+  /\bregular\b/gi,         // "Regular" = non-foil in AU eBay listings
+  /\bshowcase\b/gi,
+  /\bserialized\b/gi,
+  /\bgalaxy\s*foil\b/gi,
+  /\btextured\s*foil\b/gi,
+  /\buniverses\s*(beyond|within)\b/gi,
+  /\bjapanese\b/gi,
+  /\benglish\b/gi,
+  /\b(promo|prerelease\s*promo|buy[- ]a[- ]box)\b/gi,
   // Common filler
   /\bsingle\b/gi,
   /\bcard\b/gi,
@@ -273,7 +348,6 @@ const NOISE_WORDS = [
   /\buncommon\b/gi,
   /\bcommon\b/gi,
   /\bmythic\b/gi,
-  /\bsingle\b/gi,
   /\boriginal\b/gi,
   /\blegit\b/gi,
   /\breal\b/gi,
@@ -281,7 +355,7 @@ const NOISE_WORDS = [
   /\bcollector\b/gi,
   /\bedition\b/gi,
   // Punctuation and separators
-  /[-–—|·•]+/g,
+  /[-–—|·•:]+/g,
 ];
 
 /**
@@ -332,15 +406,18 @@ export function extractPrice(item: EbayItemSummary): string | null {
  * Returns null if the listing should be skipped.
  */
 export function transformEbayItem(item: EbayItemSummary): ScrapedCard | null {
-  // Skip non-singles
+  // Skip sealed product by eBay's own condition label — most reliable check
+  const conditionLower = (item.condition ?? "").toLowerCase();
+  if (conditionLower.includes("sealed") || conditionLower.includes("new/factory")) return null;
+
+  // Skip non-singles by title patterns
   if (shouldSkip(item.title)) return null;
 
   // Skip items without a valid AUD price
   const price = extractPrice(item);
   if (!price) return null;
 
-  // Skip auctions — bid prices are not reliable as market prices for our purposes
-  // (completed sold prices would be, but Browse API only shows current bids)
+  // Safety net: Browse API is already filtered to FIXED_PRICE, but guard here too
   if (!item.buyingOptions?.includes("FIXED_PRICE")) return null;
 
   const isFoil = extractFoil(item.title);

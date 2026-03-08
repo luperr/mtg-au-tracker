@@ -61,6 +61,7 @@ export const printings = pgTable(
       .references(() => cards.id),                        // FK → cards.id
     setCode: text("set_code").notNull(),
     setName: text("set_name").notNull(),
+    releasedAt: date("released_at").notNull().default("1993-01-01"),
     collectorNumber: text("collector_number").notNull(),
     rarity: text("rarity").notNull(),
     isFoil: boolean("is_foil").notNull().default(false),

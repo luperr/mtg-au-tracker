@@ -26,10 +26,21 @@ export function normalizeName(name: string): string {
  * Strip trailing variant annotations from a store card name.
  * e.g. "Ajani, Outland Chaperone (Borderless 284)" → "Ajani, Outland Chaperone"
  *      "Adept Watershaper (Showcase 297)"           → "Adept Watershaper"
+ *      "Lightning Bolt [SLD]"                       → "Lightning Bolt"
  *      "Lightning Bolt"                             → "Lightning Bolt"
  */
 export function stripVariant(name: string): string {
-  return name.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  // Strip trailing (...) and [...] annotations repeatedly until stable
+  let prev = "";
+  let current = name;
+  while (current !== prev) {
+    prev = current;
+    current = current
+      .replace(/\s*\([^)]*\)\s*$/, "")  // trailing (...)
+      .replace(/\s*\[[^\]]*\]\s*$/, "")  // trailing [...]
+      .trim();
+  }
+  return current;
 }
 
 /**

@@ -25,6 +25,13 @@ services:
     working_dir: /app
     environment:
       DATABASE_URL: postgresql://mtg:${DB_PASSWORD}@db:5432/mtg_tracker
+      EBAY_CLIENT_ID: ${EBAY_CLIENT_ID}
+      EBAY_CLIENT_SECRET: ${EBAY_CLIENT_SECRET}
+      EBAY_ENV: ${EBAY_ENV:-production}
+      EBAY_PAGES_PER_SET: ${EBAY_PAGES_PER_SET:-5}
+      EBAY_PAGES_PER_CARD: ${EBAY_PAGES_PER_CARD:-1}
+      EBAY_RECENT_MONTHS: ${EBAY_RECENT_MONTHS:-12}
+      EBAY_HIGH_VALUE_USD: ${EBAY_HIGH_VALUE_USD:-10}
     depends_on:
       db:
         condition: service_healthy      # wait for postgres to be ready before starting

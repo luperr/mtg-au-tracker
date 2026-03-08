@@ -95,12 +95,16 @@ async function importData(): Promise<void> {
     const batch = uniquePrintings.slice(i, i + BATCH_SIZE);
     await db.insert(schema.printings).values(batch.map((p) => ({
       id: p.id, cardId: p.cardId, setCode: p.setCode, setName: p.setName,
-      collectorNumber: p.collectorNumber, rarity: p.rarity, isFoil: p.isFoil,
-      imageUri: p.imageUri, scryfallUri: p.scryfallUri, usdPrice: p.usdPrice,
-      updatedAt: new Date(),
+      releasedAt: p.releasedAt, collectorNumber: p.collectorNumber, rarity: p.rarity,
+      isFoil: p.isFoil, imageUri: p.imageUri, scryfallUri: p.scryfallUri,
+      usdPrice: p.usdPrice, updatedAt: new Date(),
     }))).onConflictDoUpdate({
       target: schema.printings.id,
-      set: { usdPrice: sql`excluded.usd_price`, updatedAt: sql`excluded.updated_at` },
+      set: {
+        releasedAt: sql`excluded.released_at`,
+        usdPrice: sql`excluded.usd_price`,
+        updatedAt: sql`excluded.updated_at`,
+      },
     });
   }
   console.log("[Scryfall] Printings inserted ✓");
@@ -110,4 +114,13 @@ export async function runScryfallImport(): Promise<void> {
   await fetchData();
   await importData();
   console.log("[Scryfall] Import complete.");
+}
+
+// Run directly: tsx src/scryfall/bulk-import.ts
+import { fileURLToPath } from "url";
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  runScryfallImport().catch((err) => {
+    console.error("[Scryfall] Fatal error:", err);
+    process.exit(1);
+  });
 }
