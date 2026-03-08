@@ -14,6 +14,7 @@ import { count } from "drizzle-orm";
 import { db, schema } from "./lib/db.js";
 import { runScryfallImport } from "./scryfall/bulk-import.js";
 import { runAllStores } from "./stores/run-all.js";
+import { runEbayImport } from "./ebay/ebay-import.js";
 
 async function main(): Promise<void> {
   console.log("[Scheduler] MTG AU Tracker scraper service starting...");
@@ -50,7 +51,17 @@ async function main(): Promise<void> {
     }
   });
 
-  console.log("[Scheduler] Cron jobs scheduled (Scryfall @ 3 AM, stores @ 5 AM). Service running.");
+  // 6 AM daily — import eBay AU market prices
+  cron.schedule("0 6 * * *", async () => {
+    console.log("[Scheduler] 6 AM — Running eBay AU import...");
+    try {
+      await runEbayImport();
+    } catch (err) {
+      console.error("[Scheduler] eBay import failed:", err);
+    }
+  });
+
+  console.log("[Scheduler] Cron jobs scheduled (Scryfall @ 3 AM, stores @ 5 AM, eBay @ 6 AM). Service running.");
 }
 
 main().catch((err) => {

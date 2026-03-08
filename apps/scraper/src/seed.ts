@@ -37,7 +37,7 @@ const STORES = [
     id: "ebay_au",
     name: "eBay AU",
     baseUrl: "https://www.ebay.com.au",
-    scraperEnabled: false,   // enabled once eBay API credentials are set up
+    scraperEnabled: true,
   },
 ];
 
