@@ -1,99 +1,148 @@
 /**
- * eBay import orchestrator — hybrid search strategy.
+ * eBay import orchestrator — tiered card-name search with rolling schedule.
  *
- * Search strategy (in order):
- *   1. Recent sets (within EBAY_RECENT_MONTHS, default 12 months):
- *      Search eBay by each unique card name in those sets.
- *      More targeted — ensures we capture the specific cards people want prices for.
+ * Each run queries the DB to find which card names are due for a search today,
+ * based on three tiers:
  *
- *   2. High-value cards (usdPrice >= EBAY_HIGH_VALUE_USD, default $10):
- *      Search eBay by card name for any card across all sets worth this much.
- *      Ensures expensive singles in older sets are always tracked.
+ *   Tier 1 (Hot)       released ≤ 30 days ago          → search every 1 day
+ *                      zero-result backoff              → 14 days
  *
- *   3. Older sets (outside recent window, no high-value cards):
- *      Search eBay by set name. Broader sweep, 5 pages per set.
+ *   Tier 2 (Active)    released ≤ 90 days OR USD ≥ $20 → search every 3 days
+ *                      zero-result backoff              → 21 days
  *
- * All three passes deduplicate by eBay item ID in memory.
- * Sets are processed newest-first (by releasedAt DESC).
+ *   Tier 3 (Long tail) any age, USD ≥ $2               → search every 7 days
+ *                      zero-result backoff              → 30 days
  *
- * Environment variables:
- *   EBAY_RECENT_MONTHS     — months back to consider "recent" (default: 12)
- *   EBAY_HIGH_VALUE_USD    — USD price threshold for card-name search (default: 10)
- *   EBAY_PAGES_PER_SET     — pages per set-name search (default: 5 = 1,000 items)
- *   EBAY_PAGES_PER_CARD    — pages per card-name search (default: 1 = 200 items)
+ *   Skip               USD < $2 AND older than 90 days  → never searched
+ *
+ * For each card searched today:
+ *   1. Delete stale eBay store_prices for that card's printings
+ *   2. Insert fresh results from eBay
+ *   3. Upsert ebay_search_log with today's date + raw result count
+ *
+ * This rolling approach keeps hot cards fresh daily while spreading the ~5,000
+ * API call quota across the full card population over a week.
  */
 
 import { fileURLToPath } from "url";
-import { eq, gte, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
 import { CardMatcher } from "../matching/card-matcher.js";
-import { searchEbayBySet, searchEbayByCardName } from "./browse-client.js";
+import { searchEbayByCardName } from "./browse-client.js";
 import { transformEbayItem } from "./transform.js";
 import type { EbayItemSummary } from "./browse-client.js";
 
 const STORE_ID = "ebay_au";
 const BATCH_SIZE = 500;
 
-// ── Config ────────────────────────────────────────────────────────────────────
+// ── Tier config ───────────────────────────────────────────────────────────────
 
-function getConfig() {
-  return {
-    recentMonths: parseInt(process.env.EBAY_RECENT_MONTHS ?? "12", 10),
-    highValueUsd: parseFloat(process.env.EBAY_HIGH_VALUE_USD ?? "10"),
-  };
-}
-
-function recentCutoffDate(months: number): string {
-  const d = new Date();
-  d.setMonth(d.getMonth() - months);
-  return d.toISOString().slice(0, 10); // "YYYY-MM-DD"
-}
+const TIER_LABEL: Record<string, string> = {
+  hot: "Tier 1 (Hot, ≤30d)",
+  active: "Tier 2 (Active, ≤90d or ≥$20)",
+  longTail: "Tier 3 (Long tail, ≥$2)",
+};
 
 // ── DB helpers ────────────────────────────────────────────────────────────────
 
-/** All distinct sets, newest first */
-async function getAllSets(): Promise<Array<{ setName: string; releasedAt: string }>> {
+interface CardToSearch {
+  cardName: string;
+  tier: "hot" | "active" | "longTail";
+}
+
+/**
+ * Return all card names due for a search today, ordered hot → active → longTail.
+ * Uses a two-CTE query:
+ *   card_max_usd — aggregates each card's best USD price + most recent release date
+ *   card_tiers   — classifies each card into a tier + left-joins search history
+ * The WHERE clause applies per-tier schedule and zero-result backoff logic.
+ */
+async function getCardsToSearch(): Promise<CardToSearch[]> {
   const rows = await db.execute(sql`
-    SELECT set_name, MAX(released_at) as released_at
-    FROM printings
-    GROUP BY set_name
-    ORDER BY MAX(released_at) DESC
+    WITH card_max_usd AS (
+      SELECT
+        c.name AS card_name,
+        MAX(p.released_at) AS latest_released,
+        MAX(
+          CASE WHEN p.usd_price IS NOT NULL AND p.usd_price != ''
+               THEN p.usd_price::numeric
+               ELSE 0
+          END
+        ) AS max_usd
+      FROM cards c
+      JOIN printings p ON c.id = p.card_id
+      GROUP BY c.name
+    ),
+    card_tiers AS (
+      SELECT
+        cmu.card_name,
+        CASE
+          WHEN cmu.latest_released >= CURRENT_DATE - INTERVAL '30 days'  THEN 'hot'
+          WHEN cmu.latest_released >= CURRENT_DATE - INTERVAL '90 days'
+            OR cmu.max_usd >= 20                                          THEN 'active'
+          WHEN cmu.max_usd >= 2                                           THEN 'longTail'
+          ELSE 'skip'
+        END AS tier,
+        esl.last_searched_at,
+        esl.last_result_count
+      FROM card_max_usd cmu
+      LEFT JOIN ebay_search_log esl ON esl.card_name = cmu.card_name
+    )
+    SELECT card_name, tier
+    FROM card_tiers
+    WHERE tier != 'skip'
+      AND CASE tier
+        WHEN 'hot' THEN
+          last_searched_at IS NULL
+          OR (last_result_count > 0 AND last_searched_at < CURRENT_DATE - INTERVAL '1 day')
+          OR (last_result_count = 0 AND last_searched_at < CURRENT_DATE - INTERVAL '14 days')
+        WHEN 'active' THEN
+          last_searched_at IS NULL
+          OR (last_result_count > 0 AND last_searched_at < CURRENT_DATE - INTERVAL '3 days')
+          OR (last_result_count = 0 AND last_searched_at < CURRENT_DATE - INTERVAL '21 days')
+        WHEN 'longTail' THEN
+          last_searched_at IS NULL
+          OR (last_result_count > 0 AND last_searched_at < CURRENT_DATE - INTERVAL '7 days')
+          OR (last_result_count = 0 AND last_searched_at < CURRENT_DATE - INTERVAL '30 days')
+        ELSE FALSE
+      END
+    ORDER BY
+      CASE tier WHEN 'hot' THEN 1 WHEN 'active' THEN 2 ELSE 3 END,
+      card_name
   `);
-  return (rows as Array<{ set_name: string; released_at: string }>).map((r) => ({
-    setName: r.set_name,
-    releasedAt: r.released_at,
+
+  return (rows as unknown as Array<{ card_name: string; tier: string }>).map((r) => ({
+    cardName: r.card_name,
+    tier: r.tier as "hot" | "active" | "longTail",
   }));
 }
 
-/** Unique card names in a set */
-async function getCardNamesForSet(setName: string): Promise<string[]> {
-  const rows = await db
-    .selectDistinct({ name: schema.cards.name })
-    .from(schema.printings)
-    .innerJoin(schema.cards, eq(schema.printings.cardId, schema.cards.id))
-    .where(eq(schema.printings.setName, setName));
-  return rows.map((r) => r.name);
-}
-
-/** Unique card names where any printing has usdPrice >= threshold, in sets older than cutoff */
-async function getHighValueCardNames(
-  minUsd: number,
-  olderThan: string,
-): Promise<string[]> {
-  const rows = await db.execute(sql`
-    SELECT DISTINCT c.name
-    FROM printings p
-    JOIN cards c ON p.card_id = c.id
-    WHERE p.usd_price IS NOT NULL
-      AND p.usd_price != ''
-      AND p.usd_price::numeric >= ${minUsd}
-      AND p.released_at < ${olderThan}
-    ORDER BY c.name
+/** Delete all eBay store_prices for every printing of the given card name. */
+async function clearPricesForCard(cardName: string): Promise<void> {
+  await db.execute(sql`
+    DELETE FROM store_prices
+    WHERE store_id = ${STORE_ID}
+      AND printing_id IN (
+        SELECT p.id FROM printings p
+        JOIN cards c ON p.card_id = c.id
+        WHERE c.name = ${cardName}
+      )
   `);
-  return (rows as Array<{ name: string }>).map((r) => r.name);
 }
 
-// ── Batch flush helpers ───────────────────────────────────────────────────────
+/** Upsert the search log entry for a card (insert or update on conflict). */
+async function upsertSearchLog(cardName: string, resultCount: number): Promise<void> {
+  const today = new Date().toISOString().slice(0, 10);
+  await db
+    .insert(schema.ebaySearchLog)
+    .values({ cardName, lastSearchedAt: today, lastResultCount: resultCount })
+    .onConflictDoUpdate({
+      target: schema.ebaySearchLog.cardName,
+      set: { lastSearchedAt: today, lastResultCount: resultCount },
+    });
+}
+
+// ── Batch types ───────────────────────────────────────────────────────────────
 
 type PriceRow = typeof schema.storePrices.$inferInsert;
 type HistoryRow = typeof schema.priceHistory.$inferInsert;
@@ -128,6 +177,8 @@ interface Stats {
   skipped: number;
   matched: number;
   unmatched: number;
+  cardSearches: number;
+  zeroResultCards: number;
 }
 
 function processItem(
@@ -187,115 +238,104 @@ function processItem(
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export async function runEbayImport(): Promise<void> {
-  console.log("[eBay Import] Starting eBay AU price import...");
+  console.log("[eBay Import] Starting tiered eBay AU price import...");
 
-  const { recentMonths, highValueUsd } = getConfig();
-  const cutoff = recentCutoffDate(recentMonths);
   const today = new Date().toISOString().slice(0, 10);
 
-  console.log(`[eBay Import] Config: recent = last ${recentMonths} months (since ${cutoff}), high-value >= $${highValueUsd} USD`);
-
-  // Build card matcher index
+  // Build card matcher index once
   console.log("[eBay Import] Building card matcher index...");
   const matcher = new CardMatcher();
   await matcher.build();
 
-  // Clear stale data
-  console.log("[eBay Import] Clearing existing eBay prices...");
-  await db.delete(schema.storePrices).where(eq(schema.storePrices.storeId, STORE_ID));
-  await db.delete(schema.unmatchedCards).where(eq(schema.unmatchedCards.storeId, STORE_ID));
+  // Determine which cards to search today
+  console.log("[eBay Import] Querying cards due for search today...");
+  const cardsToSearch = await getCardsToSearch();
+
+  const tierCounts = { hot: 0, active: 0, longTail: 0 };
+  for (const { tier } of cardsToSearch) tierCounts[tier]++;
+
+  console.log(`[eBay Import] Cards due today: ${cardsToSearch.length} total`);
+  console.log(`  ${TIER_LABEL.hot}:      ${tierCounts.hot}`);
+  console.log(`  ${TIER_LABEL.active}:   ${tierCounts.active}`);
+  console.log(`  ${TIER_LABEL.longTail}: ${tierCounts.longTail}`);
+
+  if (cardsToSearch.length === 0) {
+    console.log("[eBay Import] Nothing to search today — all cards are up to date.");
+    return;
+  }
 
   const seenIds = new Set<string>();
   const batches: Batches = { prices: [], history: [], unmatched: [] };
-  const stats: Stats = { fetched: 0, dupes: 0, skipped: 0, matched: 0, unmatched: 0 };
+  const stats: Stats = {
+    fetched: 0,
+    dupes: 0,
+    skipped: 0,
+    matched: 0,
+    unmatched: 0,
+    cardSearches: 0,
+    zeroResultCards: 0,
+  };
 
-  async function processGenerator(gen: AsyncGenerator<EbayItemSummary>): Promise<void> {
-    for await (const item of gen) {
-      processItem(item, seenIds, matcher, batches, stats, today);
-      if (batches.prices.length >= BATCH_SIZE || batches.unmatched.length >= BATCH_SIZE) {
-        await flushAll(batches);
+  // ── Search each card ───────────────────────────────────────────────────────
+  let lastTier = "";
+  for (let i = 0; i < cardsToSearch.length; i++) {
+    const { cardName, tier } = cardsToSearch[i];
+
+    // Print tier header when tier changes
+    if (tier !== lastTier) {
+      console.log(`\n[eBay Import] ${TIER_LABEL[tier]}`);
+      lastTier = tier;
+    }
+
+    if ((i + 1) % 50 === 0 || i === cardsToSearch.length - 1) {
+      console.log(
+        `[eBay Import] ${i + 1}/${cardsToSearch.length} searched | ` +
+        `matched=${stats.matched} unmatched=${stats.unmatched} fetched=${stats.fetched}`,
+      );
+    }
+
+    let rawCount = 0;
+    try {
+      // Clear stale prices for this card before inserting fresh ones
+      await clearPricesForCard(cardName);
+
+      // Fetch and process eBay results
+      for await (const item of searchEbayByCardName(cardName)) {
+        rawCount++;
+        processItem(item, seenIds, matcher, batches, stats, today);
+        if (batches.prices.length >= BATCH_SIZE || batches.unmatched.length >= BATCH_SIZE) {
+          await flushAll(batches);
+        }
       }
-    }
-  }
-
-  // ── Pass 1: Recent sets — search by card name ──────────────────────────────
-  const allSets = await getAllSets();
-  const recentSets = allSets.filter((s) => s.releasedAt >= cutoff);
-  const olderSets = allSets.filter((s) => s.releasedAt < cutoff);
-
-  console.log(`\n[eBay Import] Pass 1: ${recentSets.length} recent sets → search by card name`);
-
-  // Collect unique card names across all recent sets to avoid redundant searches
-  const recentCardNames = new Set<string>();
-  for (const { setName } of recentSets) {
-    const names = await getCardNamesForSet(setName);
-    names.forEach((n) => recentCardNames.add(n));
-  }
-
-  console.log(`[eBay Import] ${recentCardNames.size} unique card names in recent sets`);
-
-  let cardIdx = 0;
-  for (const cardName of recentCardNames) {
-    cardIdx++;
-    if (cardIdx % 100 === 0) {
-      console.log(`[eBay Import] Pass 1: ${cardIdx}/${recentCardNames.size} cards searched`);
-    }
-    try {
-      await processGenerator(searchEbayByCardName(cardName));
     } catch (err) {
-      console.error(`[eBay Import] Error searching card "${cardName}":`, err);
+      console.error(`[eBay Import] Error searching "${cardName}":`, err);
+      // Don't update search log on error — retry on next run
+      continue;
     }
-  }
 
-  // ── Pass 2: High-value cards in older sets — search by card name ──────────
-  const highValueNames = await getHighValueCardNames(highValueUsd, cutoff);
-  console.log(`\n[eBay Import] Pass 2: ${highValueNames.length} high-value cards (>= $${highValueUsd} USD) in older sets → search by card name`);
-
-  let hvIdx = 0;
-  for (const cardName of highValueNames) {
-    hvIdx++;
-    if (hvIdx % 100 === 0) {
-      console.log(`[eBay Import] Pass 2: ${hvIdx}/${highValueNames.length} cards searched`);
-    }
-    try {
-      await processGenerator(searchEbayByCardName(cardName));
-    } catch (err) {
-      console.error(`[eBay Import] Error searching card "${cardName}":`, err);
-    }
-  }
-
-  // ── Pass 3: Older sets without high-value coverage — search by set name ───
-  console.log(`\n[eBay Import] Pass 3: ${olderSets.length} older sets → search by set name`);
-
-  for (let i = 0; i < olderSets.length; i++) {
-    const { setName } = olderSets[i];
-    if ((i + 1) % 50 === 0) {
-      console.log(`[eBay Import] Pass 3: ${i + 1}/${olderSets.length} sets searched`);
-    }
-    try {
-      await processGenerator(searchEbayBySet(setName));
-    } catch (err) {
-      console.error(`[eBay Import] Error searching set "${setName}":`, err);
-    }
+    // Update search log regardless of result count (including zero)
+    await upsertSearchLog(cardName, rawCount);
+    stats.cardSearches++;
+    if (rawCount === 0) stats.zeroResultCards++;
   }
 
   // Final flush
   await flushAll(batches);
 
   // ── Summary ───────────────────────────────────────────────────────────────
-  const matchPct = stats.matched + stats.unmatched > 0
-    ? ((stats.matched / (stats.matched + stats.unmatched)) * 100).toFixed(1)
-    : "0";
+  const matchPct =
+    stats.matched + stats.unmatched > 0
+      ? ((stats.matched / (stats.matched + stats.unmatched)) * 100).toFixed(1)
+      : "0";
 
   console.log(`\n[eBay Import] Done.`);
-  console.log(`  Recent sets searched by card: ${recentCardNames.size} names`);
-  console.log(`  High-value cards searched:    ${highValueNames.length} names`);
-  console.log(`  Older sets searched by set:   ${olderSets.length} sets`);
-  console.log(`  Total fetched:  ${stats.fetched}`);
-  console.log(`  Duplicates:     ${stats.dupes}`);
-  console.log(`  Skipped:        ${stats.skipped} (sealed, bulk, accessories)`);
-  console.log(`  Matched:        ${stats.matched} (${matchPct}%)`);
-  console.log(`  Unmatched:      ${stats.unmatched}`);
+  console.log(`  Cards searched:     ${stats.cardSearches} (${tierCounts.hot} hot, ${tierCounts.active} active, ${tierCounts.longTail} longTail)`);
+  console.log(`  Zero-result cards:  ${stats.zeroResultCards} (backed off)`);
+  console.log(`  Total fetched:      ${stats.fetched}`);
+  console.log(`  Duplicates:         ${stats.dupes}`);
+  console.log(`  Skipped:            ${stats.skipped} (sealed, bulk, accessories)`);
+  console.log(`  Matched:            ${stats.matched} (${matchPct}%)`);
+  console.log(`  Unmatched:          ${stats.unmatched}`);
 }
 
 // ── Run directly ──────────────────────────────────────────────────────────────

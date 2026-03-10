@@ -23,6 +23,7 @@ import {
   uniqueIndex,
   jsonb,
   serial,
+  integer,
   date,
 } from "drizzle-orm/pg-core";
 
@@ -165,3 +166,15 @@ export const unmatchedCards = pgTable(
     index("unmatched_cards_store_id_idx").on(table.storeId),
   ]
 );
+
+// ─── eBay Search Log ──────────────────────────────────────────────────────────
+// Tracks when each unique card name was last searched on eBay and how many raw
+// results came back. Drives the tiered scheduler — hot cards searched daily,
+// active cards every 3 days, long-tail cards weekly. Zero-result cards are
+// backed off automatically to avoid wasting quota.
+
+export const ebaySearchLog = pgTable("ebay_search_log", {
+  cardName: text("card_name").primaryKey(),
+  lastSearchedAt: date("last_searched_at").notNull(),
+  lastResultCount: integer("last_result_count").notNull().default(0),
+});
