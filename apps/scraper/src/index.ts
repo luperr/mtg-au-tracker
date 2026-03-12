@@ -3,7 +3,7 @@
  *
  * Schedules:
  *   3 AM daily → Scryfall bulk import (refreshes card/printing data + USD prices)
- *   5 AM daily → Store scrapers (MTG Mate, etc.) → writes to store_prices + price_history
+ *   5 AM daily → Store scrapers (MTG Mate, Good Games) → writes to store_prices + price_history
  *
  * On startup: if the cards table is empty, runs the Scryfall import immediately
  * so the service is usable without a manual bootstrap step.

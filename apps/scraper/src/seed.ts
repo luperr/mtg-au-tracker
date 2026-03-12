@@ -7,6 +7,7 @@
  * Run with: docker compose run --rm dev pnpm --filter @mtg-au/scraper seed
  */
 
+import { sql } from "drizzle-orm";
 import { db, schema } from "./lib/db.js";
 
 const STORES = [
@@ -51,9 +52,9 @@ async function main() {
     .onConflictDoUpdate({
       target: schema.stores.id,
       set: {
-        name: schema.stores.name,
-        baseUrl: schema.stores.baseUrl,
-        scraperEnabled: schema.stores.scraperEnabled,
+        name: sql`excluded.name`,
+        baseUrl: sql`excluded.base_url`,
+        scraperEnabled: sql`excluded.scraper_enabled`,
       },
     });
 

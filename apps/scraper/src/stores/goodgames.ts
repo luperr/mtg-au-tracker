@@ -184,11 +184,20 @@ function parseVariant(variant: ShopifyVariant, options: ShopifyOption[]): Parsed
     if (parts.length >= 2) foilRaw = parts[1].toLowerCase();
   }
 
+  // Good Games sometimes encodes foil in the condition string: "Near Mint Foil"
+  // Strip the foil suffix and treat as isFoil=true
+  const foilSuffix = /\s+foil$/i;
+  let foilFromCondition = false;
+  if (foilSuffix.test(conditionRaw)) {
+    conditionRaw = conditionRaw.replace(foilSuffix, "").trim();
+    foilFromCondition = true;
+  }
+
   // If still nothing, default to NM non-foil and let downstream matching handle it
   const condition = conditionRaw ? normaliseCondition(conditionRaw) : "NM";
-  const isFoil = foilRaw
+  const isFoil = foilFromCondition || (foilRaw
     ? FOIL_KEYWORDS.some((k) => foilRaw.includes(k)) && !NON_FOIL_KEYWORDS.some((k) => foilRaw.includes(k))
-    : false;
+    : false);
 
   return { condition, isFoil };
 }
