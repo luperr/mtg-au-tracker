@@ -29,7 +29,7 @@ cd /opt/mtg-au-tracker
 docker compose -f docker-compose.prod.yml up db -d
 
 # 2. Run migrations (creates all tables)
-docker compose -f docker-compose.prod.yml run --rm scraper pnpm db:migrate
+docker compose -f docker-compose.prod.yml run --rm scraper pnpm --filter @mtg-au/scraper db:migrate
 
 # 3. Seed stores table (MTG Mate, Good Games, etc.)
 docker compose -f docker-compose.prod.yml run --rm scraper pnpm --filter @mtg-au/scraper seed

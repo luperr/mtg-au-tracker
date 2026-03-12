@@ -34,7 +34,7 @@ services:
       dockerfile: Dockerfile.web
     restart: always
     ports:
-      - "127.0.0.1:3000:3000"   # localhost only — Cloudflare tunnel connects here
+      - "3000:3000"   # accessible on LAN and via Cloudflare tunnel
     environment:
       DATABASE_URL: postgresql://mtg:${DB_PASSWORD}@db:5432/mtg_tracker
       NODE_ENV: production
