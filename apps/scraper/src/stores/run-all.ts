@@ -35,7 +35,7 @@ const BATCH_SIZE = 500;
 
 // ── Per-store run ─────────────────────────────────────────────────────────────
 
-async function runStore(
+export async function runStore(
   storeId: string,
   scraper: BaseScraper,
   matcher: CardMatcher,

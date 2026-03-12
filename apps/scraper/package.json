@@ -7,6 +7,8 @@
     "start": "tsx src/index.ts",
     "import:scryfall": "tsx src/scryfall/bulk-import.ts",
     "scrape:stores": "tsx src/stores/run-all.ts",
+    "scrape:goodgames": "tsx src/stores/run-store.ts good_games",
+    "scrape:mtgmate": "tsx src/stores/run-store.ts mtg_mate",
     "scrape:ebay": "tsx src/ebay/ebay-import.ts",
     "test:ebay:oauth": "tsx src/ebay/oauth.ts",
     "test:ebay:browse": "tsx src/ebay/browse-client.ts",
