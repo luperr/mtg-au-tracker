@@ -17,7 +17,7 @@ import { runAllStores } from "./stores/run-all.js";
 import { runEbayImport } from "./ebay/ebay-import.js";
 
 async function main(): Promise<void> {
-  console.log("[Scheduler] MTG AU Tracker scraper service starting...");
+  console.log("[Scheduler] Scrymarket scraper service starting...");
 
   // Bootstrap: run Scryfall import if DB is empty
   const [{ value: cardCount }] = await db

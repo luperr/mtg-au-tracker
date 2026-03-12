@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MTG AU Price Tracker",
+  title: "Scrymarket",
   description: "Compare Australian MTG card prices across stores",
 };
 
@@ -19,7 +19,7 @@ export default function RootLayout({
             href="/"
             className="text-lg font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
           >
-            MTG AU Tracker
+            Scrymarket
           </a>
         </header>
         <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>

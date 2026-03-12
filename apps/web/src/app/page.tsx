@@ -25,7 +25,7 @@ export default async function HomePage({
   return (
     <div>
       <h1 className="mb-6 text-2xl font-bold text-gray-100">
-        MTG Australian Price Tracker
+        Scrymarket
       </h1>
 
       {/* Search form */}

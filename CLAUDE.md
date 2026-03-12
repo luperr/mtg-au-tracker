@@ -1,4 +1,4 @@
-# MTG AU Price Tracker — Project Guide
+# Scrymarket — Project Guide
 
 ## What this project does
 
@@ -192,7 +192,7 @@ See `.env.example` for all variables. Key ones:
 | `SCRYFALL_BULK_URL` | Scryfall API endpoint | `https://api.scryfall.com/bulk-data` |
 | `SCRAPE_CRON_SCRYFALL` | Cron schedule for Scryfall import | `0 3 * * *` (3 AM daily) |
 | `SCRAPE_CRON_STORES` | Cron schedule for store scrapers | `0 5 * * *` (5 AM daily) |
-| `USER_AGENT` | HTTP User-Agent header for scraping | `MTGAUTracker/1.0` |
+| `USER_AGENT` | HTTP User-Agent header for scraping | `Scrymarket/1.0` |
 | `AUD_USD_RATE` | Static exchange rate for USD→AUD conversion | `0.65` |
 
 ---

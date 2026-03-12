@@ -1,4 +1,4 @@
-# MTG AU Tracker
+# Scrymarket
 
 AUD price tracker for Magic: The Gathering singles in Australia. Pulls card data from Scryfall, scrapes AU store prices, and tracks eBay AU market prices — eventually served through a web UI for price comparison and history charts.
 

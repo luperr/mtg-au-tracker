@@ -14,7 +14,7 @@ import { shouldImport, transform, type ScryfallCard } from "./transform.js";
 const BULK_API_URL = "https://api.scryfall.com/bulk-data";
 const OUTPUT_DIR = "./data";
 const OUTPUT_FILE = join(OUTPUT_DIR, "default_cards.json");
-const USER_AGENT = "MTGAUTracker/1.0 (learning project)";
+const USER_AGENT = "Scrymarket/1.0 (learning project)";
 const BATCH_SIZE = 500;
 
 interface BulkDataEntry {
