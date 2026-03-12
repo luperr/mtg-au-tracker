@@ -3,4 +3,3 @@ dist/
 data/
 .env
 .pnpm-store/
-pnpm-lock.yaml
