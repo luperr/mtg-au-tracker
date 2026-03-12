@@ -12,6 +12,7 @@
     "test:ebay:browse": "tsx src/ebay/browse-client.ts",
     "test:ebay:transform": "tsx src/ebay/transform.ts",
     "test:mtgmate": "tsx src/stores/test-mtgmate.ts",
+    "test:goodgames": "tsx src/stores/test-goodgames.ts",
     "seed": "tsx src/seed.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
