@@ -19,6 +19,7 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
 import { CardMatcher } from "../matching/card-matcher.js";
 import { MtgMateScraper } from "./mtgmate.js";
+import { GoodGamesScraper } from "./goodgames.js";
 import type { BaseScraper } from "./base-scraper.js";
 import type { ScrapedCard } from "@mtg-au/shared";
 
@@ -26,6 +27,7 @@ import type { ScrapedCard } from "@mtg-au/shared";
 // Add new scrapers here as they are built.
 const SCRAPERS: Record<string, () => BaseScraper> = {
   mtg_mate: () => new MtgMateScraper(),
+  good_games: () => new GoodGamesScraper(),
 };
 
 // Batch size for DB inserts — keeps memory bounded and avoids huge single queries

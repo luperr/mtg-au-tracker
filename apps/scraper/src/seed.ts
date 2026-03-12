@@ -1,7 +1,8 @@
 /**
  * Seed the stores table with known Australian MTG retailers.
  *
- * Safe to re-run — uses ON CONFLICT DO NOTHING.
+ * Safe to re-run — upserts by id, updating name/baseUrl/scraperEnabled if the
+ * row already exists. This means re-running seed will pick up any changes here.
  *
  * Run with: docker compose run --rm dev pnpm --filter @mtg-au/scraper seed
  */
@@ -18,8 +19,8 @@ const STORES = [
   {
     id: "good_games",
     name: "Good Games",
-    baseUrl: "https://www.goodgames.com.au",
-    scraperEnabled: false,
+    baseUrl: "https://tcg.goodgames.com.au",
+    scraperEnabled: true,
   },
   {
     id: "mana_market",
@@ -47,9 +48,16 @@ async function main() {
   await db
     .insert(schema.stores)
     .values(STORES)
-    .onConflictDoNothing();
+    .onConflictDoUpdate({
+      target: schema.stores.id,
+      set: {
+        name: schema.stores.name,
+        baseUrl: schema.stores.baseUrl,
+        scraperEnabled: schema.stores.scraperEnabled,
+      },
+    });
 
-  console.log(`Inserted/skipped ${STORES.length} stores.`);
+  console.log(`Upserted ${STORES.length} stores.`);
   process.exit(0);
 }
 
