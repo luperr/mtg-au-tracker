@@ -23,7 +23,7 @@
 
 import { eq } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
-import { normalizeName, stripVariant, levenshteinDistance } from "@mtg-au/shared";
+import { normalizeName, normalizeSetName, stripVariant, levenshteinDistance } from "@mtg-au/shared";
 import type { ScrapedCard } from "@mtg-au/shared";
 
 export interface MatchResult {
@@ -48,6 +48,11 @@ export class CardMatcher {
   // Used when a store doesn't provide a collector number.
   private nameIndex = new Map<string, IndexEntry[]>();
 
+  // Set name → set code index built from the DB.
+  // Allows stores that provide a human-readable set name (Good Games) to benefit
+  // from set-based matching without needing a static SET_ALIASES lookup.
+  private setNameIndex = new Map<string, string>(); // normalizedSetName → setCode
+
   /**
    * Load all printings from the DB and build both lookup indexes.
    * Call once before running match() on any cards.
@@ -57,6 +62,7 @@ export class CardMatcher {
       .select({
         id: schema.printings.id,
         setCode: schema.printings.setCode,
+        setName: schema.printings.setName,
         collectorNumber: schema.printings.collectorNumber,
         isFoil: schema.printings.isFoil,
         cardName: schema.cards.name,
@@ -69,6 +75,10 @@ export class CardMatcher {
       const setKey = `${row.setCode}:${row.collectorNumber}:${row.isFoil}`;
       this.setCollectorIndex.set(setKey, row.id);
 
+      // Set name → code (e.g. "FINAL FANTASY" → "fin")
+      // Last writer wins — fine since each setCode maps to one canonical setName.
+      this.setNameIndex.set(normalizeSetName(row.setName), row.setCode);
+
       // Fallback: name → candidates
       const nameKey = normalizeName(row.cardName);
       const existing = this.nameIndex.get(nameKey) ?? [];
@@ -77,6 +87,17 @@ export class CardMatcher {
         setCode: row.setCode,
         collectorNumber: row.collectorNumber,
         isFoil: row.isFoil,
+      });
+      // Keep sorted by collector number ascending so regular printings
+      // (low collector numbers) are always preferred over borderless/showcase/
+      // extended-art variants (which Scryfall assigns high collector numbers).
+      existing.sort((a, b) => {
+        const an = parseInt(a.collectorNumber, 10);
+        const bn = parseInt(b.collectorNumber, 10);
+        if (isNaN(an) && isNaN(bn)) return 0;
+        if (isNaN(an)) return 1;
+        if (isNaN(bn)) return -1;
+        return an - bn;
       });
       this.nameIndex.set(nameKey, existing);
     }
@@ -91,11 +112,17 @@ export class CardMatcher {
    * Returns the best match found, or { printingId: null, matchType: "unmatched" }.
    */
   match(card: ScrapedCard): MatchResult {
+    // Resolve setCode once — use the store-provided code directly, or look up
+    // the set name in the index built from Scryfall data (e.g. Good Games gives
+    // "FINAL FANTASY" not "fin").
+    const resolvedSetCode = card.setCode
+      ?? (card.setName ? (this.setNameIndex.get(normalizeSetName(card.setName)) ?? null) : null);
+
     // ── Level 0: set code + collector number + foil ─────────────────────────
     // This is the most precise match — (set, collector#, foil) uniquely identifies
     // a Scryfall printing with no ambiguity. Use it whenever the store provides one.
-    if (card.setCode && card.collectorNumber) {
-      const setKey = `${card.setCode}:${card.collectorNumber}:${card.isFoil}`;
+    if (resolvedSetCode && card.collectorNumber) {
+      const setKey = `${resolvedSetCode}:${card.collectorNumber}:${card.isFoil}`;
       const printingId = this.setCollectorIndex.get(setKey);
       if (printingId) {
         return { printingId, matchType: "set_collector", confidence: 1.0 };
@@ -107,14 +134,29 @@ export class CardMatcher {
     // "Ajani, Outland Chaperone (Borderless 284)" → "Ajani, Outland Chaperone"
     const baseName = stripVariant(card.rawName);
     const normalizedName = normalizeName(baseName);
+
     const candidates = this.nameIndex.get(normalizedName);
 
     if (candidates) {
+      // When the scraper signals a borderless printing, sort candidates by collector
+      // number DESC so we prefer the high-numbered borderless variants that Scryfall
+      // assigns to special treatments. The index default is ASC (regular printings first).
+      const ordered = card.isBorderless
+        ? [...candidates].sort((a, b) => {
+            const an = parseInt(a.collectorNumber, 10);
+            const bn = parseInt(b.collectorNumber, 10);
+            if (isNaN(an) && isNaN(bn)) return 0;
+            if (isNaN(an)) return -1;
+            if (isNaN(bn)) return 1;
+            return bn - an; // DESC
+          })
+        : candidates;
+
       // ── Level 1: name + set code + foil ──────────────────────────────────
       // Ambiguous if the set has multiple variants (e.g. extended art, borderless).
-      if (card.setCode) {
-        const bySetFoil = candidates.filter(
-          (c) => c.setCode === card.setCode && c.isFoil === card.isFoil,
+      if (resolvedSetCode) {
+        const bySetFoil = ordered.filter(
+          (c) => c.setCode === resolvedSetCode && c.isFoil === card.isFoil,
         );
         if (bySetFoil.length === 1) {
           return { printingId: bySetFoil[0].printingId, matchType: "exact", confidence: 1.0 };
@@ -126,7 +168,7 @@ export class CardMatcher {
       }
 
       // ── Level 2: name + foil (ignore set) ────────────────────────────────
-      const byFoil = candidates.filter((c) => c.isFoil === card.isFoil);
+      const byFoil = ordered.filter((c) => c.isFoil === card.isFoil);
       if (byFoil.length === 1) {
         return { printingId: byFoil[0].printingId, matchType: "name_foil", confidence: 0.85 };
       }
@@ -135,11 +177,11 @@ export class CardMatcher {
       }
 
       // ── Level 3: name only (ignore set and foil) ──────────────────────────
-      if (candidates.length === 1) {
-        return { printingId: candidates[0].printingId, matchType: "name_only", confidence: 0.7 };
+      if (ordered.length === 1) {
+        return { printingId: ordered[0].printingId, matchType: "name_only", confidence: 0.7 };
       }
-      if (candidates.length > 1) {
-        return { printingId: candidates[0].printingId, matchType: "name_only", confidence: 0.6 };
+      if (ordered.length > 1) {
+        return { printingId: ordered[0].printingId, matchType: "name_only", confidence: 0.6 };
       }
     }
 

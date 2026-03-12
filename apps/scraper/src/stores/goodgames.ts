@@ -210,12 +210,107 @@ function isInStock(variant: ShopifyVariant): boolean {
   return variant.inventory_quantity > 0;
 }
 
+// ── Variant product detection ─────────────────────────────────────────────────
+// Good Games includes the variant type in the product title (e.g. "Quantum Riddler
+// Borderless"). Without collector numbers we can't reliably identify *which*
+// specific printing in a set this is, so non-borderless variants are skipped.
+// Borderless cards ARE handled: we strip the word and pass isBorderless=true so
+// the matcher can reverse its sort and prefer the high-collector-number printing.
+
+const SKIP_VARIANT_KEYWORDS = [
+  "extended art",
+  "showcase",
+  "retro frame",
+  "retro border",
+  "alternate art",
+  "full art",
+  "surge foil",
+  "galaxy foil",
+  "gilded foil",
+  "rainbow foil",
+  "textured foil",
+  "etched foil",
+  "serialized",
+  "step-and-compleat",
+  "schematic",
+  "anime",
+];
+
+// Matches "borderless" as a whole word anywhere in a string (case-insensitive).
+// Good Games titles can be "Card Borderless - Set Name" so end-of-string checks miss it.
+const BORDERLESS_WORD = /\bborderless\b/i;
+
+// Good Games encodes collector numbers as a zero-padded 4-digit number in
+// parentheses anywhere in the product title, e.g. "Spider-Man 2099 (0216) ()"
+// or "Kaalia of the Vast () (0343)".  We extract it before parsing the card name.
+const COLLECTOR_NUM_RE = /\((\d{4})\)/;
+
+function isSkippedVariant(title: string): boolean {
+  const lower = title.toLowerCase();
+  return SKIP_VARIANT_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+// Tokens, emblems, and double-faced tokens (e.g. "Forest // Forest") are not
+// in our printings DB (they're filtered out during Scryfall import) so skip them.
+function isTokenOrEmblem(product: ShopifyProduct): boolean {
+  const lower = product.title.toLowerCase();
+  if (/\btoken\b/.test(lower)) return true;
+  if (/\bemblem\b/.test(lower)) return true;
+  if (product.title.includes("//")) return true;
+  if (product.product_type.toLowerCase() === "token") return true;
+  return false;
+}
+
+// ── LotR Commander "named land" detection ─────────────────────────────────────
+// Good Games lists LotR alternative-name cards as e.g.:
+//   "Helm's Deep - Shinka, the Bloodsoaked Keep - The LotR: Commander"
+// After parseProductTitle this becomes:
+//   cardName = "Helm's Deep"
+//   setName  = "Shinka, the Bloodsoaked Keep [The LotR: Commander]"
+// The real Scryfall card name is the part of setName before the first " [".
+// We detect this when setName contains " [" and the prefix looks like a card name.
+
+function extractLotRStyleName(cardName: string, setName: string | null): { rawName: string; resolvedSetName: string | null } {
+  if (!setName) return { rawName: cardName, resolvedSetName: setName };
+  const bracketPos = setName.indexOf(" [");
+  if (bracketPos === -1) return { rawName: cardName, resolvedSetName: setName };
+
+  const prefix = setName.slice(0, bracketPos).trim();
+  const innerSet = setName.slice(bracketPos + 2, setName.lastIndexOf("]")).trim();
+
+  // Only swap if the prefix looks like a card name (has a capital letter, no digits)
+  // and not like a set name fragment
+  if (prefix.length > 2 && /^[A-Z]/.test(prefix)) {
+    return { rawName: prefix, resolvedSetName: innerSet || null };
+  }
+  return { rawName: cardName, resolvedSetName: setName };
+}
+
 // ── Product → ScrapedCard[] ───────────────────────────────────────────────────
 
 function mapProduct(product: ShopifyProduct): ScrapedCard[] {
-  const { cardName, setName: titleSetName } = parseProductTitle(product.title);
+  if (isSkippedVariant(product.title)) return [];
+  if (isTokenOrEmblem(product)) return [];
+
+  const isBorderless = BORDERLESS_WORD.test(product.title);
+
+  // Extract collector number before stripping anything else so we don't lose it.
+  const collectorMatch = COLLECTOR_NUM_RE.exec(product.title);
+  const collectorNumber = collectorMatch ? String(parseInt(collectorMatch[1], 10)) : null;
+
+  // Build a clean title for card name / set name parsing:
+  // remove the zero-padded collector number and "Borderless" word.
+  let cleanTitle = product.title;
+  if (collectorMatch) cleanTitle = cleanTitle.replace(collectorMatch[0], "");
+  if (isBorderless) cleanTitle = cleanTitle.replace(BORDERLESS_WORD, "");
+  cleanTitle = cleanTitle.replace(/\s{2,}/g, " ").trim();
+
+  const { cardName: parsedCardName, setName: titleSetName } = parseProductTitle(cleanTitle);
   const tagSetName = extractSetFromTags(product.tags);
-  const setName = tagSetName ?? titleSetName;
+  const rawSetName = tagSetName ?? titleSetName;
+
+  // Resolve LotR-style "DisplayName - RealCardName [Set]" product titles
+  const { rawName: cardName, resolvedSetName: setName } = extractLotRStyleName(parsedCardName, rawSetName);
 
   const sourceUrl = `${BASE_URL}/products/${product.handle}`;
   const results: ScrapedCard[] = [];
@@ -225,16 +320,18 @@ function mapProduct(product: ShopifyProduct): ScrapedCard[] {
     if (isNaN(priceNum) || priceNum <= 0) continue;
 
     const { condition, isFoil } = parseVariant(variant, product.options);
+    if (condition !== "NM") continue;
 
     results.push({
       rawName: cardName,
-      setCode: null,       // Good Games doesn't expose Scryfall set codes
-      setName,
-      collectorNumber: null, // Not available from Shopify product listings
+      setCode: null,       // Good Games doesn't expose Scryfall set codes directly
+      setName,             // Resolved to setCode by CardMatcher.setNameIndex
+      collectorNumber,     // Extracted from title "(NNNN)" pattern when present
       price: priceNum.toFixed(2),
       priceType: "sell",
       condition,
       isFoil,
+      isBorderless: isBorderless || undefined,
       inStock: isInStock(variant),
       sourceUrl,
     });
