@@ -45,6 +45,7 @@ export type PrintingRow = {
   image_uri: string | null;
   scryfall_uri: string;
   usd_price: string | null;
+  released_at: string | null;
   store_name: string | null;
   price_aud: string | null;
   condition: string | null;
@@ -130,6 +131,38 @@ export async function searchCards(query: string, offset = 0): Promise<CardSearch
   `;
 }
 
+export async function getCardTrend(cardId: string): Promise<"up" | "down" | "neutral" | null> {
+  const rows = await sql<{ trend: string | null }[]>`
+    WITH curr AS (
+      SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY sp.price_aud::numeric) AS price
+      FROM printings p
+      JOIN store_prices sp ON sp.printing_id = p.id AND sp.in_stock = true AND sp.price_type = 'sell'
+      WHERE p.card_id = ${cardId}
+    ),
+    hist AS (
+      SELECT AVG(ph.price_aud::numeric) AS price
+      FROM price_history ph
+      JOIN printings p ON p.id = ph.printing_id
+      WHERE p.card_id = ${cardId}
+        AND ph.price_type = 'sell'
+        AND ph.recorded_at = (
+          SELECT MAX(ph2.recorded_at)
+          FROM price_history ph2
+          JOIN printings p2 ON p2.id = ph2.printing_id
+          WHERE p2.card_id = ${cardId} AND ph2.price_type = 'sell'
+        )
+    )
+    SELECT CASE
+      WHEN hist.price IS NULL OR curr.price IS NULL THEN NULL
+      WHEN curr.price > hist.price * 1.01 THEN 'up'
+      WHEN curr.price < hist.price * 0.99 THEN 'down'
+      ELSE 'neutral'
+    END AS trend
+    FROM curr, hist
+  `;
+  return (rows[0]?.trend ?? null) as "up" | "down" | "neutral" | null;
+}
+
 export async function getCard(id: string): Promise<CardRow | null> {
   const rows = await sql<CardRow[]>`
     SELECT id, name, mana_cost, type_line, oracle_text, colors
@@ -149,6 +182,7 @@ export type PrintingWithPrices = {
   imageUri: string | null;
   scryfallUri: string;
   usdPrice: string | null;
+  releasedAt: string | null;
   prices: {
     storeName: string;
     priceAud: string;
@@ -172,6 +206,7 @@ export async function getPrintingsWithPrices(
       p.image_uri,
       p.scryfall_uri,
       p.usd_price,
+      p.released_at,
       s.name AS store_name,
       sp.price_aud,
       sp.condition,
@@ -197,6 +232,7 @@ export async function getPrintingsWithPrices(
         imageUri: row.image_uri,
         scryfallUri: row.scryfall_uri,
         usdPrice: row.usd_price,
+        releasedAt: row.released_at,
         prices: [],
       });
     }
@@ -211,4 +247,72 @@ export async function getPrintingsWithPrices(
     }
   }
   return Array.from(map.values());
+}
+
+export type PriceHistoryPoint = { date: string; price: number };
+export type PrintingHistory = {
+  printingId: string;
+  setName: string;
+  setCode: string;
+  isFoil: boolean;
+  data: PriceHistoryPoint[];
+};
+export type CardPriceHistory = {
+  aggregate: PriceHistoryPoint[];
+  byPrinting: PrintingHistory[];
+};
+
+export async function getCardPriceHistory(cardId: string): Promise<CardPriceHistory> {
+  const rows = await sql<{
+    printing_id: string;
+    set_name: string;
+    set_code: string;
+    is_foil: boolean;
+    date: string;
+    price: string;
+  }[]>`
+    SELECT
+      p.id AS printing_id,
+      p.set_name,
+      p.set_code,
+      p.is_foil,
+      ph.recorded_at::text AS date,
+      MIN(ph.price_aud::numeric)::text AS price
+    FROM price_history ph
+    JOIN printings p ON p.id = ph.printing_id
+    WHERE p.card_id = ${cardId}
+      AND ph.price_type = 'sell'
+    GROUP BY p.id, p.set_name, p.set_code, p.is_foil, ph.recorded_at
+    ORDER BY ph.recorded_at, p.set_name, p.is_foil
+  `;
+
+  // Build aggregate (cheapest across all printings per day)
+  const aggMap = new Map<string, number>();
+  for (const row of rows) {
+    const p = parseFloat(row.price);
+    const existing = aggMap.get(row.date);
+    if (existing === undefined || p < existing) aggMap.set(row.date, p);
+  }
+  const aggregate = Array.from(aggMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, price]) => ({ date, price }));
+
+  // Build per-printing
+  const printingMap = new Map<string, PrintingHistory>();
+  for (const row of rows) {
+    if (!printingMap.has(row.printing_id)) {
+      printingMap.set(row.printing_id, {
+        printingId: row.printing_id,
+        setName: row.set_name,
+        setCode: row.set_code,
+        isFoil: row.is_foil,
+        data: [],
+      });
+    }
+    printingMap.get(row.printing_id)!.data.push({ date: row.date, price: parseFloat(row.price) });
+  }
+  // Only include printings that have at least 2 data points
+  const byPrinting = Array.from(printingMap.values()).filter((p) => p.data.length >= 2);
+
+  return { aggregate, byPrinting };
 }
