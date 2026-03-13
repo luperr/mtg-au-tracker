@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
+import { Bitcount_Prop_Double } from "next/font/google";
 import "./globals.css";
+import { ThemeToggle } from "./ThemeToggle";
+import { DragDropSearch } from "./DragDropSearch";
+
+const bitcount = Bitcount_Prop_Double({ subsets: ["latin"], weight: ["400"] });
 
 export const metadata: Metadata = {
   title: "Scrymarket",
@@ -13,14 +18,18 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-gray-950 text-gray-100 antialiased">
-        <header className="border-b border-gray-800 bg-gray-900 px-4 py-3">
+      {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+      <script dangerouslySetInnerHTML={{ __html: `(function(){var t=localStorage.getItem('theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')})()` }} />
+      <body className="min-h-screen bg-bg text-cream antialiased">
+        <DragDropSearch />
+        <header className="border-b border-subtle px-4 py-3 flex items-center justify-between header-gradient">
           <a
             href="/"
-            className="text-lg font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
+            className={`${bitcount.className} text-2xl logo-gradient`}
           >
-            Scrymarket
+            SCRYMARKET
           </a>
+          <ThemeToggle />
         </header>
         <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
       </body>

@@ -21,7 +21,8 @@ export type CardSearchResult = {
   type_line: string;
   colors: string[];
   printing_count: number;
-  lowest_price: string | null;
+  scrymarket_price: string | null;
+  trend: string | null; // "up" | "down" | "neutral" | null
   image_uri: string | null;
 };
 
@@ -53,7 +54,9 @@ export type PrintingRow = {
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
-export async function searchCards(query: string): Promise<CardSearchResult[]> {
+export const PAGE_SIZE = 20;
+
+export async function searchCards(query: string, offset = 0): Promise<CardSearchResult[]> {
   if (!query.trim()) return [];
   return sql<CardSearchResult[]>`
     SELECT
@@ -62,22 +65,68 @@ export async function searchCards(query: string): Promise<CardSearchResult[]> {
       c.type_line,
       c.colors,
       COUNT(DISTINCT p.id)::int AS printing_count,
-      MIN(sp.price_aud) AS lowest_price,
       (
         SELECT p2.image_uri
         FROM printings p2
         WHERE p2.card_id = c.id
           AND p2.image_uri IS NOT NULL
           AND p2.is_foil = false
+        ORDER BY p2.released_at DESC
         LIMIT 1
-      ) AS image_uri
+      ) AS image_uri,
+      (
+        SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY sp2.price_aud::numeric)
+        FROM store_prices sp2
+        WHERE sp2.printing_id = (
+          SELECT p3.id FROM printings p3
+          JOIN store_prices sp3 ON sp3.printing_id = p3.id
+            AND sp3.in_stock = true AND sp3.price_type = 'sell'
+          WHERE p3.card_id = c.id
+          GROUP BY p3.id
+          ORDER BY MIN(sp3.price_aud::numeric) ASC
+          LIMIT 1
+        )
+        AND sp2.in_stock = true AND sp2.price_type = 'sell'
+      ) AS scrymarket_price,
+      (
+        WITH best_p AS (
+          SELECT p3.id AS pid FROM printings p3
+          JOIN store_prices sp3 ON sp3.printing_id = p3.id
+            AND sp3.in_stock = true AND sp3.price_type = 'sell'
+          WHERE p3.card_id = c.id
+          GROUP BY p3.id
+          ORDER BY MIN(sp3.price_aud::numeric) ASC
+          LIMIT 1
+        ),
+        curr AS (
+          SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY sp2.price_aud::numeric) AS price
+          FROM best_p
+          JOIN store_prices sp2 ON sp2.printing_id = best_p.pid
+            AND sp2.in_stock = true AND sp2.price_type = 'sell'
+        ),
+        hist AS (
+          SELECT AVG(ph.price_aud::numeric) AS price
+          FROM best_p
+          JOIN price_history ph ON ph.printing_id = best_p.pid
+            AND ph.price_type = 'sell'
+          WHERE ph.recorded_at = (
+            SELECT MAX(ph2.recorded_at) FROM price_history ph2
+            WHERE ph2.printing_id = best_p.pid AND ph2.price_type = 'sell'
+          )
+        )
+        SELECT CASE
+          WHEN hist.price IS NULL THEN NULL
+          WHEN curr.price > hist.price * 1.01 THEN 'up'
+          WHEN curr.price < hist.price * 0.99 THEN 'down'
+          ELSE 'neutral'
+        END FROM curr, hist
+      ) AS trend
     FROM cards c
     LEFT JOIN printings p ON p.card_id = c.id
-    LEFT JOIN store_prices sp ON sp.printing_id = p.id AND sp.in_stock = true
     WHERE c.name ILIKE ${"%" + query + "%"}
     GROUP BY c.id, c.name, c.type_line, c.colors
     ORDER BY c.name
-    LIMIT 50
+    LIMIT ${PAGE_SIZE} OFFSET ${offset}
   `;
 }
 

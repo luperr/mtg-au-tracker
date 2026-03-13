@@ -1,1 +1,72 @@
 @import "tailwindcss";
+
+@theme {
+  /* ── Backgrounds — desaturated warm darks ───────────────────────────── */
+  --color-bg:      #191817;  /* page background — near-neutral dark        */
+  --color-surface: #201f1d;  /* cards, panels, header                      */
+  --color-muted:   #2b2926;  /* inputs, secondary bg                       */
+  --color-subtle:  #3d3a33;  /* borders, dividers                          */
+
+  /* ── Cream ───────────────────────────────────────────────────────────── */
+  --color-cream:       #E8DECE;  /* primary text — desaturated warm white  */
+  --color-cream-dim:   #a89d8a;  /* secondary / muted text                 */
+  --color-cream-muted: #221f1b;  /* subtle bg tint (e.g. table head)       */
+
+  /* ── Accent — teal #257180 (navigation, links, info) ────────────────── */
+  --color-accent:        #257180;  /* primary teal                         */
+  --color-accent-light:  #31929f;  /* hover — slightly brighter            */
+  --color-accent-border: #1d5a66;  /* borders, left-edge marks             */
+  --color-accent-dim:    #1d4f5a;  /* hover border on card rows            */
+  --color-accent-muted:  #0f2228;  /* subtle bg tint                       */
+
+  /* ── Price — orange/terracotta (prices, buy links, CTAs) ────────────── */
+  --color-price:       #FD8B51;  /* bright orange — price display          */
+  --color-cta:         #CB6040;  /* terracotta — buttons (hover→price)     */
+  --color-price-muted: #2a1408;  /* subtle bg tint                         */
+}
+
+/* ── Logo gradient text ──────────────────────────────────────────────── */
+.logo-gradient {
+  background: linear-gradient(180deg, #257180 0%, #FD8B51 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Header gradient ─────────────────────────────────────────────────── */
+.header-gradient {
+  background: linear-gradient(90deg, var(--color-accent-muted) 0%, var(--color-surface) 50%);
+}
+
+/* ── Dark theme gradient background ─────────────────────────────────── */
+body {
+  background-image:
+    radial-gradient(ellipse 80% 40% at 15% 0%, #1a3040 0%, transparent 70%),
+    radial-gradient(ellipse 60% 30% at 85% 100%, #2a1a0e 0%, transparent 60%);
+}
+
+/* ── Light theme ─────────────────────────────────────────────────────── */
+html[data-theme="light"] {
+  --color-bg:      #DEDAD2;  /* desaturated warm white — page background   */
+  --color-surface: #D4CFC6;  /* slightly darker neutral — cards, panels    */
+  --color-muted:   #C8C2B6;  /* warm gray — inputs, secondary bg           */
+  --color-subtle:  #A89F8F;  /* warm gray-brown — borders, dividers        */
+
+  --color-cream:       #1a1816;  /* near-black warm — primary text         */
+  --color-cream-dim:   #4a4438;  /* mid warm gray — secondary text         */
+  --color-cream-muted: #CEC8BC;  /* light warm gray — table header tint    */
+
+  --color-accent:        #1d5a66;  /* deeper teal for contrast on light    */
+  --color-accent-light:  #257180;  /* teal hover                           */
+  --color-accent-muted:  #c5d8dc;  /* light teal tint bg                   */
+
+  --color-price:       #CB6040;  /* terracotta — better contrast on light  */
+  --color-price-muted: #f0d8d0;  /* light terracotta tint                  */
+}
+
+/* ── Light theme gradient background ────────────────────────────────── */
+html[data-theme="light"] body {
+  background-image:
+    radial-gradient(ellipse 80% 40% at 15% 0%, #9ec8d0 0%, transparent 65%),
+    radial-gradient(ellipse 60% 30% at 85% 100%, #d9a898 0%, transparent 60%);
+}
