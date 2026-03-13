@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CardMagnifier } from "./CardMagnifier";
+import { ColorSymbols } from "./ColorSymbols";
 import type { CardSearchResult } from "@/lib/db";
 
 function toSmallImage(uri: string | null): string | null {
@@ -28,17 +29,7 @@ function CardRow({ card }: { card: CardSearchResult }) {
       <div className="flex flex-1 items-center justify-between gap-2 pr-4 min-w-0">
         <div className="min-w-0">
           <div className="flex gap-1 mb-1">
-            {(card.colors.length === 0 ? ["C"] : card.colors).map((c) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={c}
-                src={`https://svgs.scryfall.io/card-symbols/${c}.svg`}
-                alt={c}
-                width={12}
-                height={12}
-                className="inline-block"
-              />
-            ))}
+            <ColorSymbols colors={card.colors} size={12} />
           </div>
           <div className="font-medium text-cream truncate">{card.name}</div>
           <div className="text-sm text-cream-dim truncate">{card.type_line}</div>
@@ -82,14 +73,16 @@ interface Props {
   initialResults: CardSearchResult[];
   query: string;
   initialHasMore: boolean;
+  totalCount: number;
 }
 
-export function SearchResults({ initialResults, query, initialHasMore }: Props) {
+export function SearchResults({ initialResults, query, initialHasMore, totalCount }: Props) {
   const [cards, setCards] = useState(initialResults);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loading, setLoading] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const offsetRef = useRef(initialResults.length);
+  const loadingRef = useRef(false);
 
   useEffect(() => {
     // Reset when query changes
@@ -103,13 +96,15 @@ export function SearchResults({ initialResults, query, initialHasMore }: Props) 
 
     const observer = new IntersectionObserver(
       async (entries) => {
-        if (!entries[0].isIntersecting || loading) return;
+        if (!entries[0].isIntersecting || loadingRef.current) return;
+        loadingRef.current = true;
         setLoading(true);
         const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&offset=${offsetRef.current}`);
         const data = await res.json();
         setCards((prev) => [...prev, ...data.results]);
         offsetRef.current += data.results.length;
         setHasMore(data.hasMore);
+        loadingRef.current = false;
         setLoading(false);
       },
       { rootMargin: "200px" }
@@ -118,12 +113,12 @@ export function SearchResults({ initialResults, query, initialHasMore }: Props) 
     const el = sentinelRef.current;
     if (el) observer.observe(el);
     return () => observer.disconnect();
-  }, [query, hasMore, loading]);
+  }, [query, hasMore]);
 
   return (
     <div className="space-y-2">
       <p className="text-sm text-cream-dim/70 mb-3">
-        {cards.length} result{cards.length !== 1 ? "s" : ""}
+        {totalCount} result{totalCount !== 1 ? "s" : ""}
       </p>
 
       {cards.map((card) => (
