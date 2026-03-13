@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import type { CardRow, PrintingWithPrices, CardPriceHistory } from "@/lib/db";
 import { PricesTable } from "./PricesTable";
 import { PriceChart } from "./PriceChart";
+import { ColorSymbols } from "@/app/ColorSymbols";
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -28,7 +29,6 @@ export function CardDetailView({
     null;
 
   const [displayImage, setDisplayImage] = useState<string | null>(defaultImage);
-  const colors = card.colors.length === 0 ? ["C"] : card.colors;
 
   const snapshot = useMemo(() => {
     const inStockPrices = printings
@@ -84,17 +84,7 @@ export function CardDetailView({
             <div className="flex items-center gap-2">
               <span className="text-cream-dim">{card.type_line}</span>
               <div className="flex items-center gap-1">
-                {colors.map((c) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    key={c}
-                    src={`https://svgs.scryfall.io/card-symbols/${c}.svg`}
-                    alt={c}
-                    width={16}
-                    height={16}
-                    className="inline-block"
-                  />
-                ))}
+                <ColorSymbols colors={card.colors} size={16} />
               </div>
             </div>
           </div>

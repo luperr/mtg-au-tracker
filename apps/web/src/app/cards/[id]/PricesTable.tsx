@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect, type ReactNode, type SyntheticEvent } from "react";
+import React, { useState, useMemo, useRef, useEffect, type ReactNode, type SyntheticEvent } from "react";
 import type { PrintingWithPrices } from "@/lib/db";
 
 type FoilFilter = "all" | "nonfoil" | "foil";
@@ -78,14 +78,16 @@ function Dropdown({
   );
 }
 
-function RadioItem({
+function OptionItem({
   label,
   checked,
   onClick,
+  type = "radio",
 }: {
   label: string;
   checked: boolean;
   onClick: () => void;
+  type?: "radio" | "check";
 }) {
   return (
     <button
@@ -95,33 +97,7 @@ function RadioItem({
       }`}
     >
       <span
-        className={`w-3 h-3 rounded-full border shrink-0 ${
-          checked ? "border-accent bg-accent" : "border-subtle"
-        }`}
-      />
-      {label}
-    </button>
-  );
-}
-
-function CheckItem({
-  label,
-  checked,
-  onClick,
-}: {
-  label: string;
-  checked: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-muted ${
-        checked ? "text-cream" : "text-cream-dim"
-      }`}
-    >
-      <span
-        className={`w-3 h-3 rounded border shrink-0 ${
+        className={`w-3 h-3 ${type === "radio" ? "rounded-full" : "rounded"} border shrink-0 ${
           checked ? "border-accent bg-accent" : "border-subtle"
         }`}
       />
@@ -209,20 +185,11 @@ export function PricesTable({
       .map(([name]) => name);
   }, [printings]);
 
-  function toggleStore(store: string) {
+  function toggleInSet(setter: React.Dispatch<React.SetStateAction<Set<string>>>, value: string) {
     setPage(0);
-    setSelectedStores((prev) => {
+    setter((prev) => {
       const next = new Set(prev);
-      next.has(store) ? next.delete(store) : next.add(store);
-      return next;
-    });
-  }
-
-  function toggleSet(set: string) {
-    setPage(0);
-    setSelectedSets((prev) => {
-      const next = new Set(prev);
-      next.has(set) ? next.delete(set) : next.add(set);
+      next.has(value) ? next.delete(value) : next.add(value);
       return next;
     });
   }
@@ -299,15 +266,15 @@ export function PricesTable({
                   <Dropdown label={selectedSets.size > 0 || foilFilter !== "all" ? `Set ·` : "Set"} active={selectedSets.size > 0 || foilFilter !== "all"}>
                     <div className="py-1">
                       <div className="px-3 pt-1 pb-0.5 text-[10px] uppercase tracking-wider text-cream-dim/40">Foil</div>
-                      <RadioItem label="All" checked={foilFilter === "all"} onClick={() => { setFoilFilter("all"); setPage(0); }} />
-                      <RadioItem label="Non-foil only" checked={foilFilter === "nonfoil"} onClick={() => { setFoilFilter("nonfoil"); setPage(0); }} />
-                      <RadioItem label="✦ Foil only" checked={foilFilter === "foil"} onClick={() => { setFoilFilter("foil"); setPage(0); }} />
+                      <OptionItem label="All" checked={foilFilter === "all"} onClick={() => { setFoilFilter("all"); setPage(0); }} />
+                      <OptionItem label="Non-foil only" checked={foilFilter === "nonfoil"} onClick={() => { setFoilFilter("nonfoil"); setPage(0); }} />
+                      <OptionItem label="✦ Foil only" checked={foilFilter === "foil"} onClick={() => { setFoilFilter("foil"); setPage(0); }} />
                       {allSets.length > 1 && (
                         <>
                           <div className="px-3 pt-2 pb-0.5 text-[10px] uppercase tracking-wider text-cream-dim/40">Sets</div>
                           <div className="max-h-48 overflow-y-auto">
                             {allSets.map((set) => (
-                              <CheckItem key={set} label={set} checked={selectedSets.has(set)} onClick={() => toggleSet(set)} />
+                              <OptionItem type="check" key={set} label={set} checked={selectedSets.has(set)} onClick={() => toggleInSet(setSelectedSets, set)} />
                             ))}
                           </div>
                         </>
@@ -321,7 +288,7 @@ export function PricesTable({
                   <Dropdown label={storeLabel} active={selectedStores.size > 0}>
                     <div className="py-1">
                       {allStores.map((store) => (
-                        <CheckItem key={store} label={store} checked={selectedStores.has(store)} onClick={() => toggleStore(store)} />
+                        <OptionItem type="check" key={store} label={store} checked={selectedStores.has(store)} onClick={() => toggleInSet(setSelectedStores, store)} />
                       ))}
                     </div>
                   </Dropdown>
@@ -333,7 +300,7 @@ export function PricesTable({
                     <Dropdown label={`Price AUD ↕`} active={sortBy !== "price_asc"}>
                       <div className="py-1">
                         {(Object.entries(SORT_LABELS) as [SortBy, string][]).map(([key, label]) => (
-                          <RadioItem key={key} label={label} checked={sortBy === key} onClick={() => setSortBy(key)} />
+                          <OptionItem key={key} label={label} checked={sortBy === key} onClick={() => { setSortBy(key); setPage(0); }} />
                         ))}
                       </div>
                     </Dropdown>
@@ -345,8 +312,8 @@ export function PricesTable({
                   <div className="flex justify-center">
                     <Dropdown label={stockLabel} active={inStockOnly}>
                       <div className="py-1">
-                        <RadioItem label="All" checked={!inStockOnly} onClick={() => { setInStockOnly(false); setPage(0); }} />
-                        <RadioItem label="In stock only" checked={inStockOnly} onClick={() => { setInStockOnly(true); setPage(0); }} />
+                        <OptionItem label="All" checked={!inStockOnly} onClick={() => { setInStockOnly(false); setPage(0); }} />
+                        <OptionItem label="In stock only" checked={inStockOnly} onClick={() => { setInStockOnly(true); setPage(0); }} />
                       </div>
                     </Dropdown>
                   </div>
@@ -368,9 +335,9 @@ export function PricesTable({
               </tr>
             </thead>
             <tbody>
-              {pageRows.map((row, i) => (
+              {pageRows.map((row) => (
                 <tr
-                  key={i}
+                  key={`${row.printing.id}-${row.storeName}-${row.priceAud}`}
                   className="border-b border-subtle/60 last:border-0 hover:bg-muted transition-colors cursor-default"
                   onMouseEnter={() => onHoverImage(row.printing.imageUri)}
                   onMouseLeave={() => onHoverImage(defaultImage)}

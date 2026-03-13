@@ -131,6 +131,14 @@ export async function searchCards(query: string, offset = 0): Promise<CardSearch
   `;
 }
 
+export async function countCards(query: string): Promise<number> {
+  if (!query.trim()) return 0;
+  const rows = await sql<{ count: string }[]>`
+    SELECT COUNT(*)::text AS count FROM cards WHERE name ILIKE ${"%" + query + "%"}
+  `;
+  return parseInt(rows[0]?.count ?? "0", 10);
+}
+
 export async function getCardTrend(cardId: string): Promise<"up" | "down" | "neutral" | null> {
   const rows = await sql<{ trend: string | null }[]>`
     WITH curr AS (
