@@ -71,14 +71,6 @@ export function PriceChart({ history }: { history: CardPriceHistory }) {
   );
   const hasPrintingHistory = topPrintings.length >= 1;
 
-  if (!hasHistory) {
-    return (
-      <div className="mt-8 rounded-lg border border-subtle bg-surface px-3 py-4 text-center text-[11px] text-cream-dim/40">
-        Price history building…
-      </div>
-    );
-  }
-
   const mergedPrintingData = useMemo(() => mergeByPrinting(topPrintings), [topPrintings]);
 
   const yDomain = useMemo(() => {
@@ -91,6 +83,14 @@ export function PriceChart({ history }: { history: CardPriceHistory }) {
     const pad = (max - min) * 0.15 || 1;
     return [Math.max(0, min - pad), max + pad] as [number, number];
   }, [view, history, topPrintings]);
+
+  if (!hasHistory) {
+    return (
+      <div className="mt-8 rounded-lg border border-subtle bg-surface px-3 py-4 text-center text-[11px] text-cream-dim/40">
+        Price history building…
+      </div>
+    );
+  }
 
   return (
     <div className="mt-8">
@@ -125,7 +125,7 @@ export function PriceChart({ history }: { history: CardPriceHistory }) {
               </defs>
               <XAxis dataKey="date" tickFormatter={formatDate} tick={tickStyle} tickLine={false} axisLine={false} interval="preserveStartEnd" />
               <YAxis domain={yDomain} tickFormatter={(v) => `$${v.toFixed(0)}`} tick={tickStyle} tickLine={false} axisLine={false} width={32} />
-              <Tooltip contentStyle={tooltipStyle} formatter={((value: number) => [formatPrice(value || 0), "Price"]) as never} labelFormatter={formatDate} />
+              <Tooltip contentStyle={tooltipStyle} formatter={((value: number) => [formatPrice(value || 0), "Price"]) as never} labelFormatter={formatDate as never} />
               <Area type="monotone" dataKey="price" stroke="#7eb8d4" strokeWidth={1.5} fill="url(#priceGrad)" dot={false} />
             </AreaChart>
           ) : (
@@ -138,7 +138,7 @@ export function PriceChart({ history }: { history: CardPriceHistory }) {
                   const p = topPrintings.find((p) => p.printingId === props.dataKey);
                   return [formatPrice(value || 0), p ? `${p.setName}${p.isFoil ? " ✦" : ""}` : props.dataKey];
                 }) as never}
-                labelFormatter={formatDate}
+                labelFormatter={formatDate as never}
               />
               {topPrintings.map((p, i) => (
                 <Line key={p.printingId} type="monotone" dataKey={p.printingId} stroke={LINE_COLORS[i % LINE_COLORS.length]} strokeWidth={1.5} dot={false} connectNulls />
