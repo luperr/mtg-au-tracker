@@ -125,7 +125,7 @@ export function PriceChart({ history }: { history: CardPriceHistory }) {
               </defs>
               <XAxis dataKey="date" tickFormatter={formatDate} tick={tickStyle} tickLine={false} axisLine={false} interval="preserveStartEnd" />
               <YAxis domain={yDomain} tickFormatter={(v) => `$${v.toFixed(0)}`} tick={tickStyle} tickLine={false} axisLine={false} width={32} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(value: string | number) => [formatPrice(Number(value) || 0), "Price"]} labelFormatter={formatDate} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(value: string | number | undefined) => [formatPrice(Number(value) || 0), "Price"]} labelFormatter={formatDate} />
               <Area type="monotone" dataKey="price" stroke="#7eb8d4" strokeWidth={1.5} fill="url(#priceGrad)" dot={false} />
             </AreaChart>
           ) : (
@@ -134,7 +134,7 @@ export function PriceChart({ history }: { history: CardPriceHistory }) {
               <YAxis domain={yDomain} tickFormatter={(v) => `$${v.toFixed(0)}`} tick={tickStyle} tickLine={false} axisLine={false} width={32} />
               <Tooltip
                 contentStyle={tooltipStyle}
-                formatter={(value: string | number, _name: string, props: { dataKey: string }) => {
+                formatter={(value: string | number | undefined, _name: string, props: { dataKey: string }) => {
                   const p = topPrintings.find((p) => p.printingId === props.dataKey);
                   return [formatPrice(Number(value) || 0), p ? `${p.setName}${p.isFoil ? " ✦" : ""}` : props.dataKey];
                 }}
