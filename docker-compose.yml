@@ -8,8 +8,6 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data  # persists DB data between restarts
-    ports:
-      - "5432:5432"                      # exposes postgres on your Mac at localhost:5432
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mtg"]
       interval: 5s
@@ -67,8 +65,6 @@ services:
       - .:/app
       - node_modules:/app/node_modules
     working_dir: /app
-    ports:
-      - "3000:3000"                     # Next.js dev server on your Mac at localhost:3000
     environment:
       DATABASE_URL: postgresql://mtg:${DB_PASSWORD}@db:5432/mtg_tracker
       NODE_ENV: development
