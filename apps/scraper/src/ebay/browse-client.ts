@@ -123,7 +123,7 @@ async function* searchEbay(query: string, maxPages: number): AsyncGenerator<Ebay
     category_ids: MTG_CATEGORY_ID,
     limit: PAGE_SIZE.toString(),
     offset: "0",
-    filter: `buyingOptions:{FIXED_PRICE},${CONDITION_FILTER}`,
+    filter: `buyingOptions:{FIXED_PRICE},${CONDITION_FILTER},itemLocationCountry:AU`,
   });
 
   const headers: Record<string, string> = {
