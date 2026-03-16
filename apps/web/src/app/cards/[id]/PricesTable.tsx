@@ -230,9 +230,7 @@ export function PricesTable({
   const filtersActive =
     inStockOnly || foilFilter !== "all" || selectedStores.size > 0 || selectedSets.size > 0;
 
-  const stockLabel = inStockOnly ? "In Stock" : "Stock";
-  const foilLabel =
-    foilFilter === "foil" ? "✦ Foil Only" : foilFilter === "nonfoil" ? "Non-foil" : "Foil";
+  const stockLabel = inStockOnly ? "In Stock" : "All";
   const storeLabel = selectedStores.size > 0 ? `Stores (${selectedStores.size})` : "Store";
   const setLabel = selectedSets.size > 0 ? `Sets (${selectedSets.size})` : "Set";
 
@@ -250,7 +248,71 @@ export function PricesTable({
 
   return (
     <div>
-      {/* Table with filter dropdowns embedded in column headers */}
+      {/* Toolbar above table */}
+      <div className="flex items-center justify-between mb-2 gap-2">
+        {/* Left: filters */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Set dropdown — set checkboxes only */}
+          {allSets.length > 1 && (
+            <Dropdown label={setLabel} active={selectedSets.size > 0}>
+              <div className="py-1 max-h-48 overflow-y-auto">
+                {allSets.map((set) => (
+                  <OptionItem type="check" key={set} label={set} checked={selectedSets.has(set)} onClick={() => toggleInSet(setSelectedSets, set)} />
+                ))}
+              </div>
+            </Dropdown>
+          )}
+
+          {/* Foil toggle button */}
+          <button
+            onClick={() => { setFoilFilter((f) => f === "foil" ? "all" : "foil"); setPage(0); }}
+            className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
+              foilFilter === "foil"
+                ? "border-accent-border bg-accent-muted text-accent-light"
+                : "border-subtle bg-muted text-cream-dim hover:text-cream hover:border-accent-border"
+            }`}
+          >
+            ✦ Foil
+          </button>
+
+          {/* Store dropdown */}
+          <Dropdown label={storeLabel} active={selectedStores.size > 0}>
+            <div className="py-1">
+              {allStores.map((store) => (
+                <OptionItem type="check" key={store} label={store} checked={selectedStores.has(store)} onClick={() => toggleInSet(setSelectedStores, store)} />
+              ))}
+            </div>
+          </Dropdown>
+
+          {/* Stock dropdown */}
+          <Dropdown label={stockLabel} active={inStockOnly}>
+            <div className="py-1">
+              <OptionItem label="All" checked={!inStockOnly} onClick={() => { setInStockOnly(false); setPage(0); }} />
+              <OptionItem label="In stock only" checked={inStockOnly} onClick={() => { setInStockOnly(true); setPage(0); }} />
+            </div>
+          </Dropdown>
+
+          {filtersActive && (
+            <button onClick={clearFilters} className="text-[10px] text-cream-dim/40 hover:text-cream-dim transition-colors">
+              Clear
+            </button>
+          )}
+        </div>
+
+        {/* Right: sort + count */}
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[10px] text-cream-dim/30">{rows.length}</span>
+          <Dropdown label="Sort" active={sortBy !== "price_asc"}>
+            <div className="py-1">
+              {(Object.entries(SORT_LABELS) as [SortBy, string][]).map(([key, label]) => (
+                <OptionItem key={key} label={label} checked={sortBy === key} onClick={() => { setSortBy(key); setPage(0); }} />
+              ))}
+            </div>
+          </Dropdown>
+        </div>
+      </div>
+
+      {/* Table */}
       <div className="rounded-lg border border-subtle bg-surface overflow-visible">
         {rows.length === 0 && !filtersActive ? (
           <div className="px-4 py-8 text-center text-cream-dim/50">
@@ -261,77 +323,11 @@ export function PricesTable({
           <table className="w-full text-sm">
             <thead>
               <tr className="text-xs bg-cream-muted border-b border-subtle">
-                {/* Set column — set filter + foil filter */}
-                <th className="px-4 py-2 text-left font-medium">
-                  <Dropdown label={selectedSets.size > 0 || foilFilter !== "all" ? `Set ·` : "Set"} active={selectedSets.size > 0 || foilFilter !== "all"}>
-                    <div className="py-1">
-                      <div className="px-3 pt-1 pb-0.5 text-[10px] uppercase tracking-wider text-cream-dim/40">Foil</div>
-                      <OptionItem label="All" checked={foilFilter === "all"} onClick={() => { setFoilFilter("all"); setPage(0); }} />
-                      <OptionItem label="Non-foil only" checked={foilFilter === "nonfoil"} onClick={() => { setFoilFilter("nonfoil"); setPage(0); }} />
-                      <OptionItem label="✦ Foil only" checked={foilFilter === "foil"} onClick={() => { setFoilFilter("foil"); setPage(0); }} />
-                      {allSets.length > 1 && (
-                        <>
-                          <div className="px-3 pt-2 pb-0.5 text-[10px] uppercase tracking-wider text-cream-dim/40">Sets</div>
-                          <div className="max-h-48 overflow-y-auto">
-                            {allSets.map((set) => (
-                              <OptionItem type="check" key={set} label={set} checked={selectedSets.has(set)} onClick={() => toggleInSet(setSelectedSets, set)} />
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </Dropdown>
-                </th>
-
-                {/* Store column — store filter */}
-                <th className="px-3 py-2 text-left font-medium">
-                  <Dropdown label={storeLabel} active={selectedStores.size > 0}>
-                    <div className="py-1">
-                      {allStores.map((store) => (
-                        <OptionItem type="check" key={store} label={store} checked={selectedStores.has(store)} onClick={() => toggleInSet(setSelectedStores, store)} />
-                      ))}
-                    </div>
-                  </Dropdown>
-                </th>
-
-                {/* Price AUD column — sort */}
-                <th className="px-3 py-2 text-right font-medium">
-                  <div className="flex justify-end">
-                    <Dropdown label={`Price AUD ↕`} active={sortBy !== "price_asc"}>
-                      <div className="py-1">
-                        {(Object.entries(SORT_LABELS) as [SortBy, string][]).map(([key, label]) => (
-                          <OptionItem key={key} label={label} checked={sortBy === key} onClick={() => { setSortBy(key); setPage(0); }} />
-                        ))}
-                      </div>
-                    </Dropdown>
-                  </div>
-                </th>
-
-                {/* Stock column — stock filter */}
-                <th className="px-3 py-2 text-center font-medium">
-                  <div className="flex justify-center">
-                    <Dropdown label={stockLabel} active={inStockOnly}>
-                      <div className="py-1">
-                        <OptionItem label="All" checked={!inStockOnly} onClick={() => { setInStockOnly(false); setPage(0); }} />
-                        <OptionItem label="In stock only" checked={inStockOnly} onClick={() => { setInStockOnly(true); setPage(0); }} />
-                      </div>
-                    </Dropdown>
-                  </div>
-                </th>
-
-                {/* Last column — clear + count */}
-                <th className="px-3 py-2 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    {filtersActive && (
-                      <button onClick={clearFilters} className="text-[10px] text-cream-dim/40 hover:text-cream-dim transition-colors">
-                        Clear
-                      </button>
-                    )}
-                    <span className="text-[10px] text-cream-dim/30">
-                      {rows.length}
-                    </span>
-                  </div>
-                </th>
+                <th className="px-4 py-2 text-left font-medium text-cream-dim">Set</th>
+                <th className="px-3 py-2 text-left font-medium text-cream-dim">Store</th>
+                <th className="px-3 py-2 text-right font-medium text-cream-dim">Price AUD</th>
+                <th className="px-3 py-2 text-center font-medium text-cream-dim">Stock</th>
+                <th className="px-3 py-2" />
               </tr>
             </thead>
             <tbody>
