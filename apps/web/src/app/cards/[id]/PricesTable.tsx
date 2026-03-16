@@ -20,8 +20,8 @@ const RARITY_FILTER: Record<string, string> = {
 const SORT_LABELS: Record<SortBy, string> = {
   price_asc: "Price: Low → High",
   price_desc: "Price: High → Low",
-  newest: "Newest First",
-  oldest: "Oldest First",
+  newest: "Newest Set First",
+  oldest: "Oldest Set First",
 };
 
 interface Row {

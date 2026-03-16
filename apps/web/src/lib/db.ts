@@ -214,7 +214,7 @@ export async function getPrintingsWithPrices(
       p.image_uri,
       p.scryfall_uri,
       p.usd_price,
-      p.released_at,
+      p.released_at::text AS released_at,
       s.name AS store_name,
       sp.price_aud,
       sp.condition,
