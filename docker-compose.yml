@@ -61,6 +61,8 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     command: sh -c "pnpm install && pnpm --filter @mtg-au/web dev"
+    ports:
+      - "3000:3000"
     volumes:
       - .:/app
       - node_modules:/app/node_modules
