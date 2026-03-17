@@ -9,7 +9,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const results = await searchCards(q, offset);
-    return NextResponse.json({ results, hasMore: results.length === PAGE_SIZE });
+    return NextResponse.json(
+      { results, hasMore: results.length === PAGE_SIZE },
+      { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" } }
+    );
   } catch (err) {
     console.error("Search error:", err);
     return NextResponse.json({ error: "Search failed" }, { status: 500 });

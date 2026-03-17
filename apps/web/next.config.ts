@@ -36,8 +36,16 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // Security headers on all routes
         source: "/(.*)",
         headers: securityHeaders,
+      },
+      {
+        // Public folder assets (favicons, images, etc.) — long-lived cache
+        source: "/(.+\\.(ico|png|jpg|jpeg|svg|webp|woff|woff2|ttf|otf))",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" },
+        ],
       },
     ];
   },

@@ -1,3 +1,5 @@
+export const revalidate = 3600; // revalidate at most once per hour; prices update at 5 AM daily
+
 import { notFound } from "next/navigation";
 import { getCard, getPrintingsWithPrices, getCardTrend, getCardPriceHistory, type PrintingWithPrices } from "@/lib/db";
 import { CardDetailView } from "./CardDetailView";
