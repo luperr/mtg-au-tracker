@@ -331,9 +331,9 @@ export function PricesTable({
               </tr>
             </thead>
             <tbody>
-              {pageRows.map((row) => (
+              {pageRows.map((row, i) => (
                 <tr
-                  key={`${row.printing.id}-${row.storeName}-${row.priceAud}`}
+                  key={`${row.printing.id}-${row.storeName}-${i}`}
                   className="border-b border-subtle/60 last:border-0 hover:bg-muted transition-colors cursor-default"
                   onMouseEnter={() => onHoverImage(row.printing.imageUri)}
                   onMouseLeave={() => onHoverImage(defaultImage)}

@@ -9,6 +9,9 @@ const bitcount = Bitcount_Prop_Double({ subsets: ["latin"], weight: ["400"] });
 export const metadata: Metadata = {
   title: "Scrymarket",
   description: "Compare Australian MTG card prices across stores",
+  icons: {
+    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>",
+  },
 };
 
 export default function RootLayout({
