@@ -36,6 +36,21 @@ export default function RootLayout({
           <ThemeToggle />
         </header>
         <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
+        <footer className="border-t border-subtle mt-12 px-4 py-8 text-cream-dim text-sm">
+          <div className="mx-auto max-w-5xl flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs">
+              © {new Date().getFullYear()} Scrymarket. Not affiliated with Wizards of the Coast or any listed retailer.
+            </p>
+            <nav className="flex flex-wrap gap-x-5 gap-y-2">
+              <a href="/about" className="hover:text-accent transition-colors">About</a>
+              <a href="/faq" className="hover:text-accent transition-colors">FAQ</a>
+              <a href="/contact" className="hover:text-accent transition-colors">Contact</a>
+              <a href="/disclaimer" className="hover:text-accent transition-colors">Disclaimer</a>
+              <a href="/privacy" className="hover:text-accent transition-colors">Privacy</a>
+              <a href="/terms" className="hover:text-accent transition-colors">Terms</a>
+            </nav>
+          </div>
+        </footer>
       </body>
     </html>
   );
