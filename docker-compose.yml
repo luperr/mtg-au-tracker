@@ -7,37 +7,16 @@ services:
       POSTGRES_USER: mtg
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - pgdata:/var/lib/postgresql/data  # persists DB data between restarts
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mtg"]
       interval: 5s
       retries: 5
 
-  dev:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    volumes:
-      - .:/app                          # your code folder, live-mounted
-      - node_modules:/app/node_modules  # deps cached in Docker, not on your Mac
-    working_dir: /app
-    environment:
-      DATABASE_URL: postgresql://mtg:${DB_PASSWORD}@db:5432/mtg_tracker
-      EBAY_CLIENT_ID: ${EBAY_CLIENT_ID}
-      EBAY_CLIENT_SECRET: ${EBAY_CLIENT_SECRET}
-      EBAY_ENV: ${EBAY_ENV:-production}
-      EBAY_PAGES_PER_SET: ${EBAY_PAGES_PER_SET:-5}
-      EBAY_PAGES_PER_CARD: ${EBAY_PAGES_PER_CARD:-1}
-      EBAY_RECENT_MONTHS: ${EBAY_RECENT_MONTHS:-12}
-      EBAY_HIGH_VALUE_USD: ${EBAY_HIGH_VALUE_USD:-10}
-    depends_on:
-      db:
-        condition: service_healthy      # wait for postgres to be ready before starting
-
   scraper:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: docker/Dockerfile.dev
     command: sh -c "pnpm install && pnpm --filter @mtg-au/scraper start"
     volumes:
       - .:/app
@@ -59,7 +38,7 @@ services:
   web:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: docker/Dockerfile.dev
     command: sh -c "pnpm install && pnpm --filter @mtg-au/web dev"
     ports:
       - "3000:3000"
@@ -73,15 +52,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-
-  tunnel:
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    command: tunnel --no-autoupdate --protocol http2 run
-    environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
-    depends_on:
-      - web
 
 volumes:
   node_modules:
