@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useRef, useEffect, type ReactNode, type SyntheticEvent } from "react";
 import type { PrintingWithPrices } from "@/lib/db";
+import { useBuyList } from "@/app/BuyListContext";
 
 type FoilFilter = "all" | "nonfoil" | "foil";
 type SortBy = "price_asc" | "price_desc" | "newest" | "oldest";
@@ -158,11 +159,16 @@ export function PricesTable({
   printings,
   defaultImage,
   onHoverImage,
+  cardId,
+  cardName,
 }: {
   printings: PrintingWithPrices[];
   defaultImage: string | null;
   onHoverImage: (uri: string | null) => void;
+  cardId: string;
+  cardName: string;
 }) {
+  const { addItem, removeItem, hasItem } = useBuyList();
   const [inStockOnly, setInStockOnly] = useState(false);
   const [foilFilter, setFoilFilter] = useState<FoilFilter>("all");
   const [selectedStores, setSelectedStores] = useState<Set<string>>(new Set());
@@ -328,6 +334,7 @@ export function PricesTable({
                 <th className="px-3 py-2 text-right font-medium text-cream-dim">Price AUD</th>
                 <th className="px-3 py-2 text-center font-medium text-cream-dim">Stock</th>
                 <th className="px-3 py-2" />
+                <th className="px-3 py-2" />
               </tr>
             </thead>
             <tbody>
@@ -385,11 +392,51 @@ export function PricesTable({
                       </a>
                     )}
                   </td>
+
+                  <td className="px-2 py-2.5 text-right">
+                    {(() => {
+                      const itemId = `${row.printing.id}-${row.storeName}`;
+                      const inList = hasItem(itemId);
+                      return (
+                        <button
+                          onClick={() => {
+                            if (inList) {
+                              removeItem(itemId);
+                            } else {
+                              addItem({
+                                id: itemId,
+                                cardId,
+                                cardName,
+                                printingId: row.printing.id,
+                                setName: row.printing.setName,
+                                setCode: row.printing.setCode,
+                                rarity: row.printing.rarity,
+                                isFoil: row.printing.isFoil,
+                                storeName: row.storeName,
+                                priceAud: row.priceAud,
+                                condition: row.condition,
+                                url: row.url,
+                                imageUri: row.printing.imageUri,
+                              });
+                            }
+                          }}
+                          title={inList ? "Remove from buy list" : "Add to buy list"}
+                          className={`w-6 h-6 rounded flex items-center justify-center text-sm transition-colors ${
+                            inList
+                              ? "bg-price/20 text-price hover:bg-price/10"
+                              : "bg-muted text-cream-dim/40 hover:bg-price/20 hover:text-price"
+                          }`}
+                        >
+                          {inList ? "✓" : "+"}
+                        </button>
+                      );
+                    })()}
+                  </td>
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-cream-dim/50">
+                  <td colSpan={6} className="px-4 py-8 text-center text-cream-dim/50">
                     No prices match the current filters
                   </td>
                 </tr>

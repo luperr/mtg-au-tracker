@@ -3,6 +3,8 @@ import { Bitcount_Prop_Double } from "next/font/google";
 import "./globals.css";
 import { ThemeToggle } from "./ThemeToggle";
 import { DragDropSearch } from "./DragDropSearch";
+import { BuyListProvider } from "./BuyListContext";
+import { BuyListBadge } from "./BuyListBadge";
 
 const bitcount = Bitcount_Prop_Double({ subsets: ["latin"], weight: ["400"] });
 
@@ -25,17 +27,22 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: `(function(){var t=localStorage.getItem('theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')})()` }} />
       </head>
       <body className="min-h-screen bg-bg text-cream antialiased">
-        <DragDropSearch />
-        <header className="border-b border-subtle px-4 py-3 flex items-center justify-between header-gradient">
-          <a
-            href="/"
-            className={`${bitcount.className} text-2xl logo-gradient`}
-          >
-            SCRYMARKET
-          </a>
-          <ThemeToggle />
-        </header>
-        <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
+        <BuyListProvider>
+          <DragDropSearch />
+          <header className="border-b border-subtle px-4 py-3 flex items-center justify-between header-gradient">
+            <a
+              href="/"
+              className={`${bitcount.className} text-2xl logo-gradient`}
+            >
+              SCRYMARKET
+            </a>
+            <div className="flex items-center gap-3">
+              <BuyListBadge />
+              <ThemeToggle />
+            </div>
+          </header>
+          <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
+        </BuyListProvider>
       </body>
     </html>
   );

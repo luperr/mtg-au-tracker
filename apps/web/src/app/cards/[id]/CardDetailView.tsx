@@ -132,6 +132,8 @@ export function CardDetailView({
             printings={printings}
             defaultImage={defaultImage}
             onHoverImage={setDisplayImage}
+            cardId={card.id}
+            cardName={card.name}
           />
         )}
         <PriceChart history={history} />
