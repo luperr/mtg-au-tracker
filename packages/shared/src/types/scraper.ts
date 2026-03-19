@@ -15,6 +15,7 @@ export interface ScrapedCard {
   isBorderless?: boolean;        // true if the store listing indicates a borderless printing
   inStock: boolean;
   sourceUrl: string;             // Full URL to the product page
+  shippingCost?: string | null;  // AUD shipping cost as decimal string, "0.00" for free, null if unknown
 }
 
 // Interface all store scrapers must implement.
