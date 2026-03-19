@@ -56,6 +56,18 @@ services:
     depends_on:
       - web
 
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    restart: always
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - "10.10.20.10:8080:8080"   # only reachable from services VLAN — Prometheus at 10.10.30.10 scrapes via inter-VLAN routing
+
 volumes:
   pgdata:
   scraper_data:
