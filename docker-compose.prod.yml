@@ -43,6 +43,7 @@ services:
     environment:
       DATABASE_URL: postgresql://mtg:${DB_PASSWORD}@db:5432/mtg_tracker
       NODE_ENV: production
+      GITHHUB_TOKEN: ${GITHUB_TOKEN}
     depends_on:
       db:
         condition: service_healthy
