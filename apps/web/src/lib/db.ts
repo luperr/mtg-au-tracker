@@ -192,8 +192,10 @@ export type PrintingWithPrices = {
   usdPrice: string | null;
   releasedAt: string | null;
   prices: {
+    storeId: string;
     storeName: string;
     priceAud: string;
+    shippingAud: string | null;
     condition: string | null;
     inStock: boolean;
     url: string | null;
@@ -215,8 +217,10 @@ export async function getPrintingsWithPrices(
       p.scryfall_uri,
       p.usd_price,
       p.released_at::text AS released_at,
+      sp.store_id,
       s.name AS store_name,
       sp.price_aud,
+      sp.shipping_aud,
       sp.condition,
       sp.in_stock,
       sp.url AS store_url
@@ -246,8 +250,10 @@ export async function getPrintingsWithPrices(
     }
     if (row.store_name && row.price_aud) {
       map.get(row.id)!.prices.push({
+        storeId: row.store_id,
         storeName: row.store_name,
         priceAud: row.price_aud,
+        shippingAud: row.shipping_aud ?? null,
         condition: row.condition,
         inStock: row.in_stock ?? false,
         url: row.store_url,

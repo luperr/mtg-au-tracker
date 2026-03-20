@@ -381,6 +381,29 @@ export function extractCardName(title: string, setName: string | null): string {
   return name.replace(/\s+/g, " ").trim();
 }
 
+// ── Shipping extraction ───────────────────────────────────────────────────────
+
+/**
+ * Get the AUD shipping cost from an eBay item's shippingOptions.
+ * Returns "0.00" for free shipping, the cost string for paid shipping,
+ * or null if shipping information is unavailable.
+ */
+export function extractShipping(item: EbayItemSummary): string | null {
+  const option = item.shippingOptions?.[0];
+  if (!option) return null;
+
+  if (option.shippingCostType === "FREE") return "0.00";
+
+  const cost = option.shippingCost;
+  if (!cost) return null;
+  if (cost.currency !== "AUD") return null;
+
+  const val = parseFloat(cost.value);
+  if (isNaN(val) || val < 0) return null;
+
+  return val.toFixed(2);
+}
+
 // ── Price extraction ──────────────────────────────────────────────────────────
 
 /**
@@ -439,6 +462,7 @@ export function transformEbayItem(item: EbayItemSummary): ScrapedCard | null {
     isFoil,
     inStock: true,         // Active eBay listings are implicitly in stock
     sourceUrl: item.itemWebUrl,
+    shippingCost: extractShipping(item),
   };
 }
 

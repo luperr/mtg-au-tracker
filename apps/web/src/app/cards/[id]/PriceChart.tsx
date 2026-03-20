@@ -12,6 +12,7 @@ import {
   Tooltip,
 } from "recharts";
 import type { CardPriceHistory } from "@/lib/db";
+import { fmtAUD } from "@/lib/format";
 
 const LINE_COLORS = [
   "#7eb8d4", // blue
@@ -31,9 +32,6 @@ function formatDate(dateStr: string) {
   return d.toLocaleDateString("en-AU", { day: "numeric", month: "short" });
 }
 
-function formatPrice(value: number) {
-  return `$${value.toFixed(2)}`;
-}
 
 function mergeByPrinting(byPrinting: CardPriceHistory["byPrinting"]) {
   const allDates = new Set<string>();
@@ -125,7 +123,7 @@ export function PriceChart({ history }: { history: CardPriceHistory }) {
               </defs>
               <XAxis dataKey="date" tickFormatter={formatDate} tick={tickStyle} tickLine={false} axisLine={false} interval="preserveStartEnd" />
               <YAxis domain={yDomain} tickFormatter={(v) => `$${v.toFixed(0)}`} tick={tickStyle} tickLine={false} axisLine={false} width={32} />
-              <Tooltip contentStyle={tooltipStyle} formatter={((value: number) => [formatPrice(value || 0), "Price"]) as never} labelFormatter={formatDate as never} />
+              <Tooltip contentStyle={tooltipStyle} formatter={((value: number) => [fmtAUD(value || 0), "Price"]) as never} labelFormatter={formatDate as never} />
               <Area type="monotone" dataKey="price" stroke="#7eb8d4" strokeWidth={1.5} fill="url(#priceGrad)" dot={false} />
             </AreaChart>
           ) : (
@@ -136,7 +134,7 @@ export function PriceChart({ history }: { history: CardPriceHistory }) {
                 contentStyle={tooltipStyle}
                 formatter={((value: number, _name: string, props: { dataKey: string }) => {
                   const p = topPrintings.find((p) => p.printingId === props.dataKey);
-                  return [formatPrice(value || 0), p ? `${p.setName}${p.isFoil ? " ✦" : ""}` : props.dataKey];
+                  return [fmtAUD(value || 0), p ? `${p.setName}${p.isFoil ? " ✦" : ""}` : props.dataKey];
                 }) as never}
                 labelFormatter={formatDate as never}
               />

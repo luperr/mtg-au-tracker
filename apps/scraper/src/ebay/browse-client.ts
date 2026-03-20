@@ -46,6 +46,14 @@ const API_BASE = {
 //   5000 = For parts or not working
 const CONDITION_FILTER = "conditions:{1500|2500|2750|3000|4000|5000}";
 
+export interface EbayShippingOption {
+  shippingCostType: string;  // "FIXED", "FREE", "CALCULATED", etc.
+  shippingCost?: {
+    value: string;           // AUD amount as string e.g. "4.95"
+    currency: string;        // "AUD"
+  };
+}
+
 export interface EbayItemSummary {
   itemId: string;
   title: string;
@@ -61,6 +69,8 @@ export interface EbayItemSummary {
     value: string;
     currency: string;
   };
+  /** Shipping options — populated when fieldgroups=EXTENDED is requested */
+  shippingOptions?: EbayShippingOption[];
 }
 
 interface SearchResponse {
@@ -124,6 +134,7 @@ async function* searchEbay(query: string, maxPages: number): AsyncGenerator<Ebay
     limit: PAGE_SIZE.toString(),
     offset: "0",
     filter: `buyingOptions:{FIXED_PRICE},${CONDITION_FILTER},itemLocationCountry:AU`,
+    fieldgroups: "EXTENDED",   // includes shippingOptions in each item summary
   });
 
   const headers: Record<string, string> = {

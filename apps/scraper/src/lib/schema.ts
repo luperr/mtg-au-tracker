@@ -104,6 +104,7 @@ export const storePrices = pgTable(
       .notNull()
       .references(() => stores.id),
     priceAud: text("price_aud").notNull(),                 // stored as text to avoid float rounding
+    shippingAud: text("shipping_aud"),                     // AUD shipping cost, null if unknown, "0.00" if free
     priceType: text("price_type").notNull(),               // "sell" | "buylist"
     condition: text("condition"),                          // "NM", "LP", "MP", etc.
     inStock: boolean("in_stock").notNull().default(true),
