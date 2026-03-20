@@ -2,6 +2,7 @@ export const revalidate = 3600; // revalidate at most once per hour; prices upda
 
 import { notFound } from "next/navigation";
 import { getCard, getPrintingsWithPrices, getCardTrend, getCardPriceHistory, type PrintingWithPrices } from "@/lib/db";
+import { getAudPerUsd } from "@/lib/exchange-rate";
 import { CardDetailView } from "./CardDetailView";
 
 function sortPrintings(printings: PrintingWithPrices[]): PrintingWithPrices[] {
@@ -29,11 +30,12 @@ export default async function CardPage({
 }) {
   const { id } = await params;
 
-  const [card, rawPrintings, trend, history] = await Promise.all([
+  const [card, rawPrintings, trend, history, audPerUsd] = await Promise.all([
     getCard(id),
     getPrintingsWithPrices(id),
     getCardTrend(id),
     getCardPriceHistory(id),
+    getAudPerUsd(),
   ]);
 
   if (!card) notFound();
@@ -48,7 +50,7 @@ export default async function CardPage({
       >
         ← Back to search
       </a>
-      <CardDetailView card={card!} printings={printings} trend={trend} history={history} />
+      <CardDetailView card={card!} printings={printings} trend={trend} history={history} audPerUsd={audPerUsd} />
     </div>
   );
 }

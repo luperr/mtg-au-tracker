@@ -13,7 +13,7 @@ export default function AboutPage() {
         <p className="text-cream-dim leading-relaxed">
           Scrymarket is a free, self-hosted price tracker for Magic: The Gathering singles,
           focused on the Australian market. It lets you compare what local stores are charging
-          against eBay AU market prices — all in AUD, without the conversion guesswork.
+           all in AUD, without the conversion guesswork.
         </p>
       </header>
 
@@ -42,11 +42,11 @@ export default function AboutPage() {
           </li>
           <li>
             All prices are stored in AUD. USD reference prices from Scryfall are converted
-            using a configurable exchange rate.
+            using a live exchange rate from the European Central Bank, refreshed hourly.
           </li>
           <li>
-            A daily snapshot is saved to the price history table so you can see how prices
-            trend over time.
+            A daily snapshot is saved so you can see how prices
+            trend over time. Using actual australian prices.
           </li>
         </ol>
       </section>

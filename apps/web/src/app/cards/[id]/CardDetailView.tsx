@@ -19,11 +19,13 @@ export function CardDetailView({
   printings,
   trend,
   history,
+  audPerUsd,
 }: {
   card: CardRow;
   printings: PrintingWithPrices[];
   trend: "up" | "down" | "neutral" | null;
   history: CardPriceHistory;
+  audPerUsd: number;
 }) {
   const defaultImage =
     printings.find((p) => p.imageUri && !p.isFoil)?.imageUri ??
@@ -95,7 +97,9 @@ export function CardDetailView({
               {/* Top row: USD ref price + trend badge */}
               <div className="flex items-center justify-between gap-3 mb-2">
                 {snapshot.usd != null ? (
-                  <span className="text-xs text-cream-dim/50">{fmtAUD(snapshot.usd)} <span className="text-[10px]">USD</span></span>
+                  <span className="text-xs text-cream-dim/50" title={`US$${snapshot.usd.toFixed(2)} × ${audPerUsd.toFixed(4)}`}>
+                    {fmtAUD(snapshot.usd * audPerUsd)} <span className="text-[10px]">USD ref</span>
+                  </span>
                 ) : <span />}
                 <TrendBadge trend={trend} />
               </div>

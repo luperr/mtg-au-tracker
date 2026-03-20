@@ -57,9 +57,10 @@ export default function DisclaimerPage() {
       <section className="space-y-3">
         <h2 className="text-xl font-semibold text-cream">Exchange rate</h2>
         <p className="text-cream-dim leading-relaxed">
-          USD reference prices sourced from Scryfall are converted to AUD using a static
-          exchange rate and are not real-time. These converted figures are for rough comparison
-          only and should not be used as financial guidance.
+          USD reference prices sourced from Scryfall are converted to AUD using a live exchange
+          rate fetched from the European Central Bank via Frankfurter (api.frankfurter.app).
+          Rates are refreshed approximately once per hour. These converted figures are for rough
+          comparison only and should not be used as financial guidance.
         </p>
       </section>
     </div>

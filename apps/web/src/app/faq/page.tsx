@@ -22,7 +22,7 @@ const faqs: FaqItem[] = [
         >
           Scryfall
         </a>{" "}
-        and converted to AUD at a static exchange rate.
+        and converted to AUD using a live exchange rate.
       </>
     ),
   },
@@ -43,16 +43,12 @@ const faqs: FaqItem[] = [
     a: "The badge compares the current median price to the price from 7 days ago. ↑ means up more than 5%, ↓ means down more than 5%, → means roughly flat. It reflects overall market movement across all tracked stores, not any single retailer.",
   },
   {
-    q: "Are foil and non-foil prices tracked separately?",
-    a: "Yes. Foil and non-foil are stored as separate printings and displayed in the prices table. Use the 'Foil' filter to show only foil or only non-foil listings.",
-  },
-  {
     q: "Which Australian stores are tracked?",
-    a: "Currently: MTG Mate, Good Games, Mana Market, and MTG Singles Australia. eBay AU is also tracked via the Browse API. More stores will be added over time — see the Contact page to request one.",
+    a: "Currently: MTG Mate, Good Games and eBay AU. More stores will be added over time — see the Contact page to request one.",
   },
   {
     q: "Why does the USD reference price look wrong?",
-    a: "The USD price comes from Scryfall and uses a static AUD/USD conversion rate configured at deploy time. It is not a real-time exchange rate and is intended only as a rough reference, not a precise conversion.",
+    a: "The USD price comes from Scryfall and is converted to AUD using a live rate from the European Central Bank (via Frankfurter), refreshed approximately every hour. It is intended as a rough reference, not a precise conversion.",
   },
   {
     q: "Can I use this data in my own project?",
