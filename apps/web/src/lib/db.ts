@@ -22,7 +22,7 @@ export type CardSearchResult = {
   colors: string[];
   printing_count: number;
   scrymarket_price: string | null;
-  trend: string | null; // "up" | "down" | "neutral" | null
+  trend: "up" | "down" | "neutral" | null;
   image_uri: string | null;
 };
 
