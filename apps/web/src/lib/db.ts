@@ -250,7 +250,7 @@ export async function getPrintingsWithPrices(
         prices: [],
       });
     }
-    if (row.store_name && row.price_aud) {
+    if (row.store_id && row.store_name && row.price_aud) {
       map.get(row.id)!.prices.push({
         storeId: row.store_id,
         storeName: row.store_name,
