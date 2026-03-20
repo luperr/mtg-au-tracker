@@ -46,8 +46,10 @@ export type PrintingRow = {
   scryfall_uri: string;
   usd_price: string | null;
   released_at: string | null;
+  store_id: string | null;
   store_name: string | null;
   price_aud: string | null;
+  shipping_aud: string | null;
   condition: string | null;
   in_stock: boolean | null;
   store_url: string | null;
