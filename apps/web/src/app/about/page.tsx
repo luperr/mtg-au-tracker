@@ -46,7 +46,7 @@ export default function AboutPage() {
           </li>
           <li>
             A daily snapshot is saved so you can see how prices
-            trend over time. Using actual australian prices.
+            trend over time. Using actual Australian prices.
           </li>
         </ol>
       </section>

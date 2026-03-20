@@ -7,10 +7,23 @@ import { DragDropSearch } from "./DragDropSearch";
 const bitcount = Bitcount_Prop_Double({ subsets: ["latin"], weight: ["400"] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://test.scrymarket.au"),
   title: "Scrymarket",
-  description: "Compare Australian MTG card prices across stores",
+  description: "Compare Australian MTG card prices across stores and eBay",
   icons: {
     icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>",
+  },
+  openGraph: {
+    title: "Scrymarket",
+    description: "Compare Australian MTG card prices across stores and eBay",
+    url: "https://test.scrymarket.au",
+    siteName: "Scrymarket",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Scrymarket",
+    description: "Compare Australian MTG card prices across stores and eBay",
   },
 };
 
