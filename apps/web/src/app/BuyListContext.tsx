@@ -11,8 +11,10 @@ export interface BuyListItem {
   setCode: string;
   rarity: string;
   isFoil: boolean;
+  storeId: string;
   storeName: string;
   priceAud: number;
+  shippingAud: number | null;
   condition: string | null;
   url: string | null;
   imageUri: string | null;
@@ -40,7 +42,16 @@ export function BuyListProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) setItems(JSON.parse(stored));
+      if (stored) {
+        // Migrate old items that may be missing newer fields
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const parsed = JSON.parse(stored) as any[];
+        setItems(parsed.map((item) => ({
+          ...item,
+          storeId: item.storeId ?? "",
+          shippingAud: item.shippingAud ?? null,
+        })));
+      }
     } catch {
       // ignore parse errors
     }

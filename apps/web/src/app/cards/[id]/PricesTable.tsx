@@ -2,13 +2,10 @@
 
 import React, { useState, useMemo, type SyntheticEvent } from "react";
 import type { PrintingWithPrices } from "@/lib/db";
-<<<<<<< HEAD
 import { useBuyList } from "@/app/BuyListContext";
-=======
 import { fmtAUD } from "@/lib/format";
 import { RARITY_FILTER, RARITY_FALLBACK_COLOR } from "@/lib/rarity";
 import { Dropdown, OptionItem } from "@/app/Dropdown";
->>>>>>> 2de5289da145d66509a5573798edf5db0166245b
 
 type FoilFilter = "all" | "nonfoil" | "foil";
 type SortBy = "price_asc" | "price_desc" | "total_asc" | "total_desc" | "newest" | "oldest";
@@ -319,7 +316,7 @@ export function PricesTable({
                   </td>
 
                   <td className="px-2 py-2.5 text-right">
-                    {(() => {
+                    {row.inStock && (() => {
                       const itemId = `${row.printing.id}-${row.storeName}`;
                       const inList = hasItem(itemId);
                       return (
@@ -337,8 +334,10 @@ export function PricesTable({
                                 setCode: row.printing.setCode,
                                 rarity: row.printing.rarity,
                                 isFoil: row.printing.isFoil,
+                                storeId: row.storeId,
                                 storeName: row.storeName,
                                 priceAud: row.priceAud,
+                                shippingAud: row.shippingAud,
                                 condition: row.condition,
                                 url: row.url,
                                 imageUri: row.printing.imageUri,

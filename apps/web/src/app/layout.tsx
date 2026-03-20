@@ -5,6 +5,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import { DragDropSearch } from "./DragDropSearch";
 import { BuyListProvider } from "./BuyListContext";
 import { BuyListBadge } from "./BuyListBadge";
+import { HeaderSearch } from "./HeaderSearch";
 
 const bitcount = Bitcount_Prop_Double({ subsets: ["latin"], weight: ["400"] });
 
@@ -42,16 +43,24 @@ export default function RootLayout({
       <body className="min-h-screen bg-bg text-cream antialiased flex flex-col">
         <BuyListProvider>
           <DragDropSearch />
-          <header className="border-b border-subtle px-4 py-3 flex items-center justify-between header-gradient">
-            <a
-              href="/"
-              className={`${bitcount.className} text-2xl logo-gradient`}
-            >
-              SCRYMARKET
-            </a>
-            <div className="flex items-center gap-3">
-              <BuyListBadge />
-              <ThemeToggle />
+          <header className="border-b border-subtle px-4 py-3 header-gradient">
+            <div className="mx-auto max-w-5xl w-full flex items-center gap-4">
+              {/* Left: logo */}
+              <a
+                href="/"
+                className={`${bitcount.className} text-2xl logo-gradient shrink-0`}
+              >
+                SCRYMARKET
+              </a>
+              {/* Centre: search (hidden on home page via client component) */}
+              <div className="flex-1 flex justify-center">
+                <HeaderSearch />
+              </div>
+              {/* Right: controls */}
+              <div className="flex items-center gap-3 shrink-0">
+                <BuyListBadge />
+                <ThemeToggle />
+              </div>
             </div>
           </header>
           <main className="mx-auto max-w-5xl w-full px-4 py-6 flex-1">{children}</main>
