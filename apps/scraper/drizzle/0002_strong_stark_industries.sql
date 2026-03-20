@@ -1,0 +1,1 @@
+ALTER TABLE "store_prices" ADD COLUMN "shipping_aud" text;

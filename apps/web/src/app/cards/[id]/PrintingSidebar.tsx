@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { PrintingWithPrices } from "@/lib/db";
+import { fmtAUD } from "@/lib/format";
 
 type FoilFilter = "all" | "nonfoil" | "foil";
 
@@ -142,7 +143,7 @@ export function PrintingSidebar({ printings, selectedId }: Props) {
                 <div className="shrink-0 text-right">
                   {minPrice !== null ? (
                     <span className="text-xs text-price font-medium">
-                      ${minPrice.toFixed(2)}
+                      {fmtAUD(minPrice)}
                     </span>
                   ) : (
                     <span className="text-[10px] text-cream-dim/30">—</span>

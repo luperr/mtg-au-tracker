@@ -210,6 +210,7 @@ function processItem(
       printingId: result.printingId,
       storeId: STORE_ID,
       priceAud: card.price,
+      shippingAud: card.shippingCost ?? null,
       priceType: card.priceType,
       condition: card.condition,
       inStock: card.inStock,
