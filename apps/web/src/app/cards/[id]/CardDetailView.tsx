@@ -5,6 +5,8 @@ import type { CardRow, PrintingWithPrices, CardPriceHistory } from "@/lib/db";
 import { PricesTable } from "./PricesTable";
 import { PriceChart } from "./PriceChart";
 import { ColorSymbols } from "@/app/ColorSymbols";
+import { TrendBadge } from "@/app/TrendBadge";
+import { fmtAUD } from "@/lib/format";
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -49,7 +51,6 @@ export function CardDetailView({
     };
   }, [printings]);
 
-  const fmt = (n: number) => `$${n.toFixed(2)}`;
 
   return (
     <div className="lg:grid lg:grid-cols-[220px_1fr] lg:gap-8 lg:items-start">
@@ -94,31 +95,23 @@ export function CardDetailView({
               {/* Top row: USD ref price + trend badge */}
               <div className="flex items-center justify-between gap-3 mb-2">
                 {snapshot.usd != null ? (
-                  <span className="text-xs text-cream-dim/50">{fmt(snapshot.usd)} <span className="text-[10px]">USD</span></span>
+                  <span className="text-xs text-cream-dim/50">{fmtAUD(snapshot.usd)} <span className="text-[10px]">USD</span></span>
                 ) : <span />}
-                {trend === "up" && (
-                  <span className="flex items-center justify-center w-4 h-4 rounded-full bg-red-900/40 text-red-400 text-[9px] font-bold">↑</span>
-                )}
-                {trend === "down" && (
-                  <span className="flex items-center justify-center w-4 h-4 rounded-full bg-green-900/40 text-green-400 text-[9px] font-bold">↓</span>
-                )}
-                {trend === "neutral" && (
-                  <span className="flex items-center justify-center w-4 h-4 rounded-full bg-subtle/40 text-cream-dim/50 text-[9px] font-bold">→</span>
-                )}
+                <TrendBadge trend={trend} />
               </div>
               {/* Price row */}
               <div className="flex gap-4 text-xs">
                 <div className="text-center">
                   <div className="text-cream-dim/60 mb-0.5">Low</div>
-                  <div className="text-green-400 font-semibold">{fmt(snapshot.low)}</div>
+                  <div className="text-green-400 font-semibold">{fmtAUD(snapshot.low)}</div>
                 </div>
                 <div className="text-center">
                   <div className="text-cream-dim/60 mb-0.5">Scrymarket</div>
-                  <div className="text-price font-semibold">{fmt(snapshot.scrymarket)}</div>
+                  <div className="text-price font-semibold">{fmtAUD(snapshot.scrymarket)}</div>
                 </div>
                 <div className="text-center">
                   <div className="text-cream-dim/60 mb-0.5">High</div>
-                  <div className="text-cream-dim font-semibold">{fmt(snapshot.high)}</div>
+                  <div className="text-cream-dim font-semibold">{fmtAUD(snapshot.high)}</div>
                 </div>
               </div>
             </div>

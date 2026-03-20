@@ -1,121 +1,36 @@
 "use client";
 
-import React, { useState, useMemo, useRef, useEffect, type ReactNode, type SyntheticEvent } from "react";
+import React, { useState, useMemo, type SyntheticEvent } from "react";
 import type { PrintingWithPrices } from "@/lib/db";
+import { fmtAUD } from "@/lib/format";
+import { RARITY_FILTER, RARITY_FALLBACK_COLOR } from "@/lib/rarity";
+import { Dropdown, OptionItem } from "@/app/Dropdown";
 
 type FoilFilter = "all" | "nonfoil" | "foil";
-type SortBy = "price_asc" | "price_desc" | "newest" | "oldest";
+type SortBy = "price_asc" | "price_desc" | "total_asc" | "total_desc" | "newest" | "oldest";
 
-
-// CSS filters to tint black SVGs to match MTG rarity colours (metallic, slightly muted)
-const RARITY_FILTER: Record<string, string> = {
-  common:   "invert(55%) brightness(0.85) contrast(0.9)",                                                                // muted silver
-  uncommon: "invert(60%) sepia(25%) saturate(200%) hue-rotate(175deg) brightness(0.85) contrast(0.9)",                  // cool steel
-  rare:     "invert(65%) sepia(70%) saturate(220%) hue-rotate(8deg) brightness(0.78) contrast(0.88)",                   // dull antique gold
-  mythic:   "invert(50%) sepia(80%) saturate(350%) hue-rotate(338deg) brightness(0.82) contrast(0.9)",                  // burnt orange
-  special:  "invert(55%) sepia(70%) saturate(400%) hue-rotate(268deg) brightness(0.82) contrast(0.9)",                  // muted purple
-  bonus:    "invert(55%) sepia(70%) saturate(400%) hue-rotate(268deg) brightness(0.82) contrast(0.9)",
-};
 
 const SORT_LABELS: Record<SortBy, string> = {
   price_asc: "Price: Low → High",
   price_desc: "Price: High → Low",
+  total_asc: "Price + Postage: Low → High",
+  total_desc: "Price + Postage: High → Low",
   newest: "Newest Set First",
   oldest: "Oldest Set First",
 };
 
 interface Row {
   printing: PrintingWithPrices;
+  storeId: string;
   storeName: string;
   priceAud: number;
+  shippingAud: number | null;
   condition: string | null;
   inStock: boolean;
   url: string | null;
 }
 
-// ── Shared dropdown shell ─────────────────────────────────────────────────────
-
-function Dropdown({
-  label,
-  active,
-  children,
-}: {
-  label: string;
-  active?: boolean;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
-          active
-            ? "border-accent-border bg-accent-muted text-accent-light"
-            : "border-subtle bg-muted text-cream-dim hover:text-cream hover:border-accent-border"
-        }`}
-      >
-        {label}
-        <span className="text-[9px] opacity-50">{open ? "▲" : "▼"}</span>
-      </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1 z-30 min-w-[190px] rounded-lg border border-subtle bg-surface shadow-xl shadow-black/50">
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function OptionItem({
-  label,
-  checked,
-  onClick,
-  type = "radio",
-}: {
-  label: string;
-  checked: boolean;
-  onClick: () => void;
-  type?: "radio" | "check";
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-muted ${
-        checked ? "text-cream" : "text-cream-dim"
-      }`}
-    >
-      <span
-        className={`w-3 h-3 ${type === "radio" ? "rounded-full" : "rounded"} border shrink-0 ${
-          checked ? "border-accent bg-accent" : "border-subtle"
-        }`}
-      />
-      {label}
-    </button>
-  );
-}
-
 // ── Set symbol with fallback ──────────────────────────────────────────────────
-
-const RARITY_FALLBACK_COLOR: Record<string, string> = {
-  common:   "#888",
-  uncommon: "#8aa7b8",
-  rare:     "#a8894a",
-  mythic:   "#b5642a",
-  special:  "#8a5fb5",
-  bonus:    "#8a5fb5",
-};
 
 function SetSymbol({ setCode, setName, rarity }: { setCode: string; setName: string; rarity: string }) {
   const [failed, setFailed] = useState(false);
@@ -205,8 +120,10 @@ export function PricesTable({
         if (selectedStores.size > 0 && !selectedStores.has(price.storeName)) continue;
         flat.push({
           printing,
+          storeId: price.storeId,
           storeName: price.storeName,
           priceAud: parseFloat(price.priceAud),
+          shippingAud: price.shippingAud ? parseFloat(price.shippingAud) : null,
           condition: price.condition,
           inStock: price.inStock,
           url: price.url,
@@ -214,15 +131,15 @@ export function PricesTable({
       }
     }
     return flat.sort((a, b) => {
+      const totalA = a.priceAud + (a.shippingAud ?? 0);
+      const totalB = b.priceAud + (b.shippingAud ?? 0);
       switch (sortBy) {
-        case "price_asc":
-          return a.priceAud - b.priceAud;
-        case "price_desc":
-          return b.priceAud - a.priceAud;
-        case "newest":
-          return String(b.printing.releasedAt ?? "").localeCompare(String(a.printing.releasedAt ?? ""));
-        case "oldest":
-          return String(a.printing.releasedAt ?? "").localeCompare(String(b.printing.releasedAt ?? ""));
+        case "price_asc":    return a.priceAud - b.priceAud;
+        case "price_desc":   return b.priceAud - a.priceAud;
+        case "total_asc":    return totalA - totalB;
+        case "total_desc":   return totalB - totalA;
+        case "newest":       return String(b.printing.releasedAt ?? "").localeCompare(String(a.printing.releasedAt ?? ""));
+        case "oldest":       return String(a.printing.releasedAt ?? "").localeCompare(String(b.printing.releasedAt ?? ""));
       }
     });
   }, [printings, inStockOnly, foilFilter, selectedStores, selectedSets, sortBy]);
@@ -325,7 +242,7 @@ export function PricesTable({
               <tr className="text-xs bg-cream-muted border-b border-subtle">
                 <th className="px-4 py-2 text-left font-medium text-cream-dim">Set</th>
                 <th className="px-3 py-2 text-left font-medium text-cream-dim">Store</th>
-                <th className="px-3 py-2 text-right font-medium text-cream-dim">Price AUD</th>
+                <th className="px-3 py-2 text-right font-medium text-cream-dim">Price AUD <span className="font-normal text-cream-dim/50">(postage)</span></th>
                 <th className="px-3 py-2 text-center font-medium text-cream-dim">Stock</th>
                 <th className="px-3 py-2" />
               </tr>
@@ -358,7 +275,12 @@ export function PricesTable({
                   <td className="px-3 py-2.5 text-cream font-medium">{row.storeName}</td>
 
                   <td className="px-3 py-2.5 text-right text-price font-semibold">
-                    ${row.priceAud.toFixed(2)}
+                    {fmtAUD(row.priceAud)}
+                    {row.shippingAud !== null && (
+                      <span className="ml-1 text-xs font-normal text-cream-dim/60">
+                        (+{row.shippingAud === 0 ? "free" : fmtAUD(row.shippingAud)})
+                      </span>
+                    )}
                   </td>
 
                   <td className="px-3 py-2.5 text-center">
