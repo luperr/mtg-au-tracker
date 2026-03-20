@@ -4,3 +4,5 @@ data/
 .env
 .pnpm-store/
 .next/
+.claude/
+memory/

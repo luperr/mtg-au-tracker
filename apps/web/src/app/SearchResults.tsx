@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { CardMagnifier } from "./CardMagnifier";
 import { ColorSymbols } from "./ColorSymbols";
+import { TrendBadge } from "./TrendBadge";
+import { fmtAUD } from "@/lib/format";
 import type { CardSearchResult } from "@/lib/db";
 
 function toSmallImage(uri: string | null): string | null {
@@ -37,24 +39,12 @@ function CardRow({ card }: { card: CardSearchResult }) {
 
         <div className="flex items-center gap-3 shrink-0">
           {/* Trend badge */}
-          {card.scrymarket_price && (
-            <div className="flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold shrink-0">
-              {card.trend === "up" && (
-                <span className="flex items-center justify-center w-full h-full rounded-full bg-red-900/40 text-red-400">↑</span>
-              )}
-              {card.trend === "down" && (
-                <span className="flex items-center justify-center w-full h-full rounded-full bg-green-900/40 text-green-400">↓</span>
-              )}
-              {card.trend === "neutral" && (
-                <span className="flex items-center justify-center w-full h-full rounded-full bg-subtle/40 text-cream-dim/50">→</span>
-              )}
-            </div>
-          )}
+          {card.scrymarket_price && <TrendBadge trend={card.trend} size="lg" />}
           {/* Price */}
           <div className="text-right">
             {card.scrymarket_price ? (
               <div className="text-price font-medium">
-                ${parseFloat(card.scrymarket_price).toFixed(2)}
+                {fmtAUD(parseFloat(card.scrymarket_price))}
               </div>
             ) : (
               <div className="text-cream-dim/50 text-sm">no prices</div>

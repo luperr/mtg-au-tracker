@@ -1,6 +1,7 @@
 {
   "name": "mtg-au-tracker",
   "private": true,
+  "license": "AGPL-3.0-only",
   "scripts": {
     "scrape:scryfall": "pnpm --filter @mtg-au/scraper scrape:scryfall",
     "import:scryfall": "pnpm --filter @mtg-au/scraper import:scryfall"
