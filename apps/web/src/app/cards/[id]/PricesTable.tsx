@@ -236,14 +236,14 @@ export function PricesTable({
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border border-subtle bg-surface overflow-visible">
+      <div className="rounded-lg border border-subtle bg-surface overflow-hidden">
         {rows.length === 0 && !filtersActive ? (
           <div className="px-4 py-8 text-center text-cream-dim/50">
             No prices available
           </div>
         ) : (
-          <div className="overflow-visible">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[500px]">
             <thead>
               <tr className="text-xs bg-cream-muted border-b border-subtle">
                 <th className="px-4 py-2 text-left font-medium text-cream-dim">Set</th>

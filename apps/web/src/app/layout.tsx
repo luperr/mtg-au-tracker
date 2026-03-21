@@ -50,7 +50,8 @@ export default function RootLayout({
                 href="/"
                 className={`${bitcount.className} text-2xl logo-gradient shrink-0`}
               >
-                SCRYMARKET
+                <span className="hidden sm:inline">SCRYMARKET</span>
+                <span className="sm:hidden">SM</span>
               </a>
               {/* Centre: search (hidden on home page via client component) */}
               <div className="flex-1 flex justify-center">
