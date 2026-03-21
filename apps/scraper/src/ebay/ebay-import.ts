@@ -51,13 +51,20 @@ interface CardToSearch {
 }
 
 /**
- * Return all card names due for a search today, ordered hot → active → longTail.
- * Uses a two-CTE query:
- *   card_max_usd — aggregates each card's best USD price + most recent release date
- *   card_tiers   — classifies each card into a tier + left-joins search history
- * The WHERE clause applies per-tier schedule and zero-result backoff logic.
+ * Return up to EBAY_DAILY_TARGET card names to search today, ordered by priority then staleness.
+ *
+ * Rather than filtering strictly to cards "due" by interval (which leaves the quota
+ * underused after a big batch day), we always fill to the daily target by picking
+ * the stalest eligible cards first within each tier priority:
+ *   1. Hot cards (≤30d release) — sorted by last_searched_at ASC so freshly searched go last
+ *   2. Active cards (≤90d or ≥$20 USD)
+ *   3. Long-tail (≥$2 USD)
+ *
+ * This guarantees the daily API quota is fully used every day.
  */
 async function getCardsToSearch(): Promise<CardToSearch[]> {
+  const dailyTarget = parseInt(process.env.EBAY_DAILY_TARGET ?? "4500", 10);
+
   const rows = await db.execute(sql`
     WITH card_max_usd AS (
       SELECT
@@ -83,32 +90,17 @@ async function getCardsToSearch(): Promise<CardToSearch[]> {
           WHEN cmu.max_usd >= 2                                           THEN 'longTail'
           ELSE 'skip'
         END AS tier,
-        esl.last_searched_at,
-        esl.last_result_count
+        esl.last_searched_at
       FROM card_max_usd cmu
       LEFT JOIN ebay_search_log esl ON esl.card_name = cmu.card_name
     )
     SELECT card_name, tier
     FROM card_tiers
     WHERE tier != 'skip'
-      AND CASE tier
-        WHEN 'hot' THEN
-          last_searched_at IS NULL
-          OR (last_result_count > 0 AND last_searched_at < CURRENT_DATE - INTERVAL '1 day')
-          OR (last_result_count = 0 AND last_searched_at < CURRENT_DATE - INTERVAL '14 days')
-        WHEN 'active' THEN
-          last_searched_at IS NULL
-          OR (last_result_count > 0 AND last_searched_at < CURRENT_DATE - INTERVAL '3 days')
-          OR (last_result_count = 0 AND last_searched_at < CURRENT_DATE - INTERVAL '21 days')
-        WHEN 'longTail' THEN
-          last_searched_at IS NULL
-          OR (last_result_count > 0 AND last_searched_at < CURRENT_DATE - INTERVAL '7 days')
-          OR (last_result_count = 0 AND last_searched_at < CURRENT_DATE - INTERVAL '30 days')
-        ELSE FALSE
-      END
     ORDER BY
       CASE tier WHEN 'hot' THEN 1 WHEN 'active' THEN 2 ELSE 3 END,
-      card_name
+      COALESCE(last_searched_at, '1970-01-01'::date) ASC
+    LIMIT ${dailyTarget}
   `);
 
   return (rows as unknown as Array<{ card_name: string; tier: string }>).map((r) => ({

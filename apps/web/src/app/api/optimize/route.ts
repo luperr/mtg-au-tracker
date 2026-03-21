@@ -7,7 +7,7 @@ import { STORE_FLAT_SHIPPING_AUD } from "@/lib/store-shipping";
 type OptimizeItem = {
   cardId: string;
   cardName: string;
-  printingId: string;
+  printingId: string; // current printing in want list (used for locked constraint)
 };
 
 type Listing = {
@@ -66,19 +66,20 @@ export type OptimizeResult = {
  * Pool stores (Good Games, MTG Mate) charge a flat shipping fee per order.
  * All other stores (eBay) charge per-listing shipping.
  *
- * For a given set of active pool stores, each card is assigned to the
- * cheapest available listing, where pool-store items don't pay per-card
- * shipping (it's amortised). Flat shipping is added once per used pool store.
+ * byCard is keyed by cardId → all available listings for that card (already
+ * filtered to respect locked printings). Each card is assigned to the cheapest
+ * listing, where pool-store items don't pay per-card shipping (amortised).
+ * Flat shipping is added once per used pool store.
  */
 function evaluateSubset(
   items: OptimizeItem[],
-  byPrinting: Map<string, Listing[]>,
+  byCard: Map<string, Listing[]>,
   activePoolStoreIds: Set<string>
 ): { cost: number; assignments: Map<string, Listing> } | null {
-  const assignments = new Map<string, Listing>(); // printingId → chosen listing
+  const assignments = new Map<string, Listing>(); // cardId → chosen listing
 
   for (const item of items) {
-    const listings = byPrinting.get(item.printingId);
+    const listings = byCard.get(item.cardId);
     if (!listings || listings.length === 0) return null; // unavailable
 
     let best: Listing | null = null;
@@ -100,7 +101,7 @@ function evaluateSubset(
     }
 
     if (!best) return null;
-    assignments.set(item.printingId, best);
+    assignments.set(item.cardId, best);
   }
 
   // Calculate true total: card prices + shipping
@@ -142,11 +143,17 @@ export async function POST(request: Request) {
   }
 
   const typedItems = items as OptimizeItem[];
-  const printingIds = typedItems.map((i) => i.printingId);
+  // lockedPrintingIds: these cards must stay on their current printing
+  const lockedPrintingIds = new Set<string>(
+    (body as { lockedPrintingIds?: string[] }).lockedPrintingIds ?? []
+  );
 
-  // Fetch all in-stock listings for the requested printings
+  const cardIds = typedItems.map((i) => i.cardId);
+
+  // Fetch all in-stock sell listings for all cardIds across all stores and printings
   const rows = await sql<{
     printing_id: string;
+    card_id: string;
     store_id: string;
     store_name: string;
     price_aud: string;
@@ -161,6 +168,7 @@ export async function POST(request: Request) {
   }[]>`
     SELECT
       p.id AS printing_id,
+      p.card_id,
       sp.store_id,
       s.name AS store_name,
       sp.price_aud,
@@ -177,13 +185,25 @@ export async function POST(request: Request) {
       AND sp.in_stock = true
       AND sp.price_type = 'sell'
     JOIN stores s ON s.id = sp.store_id
-    WHERE p.id = ANY(${printingIds})
-    ORDER BY p.id, sp.price_aud::numeric ASC
+    WHERE p.card_id = ANY(${cardIds})
+    ORDER BY p.card_id, sp.price_aud::numeric ASC
   `;
 
-  // Group listings by printing_id
-  const byPrinting = new Map<string, Listing[]>();
+  // Build byCard map: cardId → listings
+  // For locked cards, only include the locked printingId
+  const itemByCardId = new Map(typedItems.map((i) => [i.cardId, i]));
+  const byCard = new Map<string, Listing[]>();
+  for (const item of typedItems) byCard.set(item.cardId, []);
+
   for (const row of rows) {
+    const item = itemByCardId.get(row.card_id);
+    if (!item) continue;
+
+    // If this card is locked to a specific printing, skip other printings
+    if (lockedPrintingIds.has(item.printingId) && row.printing_id !== item.printingId) {
+      continue;
+    }
+
     const listing: Listing = {
       printingId: row.printing_id,
       storeId: row.store_id,
@@ -198,17 +218,27 @@ export async function POST(request: Request) {
       isFoil: row.is_foil,
       imageUri: row.image_uri,
     };
-    if (!byPrinting.has(row.printing_id)) byPrinting.set(row.printing_id, []);
-    byPrinting.get(row.printing_id)!.push(listing);
+    byCard.get(row.card_id)!.push(listing);
+  }
+
+  // Sort each card's listings: cheapest first, but current printing breaks ties
+  // so the algorithm never swaps to a different printing for zero gain.
+  for (const [cardId, listings] of byCard.entries()) {
+    const currentPrintingId = itemByCardId.get(cardId)!.printingId;
+    listings.sort((a, b) => {
+      if (a.priceAud !== b.priceAud) return a.priceAud - b.priceAud;
+      if (a.printingId === currentPrintingId) return -1;
+      if (b.printingId === currentPrintingId) return 1;
+      return 0;
+    });
   }
 
   // Identify cards with no available listings
   const unavailable = typedItems
-    .filter((i) => !byPrinting.has(i.printingId))
+    .filter((i) => !byCard.get(i.cardId)?.length)
     .map((i) => i.cardName);
 
-  // Items that can be optimised (have at least one listing)
-  const available = typedItems.filter((i) => byPrinting.has(i.printingId));
+  const available = typedItems.filter((i) => (byCard.get(i.cardId)?.length ?? 0) > 0);
 
   if (available.length === 0) {
     return NextResponse.json({
@@ -221,7 +251,7 @@ export async function POST(request: Request) {
     } satisfies OptimizeResult);
   }
 
-  // Identify pool store IDs (flat-rate, non-eBay stores that appear in listings)
+  // Identify pool store IDs (flat-rate, non-eBay) that appear in any listing
   const allStoreIds = new Set(rows.map((r) => r.store_id));
   const poolStoreIds = [...allStoreIds].filter(
     (id) => id in STORE_FLAT_SHIPPING_AUD && id !== "ebay_au"
@@ -233,7 +263,7 @@ export async function POST(request: Request) {
 
   for (let mask = 0; mask < 1 << poolStoreIds.length; mask++) {
     const activeSet = new Set(poolStoreIds.filter((_, i) => mask & (1 << i)));
-    const result = evaluateSubset(available, byPrinting, activeSet);
+    const result = evaluateSubset(available, byCard, activeSet);
     if (result && result.cost < bestCost) {
       bestCost = result.cost;
       bestAssignments = result.assignments;
@@ -244,13 +274,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Could not find valid assignment" }, { status: 500 });
   }
 
-  // Build response
+  // Build response — look up by cardId; printingId comes from the chosen listing
   const assignments: OptimizeAssignment[] = available.map((item) => {
-    const listing = bestAssignments!.get(item.printingId)!;
+    const listing = bestAssignments!.get(item.cardId)!;
     return {
       cardId: item.cardId,
       cardName: item.cardName,
-      printingId: item.printingId,
+      printingId: listing.printingId,
       storeId: listing.storeId,
       storeName: listing.storeName,
       priceAud: listing.priceAud,
@@ -275,21 +305,20 @@ export async function POST(request: Request) {
   }
 
   let totalPostage = 0;
-  const storeBreakdown = Array.from(storeGroups.values()).map(({ storeName, storeId, items }) => {
-    const cardsTotal = items.reduce((s, i) => s + i.priceAud, 0);
+  const storeBreakdown = Array.from(storeGroups.values()).map(({ storeName, storeId, items: storeItems }) => {
+    const cardsTotal = storeItems.reduce((s, i) => s + i.priceAud, 0);
     const isPool = storeId in STORE_FLAT_SHIPPING_AUD && storeId !== "ebay_au";
     let shipping: number | null;
     if (isPool) {
       shipping = STORE_FLAT_SHIPPING_AUD[storeId] ?? null;
     } else {
-      // eBay: sum per-item shipping
-      shipping = items.reduce((s, i) => s + (i.shippingAud ?? 0), 0);
+      shipping = storeItems.reduce((s, i) => s + (i.shippingAud ?? 0), 0);
     }
     totalPostage += shipping ?? 0;
     return {
       storeName,
       storeId,
-      itemCount: items.length,
+      itemCount: storeItems.length,
       cardsTotal,
       shipping,
       storeTotal: cardsTotal + (shipping ?? 0),

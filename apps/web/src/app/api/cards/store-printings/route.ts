@@ -3,10 +3,9 @@ import sql from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   const cardId = req.nextUrl.searchParams.get("cardId");
-  const storeId = req.nextUrl.searchParams.get("storeId");
 
-  if (!cardId || !storeId) {
-    return NextResponse.json({ error: "cardId and storeId required" }, { status: 400 });
+  if (!cardId) {
+    return NextResponse.json({ error: "cardId required" }, { status: 400 });
   }
 
   const rows = await sql<{
@@ -21,8 +20,10 @@ export async function GET(req: NextRequest) {
     shipping_aud: string | null;
     condition: string | null;
     url: string | null;
+    store_id: string;
+    store_name: string;
   }[]>`
-    SELECT
+    SELECT DISTINCT ON (p.id, sp.store_id)
       p.id,
       p.set_name,
       p.set_code,
@@ -33,14 +34,16 @@ export async function GET(req: NextRequest) {
       sp.price_aud,
       sp.shipping_aud,
       sp.condition,
-      sp.url
+      sp.url,
+      sp.store_id,
+      s.name AS store_name
     FROM printings p
     JOIN store_prices sp ON sp.printing_id = p.id
+    JOIN stores s ON s.id = sp.store_id
     WHERE p.card_id = ${cardId}
-      AND sp.store_id = ${storeId}
       AND sp.in_stock = true
       AND sp.price_type = 'sell'
-    ORDER BY sp.price_aud::numeric ASC
+    ORDER BY p.id, sp.store_id, sp.price_aud::numeric ASC
   `;
 
   return NextResponse.json(
@@ -56,6 +59,8 @@ export async function GET(req: NextRequest) {
       shippingAud: r.shipping_aud ? parseFloat(r.shipping_aud) : null,
       condition: r.condition,
       url: r.url,
+      storeId: r.store_id,
+      storeName: r.store_name,
     })),
     { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120" } }
   );

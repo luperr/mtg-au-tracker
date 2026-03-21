@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { useBuyList } from "@/app/BuyListContext";
+import { useWantList } from "@/app/WantListContext";
 import type { BulkLookupResult, BulkLookupInput } from "@/app/api/cards/bulk-lookup/route";
 
 /**
@@ -76,7 +76,7 @@ function parseCardList(text: string): BulkLookupInput[] {
 }
 
 export function ImportCards() {
-  const { addItem } = useBuyList();
+  const { addItem } = useWantList();
   const [expanded, setExpanded] = useState(false);
   const [text, setText] = useState("");
   const [parsed, setParsed] = useState<BulkLookupInput[]>([]);

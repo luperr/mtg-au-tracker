@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, type SyntheticEvent } from "react";
 import type { PrintingWithPrices } from "@/lib/db";
-import { useBuyList } from "@/app/BuyListContext";
+import { useWantList } from "@/app/WantListContext";
 import { fmtAUD } from "@/lib/format";
 import { RARITY_FILTER, RARITY_FALLBACK_COLOR } from "@/lib/rarity";
 import { Dropdown, OptionItem } from "@/app/Dropdown";
@@ -83,7 +83,7 @@ export function PricesTable({
   cardId: string;
   cardName: string;
 }) {
-  const { addItem, removeItem, hasItem } = useBuyList();
+  const { addItem, removeItem, hasItem } = useWantList();
   const [inStockOnly, setInStockOnly] = useState(false);
   const [foilFilter, setFoilFilter] = useState<FoilFilter>("all");
   const [selectedStores, setSelectedStores] = useState<Set<string>>(new Set());
@@ -317,7 +317,8 @@ export function PricesTable({
 
                   <td className="px-2 py-2.5 text-right">
                     {row.inStock && (() => {
-                      const itemId = `${row.printing.id}-${row.storeName}`;
+                      // Include URL so each distinct listing (e.g. different eBay sellers) gets a unique ID
+                      const itemId = `${row.printing.id}-${row.storeId}-${row.url ?? ""}`;
                       const inList = hasItem(itemId);
                       return (
                         <button
@@ -326,7 +327,7 @@ export function PricesTable({
                               removeItem(itemId);
                             } else {
                               addItem({
-                                id: itemId,
+                                id: itemId, // `${printingId}-${storeId}-${url}`
                                 cardId,
                                 cardName,
                                 printingId: row.printing.id,
@@ -344,7 +345,7 @@ export function PricesTable({
                               });
                             }
                           }}
-                          title={inList ? "Remove from buy list" : "Add to buy list"}
+                          title={inList ? "Remove from want list" : "Add to want list"}
                           className={`w-6 h-6 rounded flex items-center justify-center text-sm transition-colors ${
                             inList
                               ? "bg-price/20 text-price hover:bg-price/10"
