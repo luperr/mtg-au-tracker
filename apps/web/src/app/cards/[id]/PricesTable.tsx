@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, type SyntheticEvent } from "react";
 import type { PrintingWithPrices } from "@/lib/db";
+import { useWantList } from "@/app/WantListContext";
 import { fmtAUD } from "@/lib/format";
 import { RARITY_FILTER, RARITY_FALLBACK_COLOR } from "@/lib/rarity";
 import { Dropdown, OptionItem } from "@/app/Dropdown";
@@ -73,11 +74,16 @@ export function PricesTable({
   printings,
   defaultImage,
   onHoverImage,
+  cardId,
+  cardName,
 }: {
   printings: PrintingWithPrices[];
   defaultImage: string | null;
   onHoverImage: (uri: string | null) => void;
+  cardId: string;
+  cardName: string;
 }) {
+  const { addItem, removeItem, hasItem } = useWantList();
   const [inStockOnly, setInStockOnly] = useState(false);
   const [foilFilter, setFoilFilter] = useState<FoilFilter>("all");
   const [selectedStores, setSelectedStores] = useState<Set<string>>(new Set());
@@ -245,6 +251,7 @@ export function PricesTable({
                 <th className="px-3 py-2 text-right font-medium text-cream-dim">Price AUD <span className="font-normal text-cream-dim/50">(postage)</span></th>
                 <th className="px-3 py-2 text-center font-medium text-cream-dim">Stock</th>
                 <th className="px-3 py-2" />
+                <th className="px-3 py-2" />
               </tr>
             </thead>
             <tbody>
@@ -307,11 +314,54 @@ export function PricesTable({
                       </a>
                     )}
                   </td>
+
+                  <td className="px-2 py-2.5 text-right">
+                    {row.inStock && (() => {
+                      // Include URL so each distinct listing (e.g. different eBay sellers) gets a unique ID
+                      const itemId = `${row.printing.id}-${row.storeId}-${row.url ?? ""}`;
+                      const inList = hasItem(itemId);
+                      return (
+                        <button
+                          onClick={() => {
+                            if (inList) {
+                              removeItem(itemId);
+                            } else {
+                              addItem({
+                                id: itemId, // `${printingId}-${storeId}-${url}`
+                                cardId,
+                                cardName,
+                                printingId: row.printing.id,
+                                setName: row.printing.setName,
+                                setCode: row.printing.setCode,
+                                rarity: row.printing.rarity,
+                                isFoil: row.printing.isFoil,
+                                storeId: row.storeId,
+                                storeName: row.storeName,
+                                priceAud: row.priceAud,
+                                shippingAud: row.shippingAud,
+                                condition: row.condition,
+                                url: row.url,
+                                imageUri: row.printing.imageUri,
+                              });
+                            }
+                          }}
+                          title={inList ? "Remove from want list" : "Add to want list"}
+                          className={`w-6 h-6 rounded flex items-center justify-center text-sm transition-colors ${
+                            inList
+                              ? "bg-price/20 text-price hover:bg-price/10"
+                              : "bg-muted text-cream-dim/40 hover:bg-price/20 hover:text-price"
+                          }`}
+                        >
+                          {inList ? "✓" : "+"}
+                        </button>
+                      );
+                    })()}
+                  </td>
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-cream-dim/50">
+                  <td colSpan={6} className="px-4 py-8 text-center text-cream-dim/50">
                     No prices match the current filters
                   </td>
                 </tr>

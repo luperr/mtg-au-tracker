@@ -131,11 +131,6 @@ export function PrintingSidebar({ printings, selectedId }: Props) {
                     {p.isFoil && (
                       <span className="text-[10px] text-accent">✦</span>
                     )}
-                    <span
-                      className={`text-[10px] capitalize ${RARITY_COLORS[p.rarity] ?? "text-cream-dim/50"}`}
-                    >
-                      {p.rarity[0]?.toUpperCase()}
-                    </span>
                   </div>
                 </div>
 

@@ -179,3 +179,27 @@ psql -h <rds-endpoint> -U mtg -d mtg_tracker < mtg_tracker_YYYYMMDD.sql
 docker compose -f docker-compose.prod.yml stop db
 docker compose -f docker-compose.prod.yml up -d scraper web
 ```
+
+show cards with postage
+``` bash
+docker compose -f docker-compose.prod.yml exec db \
+  psql -U mtg -d mtg_tracker -c \
+  "SELECT c.name, sp.store_id, sp.price_aud, sp.shipping_aud, sp.condition, sp.url
+   FROM store_prices sp
+   JOIN printings p ON sp.printing_id = p.id
+   JOIN cards c ON p.card_id = c.id
+   WHERE sp.shipping_aud IS NOT NULL
+   ORDER BY sp.shipping_aud::numeric DESC
+   LIMIT 20;"
+```
+
+show total number of cards with postage
+``` bash
+docker compose -f docker-compose.prod.yml exec db \
+  psql -U mtg -d mtg_tracker -c \
+  "SELECT store_id, COUNT(*) AS with_postage
+   FROM store_prices
+   WHERE shipping_aud IS NOT NULL
+   GROUP BY store_id
+   ORDER BY with_postage DESC;"
+```

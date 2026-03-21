@@ -6,3 +6,4 @@ data/
 .next/
 .claude/
 memory/
+*.tsbuildinfo
