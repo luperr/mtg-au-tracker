@@ -189,7 +189,7 @@ export function PricesTable({
           {/* Foil toggle button */}
           <button
             onClick={() => { setFoilFilter((f) => f === "foil" ? "all" : "foil"); setPage(0); }}
-            className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
+            className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 min-h-[36px] text-xs font-medium transition-colors whitespace-nowrap ${
               foilFilter === "foil"
                 ? "border-accent-border bg-accent-muted text-accent-light"
                 : "border-subtle bg-muted text-cream-dim hover:text-cream hover:border-accent-border"
@@ -216,7 +216,7 @@ export function PricesTable({
           </Dropdown>
 
           {filtersActive && (
-            <button onClick={clearFilters} className="text-[10px] text-cream-dim/40 hover:text-cream-dim transition-colors">
+            <button onClick={clearFilters} className="min-h-[36px] px-2 text-[10px] text-cream-dim/40 hover:text-cream-dim transition-colors">
               Clear
             </button>
           )}
