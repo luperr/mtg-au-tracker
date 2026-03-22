@@ -63,12 +63,6 @@ services:
       DATABASE_URL: postgresql://mtg:${DB_PASSWORD}@db:5432/mtg_tracker
       NODE_ENV: production
       GITHUB_TOKEN: ${GITHUB_TOKEN}
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
     depends_on:
       db:
         condition: service_healthy
@@ -89,7 +83,7 @@ services:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:
       web:
-        condition: service_healthy
+        condition: service_started
     networks:
       - frontend
 
