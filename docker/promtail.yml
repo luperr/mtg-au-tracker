@@ -1,6 +1,9 @@
 server:
   http_listen_port: 9080
 
+positions:
+  filename: /tmp/positions.yaml
+
 clients:
   - url: http://10.10.30.13:3100/loki/api/v1/push
 
