@@ -1,23 +1,34 @@
-# Web production image
-FROM node:20-alpine
-RUN npm install -g pnpm
+# Stage 1: Install dependencies
+FROM node:20-alpine AS deps
+RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 
-# Install dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
 RUN pnpm install --frozen-lockfile
 
-# Copy source and build
+# Stage 2: Build
+FROM node:20-alpine AS builder
+RUN corepack enable && corepack prepare pnpm@latest --activate
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/ apps/web/
 COPY packages/shared/ packages/shared/
 RUN pnpm --filter @mtg-au/web build
 
-# Run as non-root user
+# Stage 3: Minimal runtime image — no node_modules, no pnpm needed
+FROM node:20-alpine AS runner
 RUN addgroup -g 1001 -S web && adduser -u 1001 -S web -G web
-RUN chown -R web:web /app
-USER 1001:1001
+WORKDIR /app
 
+COPY --from=builder --chown=web:web /app/apps/web/.next/standalone ./
+COPY --from=builder --chown=web:web /app/apps/web/.next/static apps/web/.next/static
+COPY --from=builder --chown=web:web /app/apps/web/public apps/web/public
+
+USER 1001:1001
 ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
-CMD ["pnpm", "--filter", "@mtg-au/web", "start"]
+CMD ["node", "apps/web/server.js"]
