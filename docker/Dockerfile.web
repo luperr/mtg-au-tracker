@@ -14,5 +14,10 @@ COPY apps/web/ apps/web/
 COPY packages/shared/ packages/shared/
 RUN pnpm --filter @mtg-au/web build
 
+# Run as non-root user
+RUN addgroup -g 1001 -S web && adduser -u 1001 -S web -G web
+RUN chown -R web:web /app
+USER 1001:1001
+
 ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
 CMD ["pnpm", "--filter", "@mtg-au/web", "start"]

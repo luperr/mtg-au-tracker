@@ -17,4 +17,9 @@ RUN pnpm install --frozen-lockfile
 COPY apps/scraper/ apps/scraper/
 COPY packages/shared/ packages/shared/
 
+# Run as non-root user
+RUN groupadd -g 1002 scraper && useradd -u 1002 -g scraper -m -s /bin/bash scraper
+RUN chown -R scraper:scraper /app
+USER 1002:1002
+
 CMD ["pnpm", "--filter", "@mtg-au/scraper", "start"]

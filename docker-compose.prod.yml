@@ -8,17 +8,26 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    # Not exposed externally — only reachable by scraper/web on the Docker network
+    # Not exposed externally — only reachable by scraper/web on the backend network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mtg"]
       interval: 5s
       retries: 5
+    networks:
+      - backend
 
   scraper:
     build:
       context: .
       dockerfile: docker/Dockerfile.scraper
+    user: "1002:1002"
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
     restart: always
+    security_opt:
+      - no-new-privileges:true
     environment:
       DATABASE_URL: postgresql://mtg:${DB_PASSWORD}@db:5432/mtg_tracker
       NODE_ENV: production
@@ -34,28 +43,55 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - backend
 
   web:
     build:
       context: .
       dockerfile: docker/Dockerfile.web
+    user: "1001:1001"
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/apps/web/.next/cache   # Next.js image optimisation + ISR cache
     restart: always
+    security_opt:
+      - no-new-privileges:true
     environment:
       DATABASE_URL: postgresql://mtg:${DB_PASSWORD}@db:5432/mtg_tracker
       NODE_ENV: production
       GITHUB_TOKEN: ${GITHUB_TOKEN}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - backend
+      - frontend
 
   tunnel:
     image: cloudflare/cloudflared:latest
     restart: always
+    read_only: true
+    tmpfs:
+      - /tmp
     command: tunnel --no-autoupdate --protocol http2 run
+    security_opt:
+      - no-new-privileges:true
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:
-      - web
+      web:
+        condition: service_healthy
+    networks:
+      - frontend
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
@@ -68,6 +104,10 @@ services:
       - /var/lib/docker/:/var/lib/docker:ro
     ports:
       - "10.10.20.10:8080:8080"   # only reachable from services VLAN — Prometheus at 10.10.30.10 scrapes via inter-VLAN routing
+
+networks:
+  frontend:   # tunnel ↔ web
+  backend:    # web + scraper ↔ db
 
 volumes:
   pgdata:
