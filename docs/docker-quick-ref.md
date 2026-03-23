@@ -104,11 +104,19 @@ docker compose -f docker-compose.prod.yml exec db \
 ```bash
 # Run Scryfall import manually
 docker compose -f docker-compose.prod.yml run --rm scraper \
-  pnpm --filter @mtg-au/scraper scrape:scryfall
+  pnpm --filter @mtg-au/scraper import:scryfall
 
-# Run store scrapers manually (MTG Mate, Good Games)
+# Run all store scrapers (MTG Mate + Good Games)
 docker compose -f docker-compose.prod.yml run --rm scraper \
   pnpm --filter @mtg-au/scraper scrape:stores
+
+# Run MTG Mate scraper only
+docker compose -f docker-compose.prod.yml run --rm scraper \
+  pnpm --filter @mtg-au/scraper scrape:mtgmate
+
+# Run Good Games scraper only
+docker compose -f docker-compose.prod.yml run --rm scraper \
+  pnpm --filter @mtg-au/scraper scrape:goodgames
 
 # Run eBay import manually
 docker compose -f docker-compose.prod.yml run --rm scraper \
