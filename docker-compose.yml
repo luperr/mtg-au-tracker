@@ -9,7 +9,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mtg"]
+      test: ["CMD-SHELL", "pg_isready -U mtg -d mtg_tracker"]
       interval: 5s
       retries: 5
 
