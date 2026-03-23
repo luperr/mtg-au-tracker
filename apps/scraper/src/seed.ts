@@ -43,8 +43,8 @@ const STORES = [
   },
 ];
 
-async function main() {
-  console.log("Seeding stores...");
+export async function seedStores(): Promise<void> {
+  console.log("[Seed] Seeding stores...");
 
   await db
     .insert(schema.stores)
@@ -58,7 +58,11 @@ async function main() {
       },
     });
 
-  console.log(`Upserted ${STORES.length} stores.`);
+  console.log(`[Seed] Upserted ${STORES.length} stores.`);
+}
+
+async function main() {
+  await seedStores();
   process.exit(0);
 }
 

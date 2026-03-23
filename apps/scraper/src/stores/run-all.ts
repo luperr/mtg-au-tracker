@@ -20,6 +20,7 @@ import { db, schema } from "../lib/db.js";
 import { CardMatcher } from "../matching/card-matcher.js";
 import { MtgMateScraper } from "./mtgmate.js";
 import { GoodGamesScraper } from "./goodgames.js";
+import { seedStores } from "../seed.js";
 import type { BaseScraper } from "./base-scraper.js";
 import type { ScrapedCard } from "@mtg-au/shared";
 
@@ -156,6 +157,7 @@ function buildUnmatchedRow(
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export async function runAllStores(): Promise<void> {
+  await seedStores();
   console.log("[run-all] Building card matcher index...");
   const matcher = new CardMatcher();
   await matcher.build();
