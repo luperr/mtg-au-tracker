@@ -7,6 +7,7 @@
  * Run with: docker compose run --rm dev pnpm --filter @mtg-au/scraper seed
  */
 
+import { fileURLToPath } from "url";
 import { sql } from "drizzle-orm";
 import { db, schema } from "./lib/db.js";
 
@@ -66,7 +67,11 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((err) => {
-  console.error("Seed failed:", err);
-  process.exit(1);
-});
+// Only run when invoked directly (pnpm --filter @mtg-au/scraper seed),
+// not when seedStores() is imported by run-all.ts or index.ts.
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error("Seed failed:", err);
+    process.exit(1);
+  });
+}
