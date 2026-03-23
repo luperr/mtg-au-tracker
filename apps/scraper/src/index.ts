@@ -31,7 +31,9 @@ async function main(): Promise<void> {
     console.log(`[Scheduler] Database has ${Number(cardCount).toLocaleString()} cards — skipping bootstrap.`);
   }
 
-  // 3 AM daily — refresh Scryfall card data + USD prices
+  const cronOptions = { timezone: "Australia/Sydney" };
+
+  // 3 AM daily AEDT/AEST — refresh Scryfall card data + USD prices
   cron.schedule("0 3 * * *", async () => {
     console.log("[Scheduler] 3 AM — Running Scryfall import...");
     try {
@@ -39,9 +41,9 @@ async function main(): Promise<void> {
     } catch (err) {
       console.error("[Scheduler] Scryfall import failed:", err);
     }
-  });
+  }, cronOptions);
 
-  // 5 AM daily — scrape store prices
+  // 5 AM daily AEDT/AEST — scrape store prices
   cron.schedule("0 5 * * *", async () => {
     console.log("[Scheduler] 5 AM — Running store scrapers...");
     try {
@@ -49,9 +51,9 @@ async function main(): Promise<void> {
     } catch (err) {
       console.error("[Scheduler] Store scrape failed:", err);
     }
-  });
+  }, cronOptions);
 
-  // 6 AM daily — import eBay AU market prices
+  // 6 AM daily AEDT/AEST — import eBay AU market prices
   cron.schedule("0 6 * * *", async () => {
     console.log("[Scheduler] 6 AM — Running eBay AU import...");
     try {
@@ -59,7 +61,7 @@ async function main(): Promise<void> {
     } catch (err) {
       console.error("[Scheduler] eBay import failed:", err);
     }
-  });
+  }, cronOptions);
 
   console.log("[Scheduler] Cron jobs scheduled (Scryfall @ 3 AM, stores @ 5 AM, eBay @ 6 AM). Service running.");
 }
