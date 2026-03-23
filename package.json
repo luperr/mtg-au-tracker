@@ -3,6 +3,7 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "scripts": {
-    "import:scryfall": "pnpm --filter @mtg-au/scraper import:scryfall"
+    "import:scryfall": "pnpm --filter @mtg-au/scraper import:scryfall",
+    "db:migrate": "pnpm --filter @mtg-au/scraper db:migrate"
   }
 }
