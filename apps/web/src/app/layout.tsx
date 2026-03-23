@@ -56,7 +56,8 @@ export default function RootLayout({
                 href="/"
                 className={`${bitcount.className} text-2xl logo-gradient shrink-0`}
               >
-                SCRYMARKET
+                <span className="hidden sm:inline">SCRYMARKET</span>
+                <span className="sm:hidden">SM</span>
               </a>
               {/* Centre: search (hidden on home page via client component) */}
               <div className="flex-1 flex justify-center">
@@ -70,10 +71,13 @@ export default function RootLayout({
             </div>
           </header>
           <main className="mx-auto max-w-5xl w-full px-4 py-6 flex-1">{children}</main>
-          <footer className="border-t border-subtle px-4 py-3 text-cream-dim">
+          <footer className="border-t border-subtle px-4 py-2 text-cream-dim">
             <div className="mx-auto max-w-5xl flex flex-wrap items-center justify-between gap-x-6 gap-y-1 text-xs">
-              <p>© {new Date().getFullYear()} Scrymarket — not affiliated with Wizards of the Coast or any listed retailer.</p>
-              <nav className="flex flex-wrap gap-x-4 gap-y-1">
+              <p className="text-cream-dim/60">
+                <span className="hidden sm:inline">© {new Date().getFullYear()} Scrymarket — not affiliated with Wizards of the Coast or any listed retailer.</span>
+                <span className="sm:hidden">© {new Date().getFullYear()} Scrymarket</span>
+              </p>
+              <nav className="flex flex-wrap gap-x-3 gap-y-1">
                 <a href="/about" className="hover:text-accent transition-colors">About</a>
                 <a href="/faq" className="hover:text-accent transition-colors">FAQ</a>
                 <a href="/contact" className="hover:text-accent transition-colors">Contact</a>

@@ -19,7 +19,7 @@ function CardRow({ card }: { card: CardSearchResult }) {
       className="flex items-center gap-3 rounded-lg border border-subtle bg-surface hover:border-accent hover:bg-muted transition-colors overflow-hidden"
     >
       {/* Thumbnail */}
-      <div className="shrink-0 w-[63px] h-[88px] bg-muted overflow-hidden">
+      <div className="shrink-0 w-[44px] h-[61px] sm:w-[63px] sm:h-[88px] bg-muted overflow-hidden">
         {thumb && card.image_uri ? (
           <CardMagnifier smallSrc={thumb} largeSrc={card.image_uri} alt={card.name} />
         ) : (

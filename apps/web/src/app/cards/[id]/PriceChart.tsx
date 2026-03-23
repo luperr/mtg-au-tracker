@@ -107,7 +107,7 @@ export function PriceChart({ history }: { history: CardPriceHistory }) {
             <button
               key={v}
               onClick={() => setView(v)}
-              className={`flex-1 rounded text-[10px] py-0.5 transition-colors ${
+              className={`flex-1 rounded text-[10px] py-1.5 px-3 min-h-[36px] transition-colors ${
                 view === v
                   ? "bg-accent-muted text-accent-light border border-accent-border"
                   : "bg-muted text-cream-dim/50 border border-subtle hover:text-cream-dim"

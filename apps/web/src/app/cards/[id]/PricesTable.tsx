@@ -1,15 +1,15 @@
 "use client";
 
-import React, { useState, useMemo, type SyntheticEvent } from "react";
+import React, { useState, useMemo, useRef } from "react";
+import { useClickOutside } from "@/lib/hooks/useClickOutside";
 import type { PrintingWithPrices } from "@/lib/db";
 import { useWantList } from "@/app/WantListContext";
 import { fmtAUD } from "@/lib/format";
-import { RARITY_FILTER, RARITY_FALLBACK_COLOR } from "@/lib/rarity";
 import { Dropdown, OptionItem } from "@/app/Dropdown";
+import { SetSymbol } from "@/app/SetSymbol";
 
 type FoilFilter = "all" | "nonfoil" | "foil";
 type SortBy = "price_asc" | "price_desc" | "total_asc" | "total_desc" | "newest" | "oldest";
-
 
 const SORT_LABELS: Record<SortBy, string> = {
   price_asc: "Price: Low → High",
@@ -31,40 +31,53 @@ interface Row {
   url: string | null;
 }
 
-// ── Set symbol with fallback ──────────────────────────────────────────────────
+const filterBtnCls = (active: boolean) =>
+  `flex-1 rounded border px-2 py-1 text-xs font-medium transition-colors ${
+    active
+      ? "border-accent-border bg-accent-muted text-accent-light"
+      : "border-subtle bg-muted text-cream-dim hover:text-cream"
+  }`;
 
-function SetSymbol({ setCode, setName, rarity }: { setCode: string; setName: string; rarity: string }) {
-  const [failed, setFailed] = useState(false);
-  const color = RARITY_FALLBACK_COLOR[rarity] ?? RARITY_FALLBACK_COLOR.common;
+// ── Want list button ───────────────────────────────────────────────────────────
 
-  if (failed) {
-    return (
-      <span
-        style={{ color, fontSize: 14, width: 18, textAlign: "center", display: "inline-block" }}
-        title={setName}
-      >
-        ❖
-      </span>
-    );
-  }
-
-  function onError(e: SyntheticEvent<HTMLImageElement>) {
-    e.currentTarget.style.display = "none";
-    setFailed(true);
-  }
-
+function WantListButton({ row, cardId, cardName }: { row: Row; cardId: string; cardName: string }) {
+  const { addItem, removeItem, hasItem } = useWantList();
+  const itemId = `${row.printing.id}-${row.storeId}-${row.url ?? ""}`;
+  const inList = hasItem(itemId);
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={`https://svgs.scryfall.io/sets/${setCode}.svg`}
-      alt={setName}
-      width={18}
-      height={18}
-      className="shrink-0"
-      style={{ filter: RARITY_FILTER[rarity] ?? RARITY_FILTER.common }}
-      loading="lazy"
-      onError={onError}
-    />
+    <button
+      onClick={() => {
+        if (inList) {
+          removeItem(itemId);
+        } else {
+          addItem({
+            id: itemId,
+            cardId,
+            cardName,
+            printingId: row.printing.id,
+            setName: row.printing.setName,
+            setCode: row.printing.setCode,
+            rarity: row.printing.rarity,
+            isFoil: row.printing.isFoil,
+            storeId: row.storeId,
+            storeName: row.storeName,
+            priceAud: row.priceAud,
+            shippingAud: row.shippingAud,
+            condition: row.condition,
+            url: row.url,
+            imageUri: row.printing.imageUri,
+          });
+        }
+      }}
+      title={inList ? "Remove from want list" : "Add to want list"}
+      className={`w-6 h-6 rounded flex items-center justify-center text-sm transition-colors ${
+        inList
+          ? "bg-price/20 text-price hover:bg-price/10"
+          : "bg-muted text-cream-dim/40 hover:bg-price/20 hover:text-price"
+      }`}
+    >
+      {inList ? "✓" : "+"}
+    </button>
   );
 }
 
@@ -83,14 +96,17 @@ export function PricesTable({
   cardId: string;
   cardName: string;
 }) {
-  const { addItem, removeItem, hasItem } = useWantList();
   const [inStockOnly, setInStockOnly] = useState(false);
   const [foilFilter, setFoilFilter] = useState<FoilFilter>("all");
   const [selectedStores, setSelectedStores] = useState<Set<string>>(new Set());
   const [selectedSets, setSelectedSets] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<SortBy>("price_asc");
   const [page, setPage] = useState(0);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersRef = useRef<HTMLDivElement>(null);
   const PAGE_SIZE = 10;
+
+  useClickOutside(filtersRef, filtersOpen, () => setFiltersOpen(false));
 
   const allStores = useMemo(() => {
     const s = new Set<string>();
@@ -153,9 +169,8 @@ export function PricesTable({
   const filtersActive =
     inStockOnly || foilFilter !== "all" || selectedStores.size > 0 || selectedSets.size > 0;
 
-  const stockLabel = inStockOnly ? "In Stock" : "All";
-  const storeLabel = selectedStores.size > 0 ? `Stores (${selectedStores.size})` : "Store";
-  const setLabel = selectedSets.size > 0 ? `Sets (${selectedSets.size})` : "Set";
+  const activeFilterCount =
+    (inStockOnly ? 1 : 0) + (foilFilter !== "all" ? 1 : 0) + selectedStores.size + selectedSets.size;
 
   const clearFilters = () => {
     setInStockOnly(false);
@@ -173,50 +188,87 @@ export function PricesTable({
     <div>
       {/* Toolbar above table */}
       <div className="flex items-center justify-between mb-2 gap-2">
-        {/* Left: filters */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Set dropdown — set checkboxes only */}
-          {allSets.length > 1 && (
-            <Dropdown label={setLabel} active={selectedSets.size > 0}>
-              <div className="py-1 max-h-48 overflow-y-auto">
-                {allSets.map((set) => (
-                  <OptionItem type="check" key={set} label={set} checked={selectedSets.has(set)} onClick={() => toggleInSet(setSelectedSets, set)} />
-                ))}
+        {/* Left: unified Filters button */}
+        <div className="flex items-center gap-2" ref={filtersRef}>
+          <div className="relative">
+            <button
+              onClick={() => setFiltersOpen((o) => !o)}
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 min-h-[36px] text-xs font-medium transition-colors whitespace-nowrap ${
+                filtersActive
+                  ? "border-accent-border bg-accent-muted text-accent-light"
+                  : "border-subtle bg-muted text-cream-dim hover:text-cream hover:border-accent-border"
+              }`}
+            >
+              Filters
+              {activeFilterCount > 0 && (
+                <span className="flex items-center justify-center w-4 h-4 rounded-full bg-accent text-bg text-[10px] font-bold">
+                  {activeFilterCount}
+                </span>
+              )}
+              <span className="text-[9px] opacity-50">{filtersOpen ? "▲" : "▼"}</span>
+            </button>
+
+            {filtersOpen && (
+              <div className="absolute top-full left-0 mt-1 z-30 w-64 rounded-lg border border-subtle bg-surface shadow-xl shadow-black/50">
+                {/* Foil */}
+                <div className="p-3 border-b border-subtle/60">
+                  <p className="text-[10px] text-cream-dim/50 uppercase tracking-wide mb-2">Foil</p>
+                  <div className="flex gap-1.5">
+                    {(["all", "nonfoil", "foil"] as FoilFilter[]).map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => { setFoilFilter(f); setPage(0); }}
+                        className={filterBtnCls(foilFilter === f)}
+                      >
+                        {f === "all" ? "All" : f === "nonfoil" ? "Non-foil" : "✦ Foil"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Stock */}
+                <div className="p-3 border-b border-subtle/60">
+                  <p className="text-[10px] text-cream-dim/50 uppercase tracking-wide mb-2">Stock</p>
+                  <div className="flex gap-1.5">
+                    {([false, true] as const).map((val) => (
+                      <button
+                        key={String(val)}
+                        onClick={() => { setInStockOnly(val); setPage(0); }}
+                        className={filterBtnCls(inStockOnly === val)}
+                      >
+                        {val ? "In stock" : "All"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Store */}
+                {allStores.length > 1 && (
+                  <div className="p-3 border-b border-subtle/60">
+                    <p className="text-[10px] text-cream-dim/50 uppercase tracking-wide mb-1">Store</p>
+                    {allStores.map((store) => (
+                      <OptionItem key={store} type="check" label={store} checked={selectedStores.has(store)} onClick={() => toggleInSet(setSelectedStores, store)} />
+                    ))}
+                  </div>
+                )}
+
+                {/* Set */}
+                {allSets.length > 1 && (
+                  <div className="p-3">
+                    <p className="text-[10px] text-cream-dim/50 uppercase tracking-wide mb-1">Set</p>
+                    <div className="max-h-48 overflow-y-auto">
+                      {allSets.map((set) => (
+                        <OptionItem key={set} type="check" label={set} checked={selectedSets.has(set)} onClick={() => toggleInSet(setSelectedSets, set)} />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            </Dropdown>
-          )}
-
-          {/* Foil toggle button */}
-          <button
-            onClick={() => { setFoilFilter((f) => f === "foil" ? "all" : "foil"); setPage(0); }}
-            className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
-              foilFilter === "foil"
-                ? "border-accent-border bg-accent-muted text-accent-light"
-                : "border-subtle bg-muted text-cream-dim hover:text-cream hover:border-accent-border"
-            }`}
-          >
-            ✦ Foil
-          </button>
-
-          {/* Store dropdown */}
-          <Dropdown label={storeLabel} active={selectedStores.size > 0}>
-            <div className="py-1">
-              {allStores.map((store) => (
-                <OptionItem type="check" key={store} label={store} checked={selectedStores.has(store)} onClick={() => toggleInSet(setSelectedStores, store)} />
-              ))}
-            </div>
-          </Dropdown>
-
-          {/* Stock dropdown */}
-          <Dropdown label={stockLabel} active={inStockOnly}>
-            <div className="py-1">
-              <OptionItem label="All" checked={!inStockOnly} onClick={() => { setInStockOnly(false); setPage(0); }} />
-              <OptionItem label="In stock only" checked={inStockOnly} onClick={() => { setInStockOnly(true); setPage(0); }} />
-            </div>
-          </Dropdown>
+            )}
+          </div>
 
           {filtersActive && (
-            <button onClick={clearFilters} className="text-[10px] text-cream-dim/40 hover:text-cream-dim transition-colors">
+            <button onClick={clearFilters} className="min-h-[36px] px-2 text-[10px] text-cream-dim/40 hover:text-cream-dim transition-colors">
               Clear
             </button>
           )}
@@ -225,7 +277,7 @@ export function PricesTable({
         {/* Right: sort + count */}
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-[10px] text-cream-dim/30">{rows.length}</span>
-          <Dropdown label="Sort" active={sortBy !== "price_asc"}>
+          <Dropdown label="Sort" active={sortBy !== "price_asc"} align="right">
             <div className="py-1">
               {(Object.entries(SORT_LABELS) as [SortBy, string][]).map(([key, label]) => (
                 <OptionItem key={key} label={label} checked={sortBy === key} onClick={() => { setSortBy(key); setPage(0); }} />
@@ -236,14 +288,22 @@ export function PricesTable({
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border border-subtle bg-surface overflow-visible">
+      <div className="rounded-lg border border-subtle bg-surface overflow-hidden">
         {rows.length === 0 && !filtersActive ? (
           <div className="px-4 py-8 text-center text-cream-dim/50">
             No prices available
           </div>
         ) : (
-          <div className="overflow-visible">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[360px]">
+            <colgroup>
+              <col className="w-[180px] sm:w-[220px]" />  {/* Set */}
+              <col className="w-[110px] sm:w-[140px]" />  {/* Store */}
+              <col className="w-auto" />                   {/* Price */}
+              <col className="w-[68px]" />                 {/* Stock */}
+              <col className="w-[52px]" />                 {/* Buy link */}
+              <col className="w-[40px]" />                 {/* Want button */}
+            </colgroup>
             <thead>
               <tr className="text-xs bg-cream-muted border-b border-subtle">
                 <th className="px-4 py-2 text-left font-medium text-cream-dim">Set</th>
@@ -270,7 +330,7 @@ export function PricesTable({
                         setName={row.printing.setName}
                         rarity={row.printing.rarity}
                       />
-                      <span className="text-cream truncate max-w-[160px]">
+                      <span className="text-cream truncate max-w-[160px] hidden sm:inline">
                         {row.printing.setName}
                       </span>
                       {row.printing.isFoil && (
@@ -316,46 +376,9 @@ export function PricesTable({
                   </td>
 
                   <td className="px-2 py-2.5 text-right">
-                    {row.inStock && (() => {
-                      // Include URL so each distinct listing (e.g. different eBay sellers) gets a unique ID
-                      const itemId = `${row.printing.id}-${row.storeId}-${row.url ?? ""}`;
-                      const inList = hasItem(itemId);
-                      return (
-                        <button
-                          onClick={() => {
-                            if (inList) {
-                              removeItem(itemId);
-                            } else {
-                              addItem({
-                                id: itemId, // `${printingId}-${storeId}-${url}`
-                                cardId,
-                                cardName,
-                                printingId: row.printing.id,
-                                setName: row.printing.setName,
-                                setCode: row.printing.setCode,
-                                rarity: row.printing.rarity,
-                                isFoil: row.printing.isFoil,
-                                storeId: row.storeId,
-                                storeName: row.storeName,
-                                priceAud: row.priceAud,
-                                shippingAud: row.shippingAud,
-                                condition: row.condition,
-                                url: row.url,
-                                imageUri: row.printing.imageUri,
-                              });
-                            }
-                          }}
-                          title={inList ? "Remove from want list" : "Add to want list"}
-                          className={`w-6 h-6 rounded flex items-center justify-center text-sm transition-colors ${
-                            inList
-                              ? "bg-price/20 text-price hover:bg-price/10"
-                              : "bg-muted text-cream-dim/40 hover:bg-price/20 hover:text-price"
-                          }`}
-                        >
-                          {inList ? "✓" : "+"}
-                        </button>
-                      );
-                    })()}
+                    {row.inStock && (
+                      <WantListButton row={row} cardId={cardId} cardName={cardName} />
+                    )}
                   </td>
                 </tr>
               ))}

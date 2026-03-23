@@ -6,18 +6,18 @@ import { SearchResults } from "./SearchResults";
 function SearchForm({ defaultValue, compact }: { defaultValue?: string; compact?: boolean }) {
   return (
     <form method="GET" action="/" className={compact ? "mb-6" : ""}>
-      <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row gap-2">
         <input
           type="text"
           name="q"
           defaultValue={defaultValue}
           placeholder="Search cards by name…"
           autoFocus
-          className={`flex-1 rounded-lg border border-subtle bg-muted px-4 ${compact ? "py-2" : "py-3"} text-cream placeholder-cream-dim/50 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent`}
+          className={`flex-1 min-w-0 rounded-lg border border-subtle bg-muted px-4 ${compact ? "py-2" : "py-3"} text-cream placeholder-cream-dim/50 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent`}
         />
         <button
           type="submit"
-          className={`rounded-lg bg-cta ${compact ? "px-5 py-2" : "px-6 py-3"} font-medium text-cream hover:bg-price transition-colors`}
+          className={`rounded-lg bg-cta ${compact ? "px-5 py-2" : "px-6 py-3"} font-medium text-cream hover:bg-price transition-colors shrink-0`}
         >
           Search
         </button>

@@ -1,27 +1,23 @@
 "use client";
 
-import { useState, useRef, useEffect, type ReactNode } from "react";
+import { useState, useRef, type ReactNode } from "react";
+import { useClickOutside } from "@/lib/hooks/useClickOutside";
 
 export function Dropdown({
   label,
   active,
+  align = "left",
   children,
 }: {
   label: string;
   active?: boolean;
+  align?: "left" | "right";
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  useClickOutside(ref, open, () => setOpen(false));
 
   return (
     <div ref={ref} className="relative">
@@ -37,7 +33,7 @@ export function Dropdown({
         <span className="text-[9px] opacity-50">{open ? "▲" : "▼"}</span>
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 z-30 min-w-[190px] rounded-lg border border-subtle bg-surface shadow-xl shadow-black/50">
+        <div className={`absolute top-full mt-1 z-30 min-w-[190px] rounded-lg border border-subtle bg-surface shadow-xl shadow-black/50 ${align === "right" ? "right-0" : "left-0"}`}>
           {children}
         </div>
       )}

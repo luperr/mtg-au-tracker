@@ -81,9 +81,9 @@ export function CardDetailView({
       {/* Right: card info + prices */}
       <div>
         {/* Title + type/color block left, market snapshot right */}
-        <div className="flex items-start justify-between gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
           <div className="min-w-0">
-            <h1 className="text-3xl font-bold text-cream mb-1">{card.name}</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-cream mb-1">{card.name}</h1>
             <div className="flex items-center gap-2">
               <span className="text-cream-dim">{card.type_line}</span>
               <div className="flex items-center gap-1">
@@ -93,7 +93,7 @@ export function CardDetailView({
           </div>
 
           {snapshot && (
-            <div className="shrink-0 rounded-lg border border-subtle bg-surface px-4 py-2.5">
+            <div className="sm:shrink-0 rounded-lg border border-subtle bg-surface px-4 py-2.5">
               {/* Top row: USD ref price + trend badge */}
               <div className="flex items-center justify-between gap-3 mb-2">
                 {snapshot.usd != null ? (
