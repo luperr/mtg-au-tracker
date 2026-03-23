@@ -1,0 +1,49 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+# Prevent concurrent deploys — queue them instead of cancelling
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to production
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pull latest images / rebuild
+        run: |
+          docker compose -f docker-compose.prod.yml build --pull
+
+      - name: Run DB migrations
+        run: |
+          docker compose -f docker-compose.prod.yml run --rm \
+            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            scraper pnpm --filter @mtg-au/scraper db:migrate
+
+      - name: Restart services
+        run: |
+          docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+      - name: Health check
+        run: |
+          echo "Waiting for web service to become healthy..."
+          for i in $(seq 1 12); do
+            if docker compose -f docker-compose.prod.yml exec -T web wget -qO- http://localhost:3000/api/health 2>/dev/null; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Attempt $i/12 — retrying in 5s..."
+            sleep 5
+          done
+          echo "Health check failed after 60s" >&2
+          docker compose -f docker-compose.prod.yml logs --tail=50 web
+          exit 1
