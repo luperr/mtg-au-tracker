@@ -1,0 +1,17 @@
+node_modules
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/build
+*.log
+.env*
+!.env.example
+.git
+.gitignore
+docs
+memory
+docker
+README.md
+CLAUDE.md
+LICENSE.md

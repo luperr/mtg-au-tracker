@@ -23,9 +23,17 @@ const LINE_COLORS = [
   "#8ab87e", // green
   "#c46f9a", // pink
   "#8899cc", // indigo
+  "#e8c547", // yellow
+  "#70b8e8", // sky
+  "#d47080", // rose
+  "#60c870", // lime
+  "#e890b0", // magenta
+  "#90d0b8", // mint
+  "#b8a060", // bronze
+  "#a8c0e0", // periwinkle
 ];
 
-const MAX_PRINTINGS = 8;
+const MAX_PRINTINGS = 16;
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr);

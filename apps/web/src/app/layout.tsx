@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Bitcount_Prop_Double } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { ThemeToggle } from "./ThemeToggle";
 import { DragDropSearch } from "./DragDropSearch";
@@ -40,6 +41,11 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: `(function(){var t=localStorage.getItem('theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')})()` }} />
       </head>
+      <Script
+        src="https://umami.scrymarket.au/script.js"
+        data-website-id="ba5a4121-875c-4ad2-a05e-dbab6b207c03"
+        strategy="afterInteractive"
+      />
       <body className="min-h-screen bg-bg text-cream antialiased flex flex-col">
         <WantListProvider>
           <DragDropSearch />
