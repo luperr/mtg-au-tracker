@@ -1,46 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect, type SyntheticEvent } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import { useClickOutside } from "@/lib/hooks/useClickOutside";
 import { useWantList, type WantListItem } from "@/app/WantListContext";
 import { fmtAUD } from "@/lib/format";
-import { RARITY_FILTER, RARITY_FALLBACK_COLOR } from "@/lib/rarity";
 import { STORE_FLAT_SHIPPING_AUD } from "@/lib/store-shipping";
+import { SetSymbol } from "@/app/SetSymbol";
 import { ImportCards } from "./ImportCards";
 import type { OptimizeResult } from "@/app/api/optimize/route";
-
-// ── Set symbol (local copy — same as PricesTable) ─────────────────────────────
-
-function SetSymbol({ setCode, setName, rarity }: { setCode: string; setName: string; rarity: string }) {
-  const [failed, setFailed] = useState(false);
-  const color = RARITY_FALLBACK_COLOR[rarity] ?? RARITY_FALLBACK_COLOR.common;
-
-  function onError(e: SyntheticEvent<HTMLImageElement>) {
-    e.currentTarget.style.display = "none";
-    setFailed(true);
-  }
-
-  if (failed) {
-    return (
-      <span style={{ color, fontSize: 14, width: 18, textAlign: "center", display: "inline-block" }} title={setName}>
-        ❖
-      </span>
-    );
-  }
-
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={`https://svgs.scryfall.io/sets/${setCode}.svg`}
-      alt={setName}
-      width={18}
-      height={18}
-      className="shrink-0"
-      style={{ filter: RARITY_FILTER[rarity] ?? RARITY_FILTER.common }}
-      loading="lazy"
-      onError={onError}
-    />
-  );
-}
 
 // ── Printing selector ─────────────────────────────────────────────────────────
 
@@ -69,6 +36,7 @@ function PrintingSelector({
 }) {
   const [open, setOpen] = useState(false);
   const [printings, setPrintings] = useState<StorePrinting[] | null>(null);
+  const [printingPreview, setPrintingPreview] = useState<{ uri: string; top: number; left: number } | null>(null);
   const loadedRef = useRef(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -86,13 +54,23 @@ function PrintingSelector({
   }, [open, item.cardId]);
 
   useEffect(() => {
-    if (!open) return;
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    if (!open) setPrintingPreview(null);
   }, [open]);
+
+  useClickOutside(ref, open, () => setOpen(false));
+
+  function showPrintingPreview(uri: string, e: React.MouseEvent<HTMLButtonElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const popupW = 244;
+    const popupH = 340;
+    // Position to the right of the dropdown row; fall back to left if no room
+    const spaceRight = window.innerWidth - rect.right;
+    let left = spaceRight >= popupW + 16 ? rect.right + 8 : rect.left - popupW - 8;
+    left = Math.max(8, Math.min(left, window.innerWidth - popupW - 8));
+    let top = rect.top + rect.height / 2 - popupH / 2;
+    top = Math.max(8, Math.min(top, window.innerHeight - popupH - 8));
+    setPrintingPreview({ uri, top, left });
+  }
 
   return (
     <div ref={ref} className="relative inline-block">
@@ -104,6 +82,18 @@ function PrintingSelector({
         <SetSymbol setCode={item.setCode} setName={item.setName} rarity={item.rarity} />
         <span className="text-[8px] text-cream-dim/30">▼</span>
       </button>
+
+      {/* Card image preview — fixed so it escapes overflow clipping */}
+      {printingPreview && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={printingPreview.uri}
+          alt=""
+          width={244}
+          className="fixed z-[60] pointer-events-none rounded-xl shadow-2xl shadow-black/80 border border-subtle"
+          style={{ top: printingPreview.top, left: printingPreview.left }}
+        />
+      )}
 
       {open && (
         <div className="absolute top-full left-0 mt-1 z-50 min-w-[280px] rounded-lg border border-subtle bg-surface shadow-xl shadow-black/50">
@@ -119,6 +109,8 @@ function PrintingSelector({
                   <button
                     key={`${p.id}-${p.storeId}`}
                     onClick={() => { onSelect(p); setOpen(false); }}
+                    onMouseEnter={p.imageUri ? (e) => showPrintingPreview(p.imageUri!, e) : undefined}
+                    onMouseLeave={() => setPrintingPreview(null)}
                     className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-muted ${
                       isCurrent ? "text-cream" : "text-cream-dim"
                     }`}
@@ -234,7 +226,7 @@ function OptimiseModal({
       <div className="absolute inset-0 bg-black/60" onClick={onDismiss} />
 
       {/* Panel */}
-      <div className="relative z-10 w-full max-w-xl flex flex-col max-h-[85vh] rounded-xl border border-subtle bg-surface shadow-2xl">
+      <div className="relative z-10 w-full max-w-md flex flex-col max-h-[85vh] rounded-xl border border-subtle bg-surface shadow-2xl overflow-hidden">
 
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-subtle shrink-0">
@@ -389,27 +381,25 @@ function OptimiseModal({
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-subtle shrink-0 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            {lockedPrintingIds.size > 0 && (
-              <button
-                onClick={onReoptimise}
-                disabled={loading}
-                className="rounded-lg border border-accent-border bg-accent-muted/40 px-3 py-1.5 text-xs font-semibold text-accent-light hover:bg-accent-muted transition-colors disabled:opacity-50"
-              >
-                Re-optimise
-              </button>
-            )}
-            {changed.length > 0 && (
-              <button
-                onClick={() => onToggleAll(changed.map((a) => a.cardId))}
-                className="text-xs text-cream-dim/40 hover:text-cream-dim transition-colors"
-              >
-                {allChecked ? "Deselect all" : "Select all"}
-              </button>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
+        <div className="px-4 py-3 border-t border-subtle shrink-0 flex flex-wrap items-center gap-x-3 gap-y-2">
+          {lockedPrintingIds.size > 0 && (
+            <button
+              onClick={onReoptimise}
+              disabled={loading}
+              className="rounded-lg border border-accent-border bg-accent-muted/40 px-3 py-1.5 text-xs font-semibold text-accent-light hover:bg-accent-muted transition-colors disabled:opacity-50"
+            >
+              Re-optimise
+            </button>
+          )}
+          {changed.length > 0 && (
+            <button
+              onClick={() => onToggleAll(changed.map((a) => a.cardId))}
+              className="text-xs text-cream-dim/40 hover:text-cream-dim transition-colors"
+            >
+              {allChecked ? "Deselect all" : "Select all"}
+            </button>
+          )}
+          <div className="flex items-center gap-3 ml-auto">
             <button
               onClick={onDismiss}
               className="text-xs text-cream-dim/40 hover:text-cream-dim transition-colors"
@@ -426,8 +416,8 @@ function OptimiseModal({
           </div>
         </div>
 
-        {/* Algorithm footnote */}
-        <div className="px-4 pb-2.5 shrink-0">
+        {/* Algorithm footnote — hidden on mobile to avoid clipping */}
+        <div className="hidden sm:block px-4 pb-2.5 shrink-0">
           <p className="text-[10px] text-cream-dim/25 leading-relaxed">
             Searches all in-stock printings across all stores. Flat-rate store postage is shared — the more cards from one store, the better the economics. Lock a card to pin it to its current printing, then re-optimise.
           </p>
@@ -443,6 +433,19 @@ export function WantListView() {
   const { items, removeItem, addItem, clearAll, totalCount } = useWantList();
   const byStore = groupByStore(items);
   const [optimiseOpen, setOptimiseOpen] = useState(false);
+  const [cardPreview, setCardPreview] = useState<{ uri: string; top: number; left: number } | null>(null);
+
+  function showCardPreview(uri: string, e: React.MouseEvent<HTMLElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const popupW = 244;
+    const popupH = 340;
+    const spaceRight = window.innerWidth - rect.right;
+    let left = spaceRight >= popupW + 16 ? rect.right + 8 : rect.left - popupW - 8;
+    left = Math.max(8, Math.min(left, window.innerWidth - popupW - 8));
+    let top = rect.top + rect.height / 2 - popupH / 2;
+    top = Math.max(8, Math.min(top, window.innerHeight - popupH - 8));
+    setCardPreview({ uri, top, left });
+  }
   const [optimiseLoading, setOptimiseLoading] = useState(false);
   const [optimiseResult, setOptimiseResult] = useState<OptimizeResult | null>(null);
   const [lockedPrintingIds, setLockedPrintingIds] = useState<Set<string>>(new Set());
@@ -698,6 +701,8 @@ export function WantListView() {
                           <a
                             href={`/cards/${item.cardId}`}
                             className="font-medium text-cream hover:text-accent transition-colors"
+                            onMouseEnter={item.imageUri ? (e) => showCardPreview(item.imageUri!, e) : undefined}
+                            onMouseLeave={() => setCardPreview(null)}
                           >
                             {item.cardName}
                           </a>
@@ -795,6 +800,18 @@ export function WantListView() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Card image preview on name hover */}
+      {cardPreview && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={cardPreview.uri}
+          alt=""
+          width={244}
+          className="fixed z-50 pointer-events-none rounded-xl shadow-2xl shadow-black/80 border border-subtle"
+          style={{ top: cardPreview.top, left: cardPreview.left }}
+        />
       )}
 
       {/* Optimise modal */}
