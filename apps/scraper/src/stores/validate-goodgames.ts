@@ -19,7 +19,8 @@
  *   SUMMARY      — counts per match type and confidence tier
  */
 
-import { GoodGamesScraper } from "./goodgames.js";
+import { ShopifyScraper } from "./shopify.js";
+import { SHOPIFY_STORES } from "./shopify-stores.config.js";
 import { CardMatcher } from "../matching/card-matcher.js";
 import type { ScrapedCard } from "@mtg-au/shared";
 import type { MatchResult } from "../matching/card-matcher.js";
@@ -56,7 +57,7 @@ async function main() {
   const matcher = new CardMatcher();
   await matcher.build();
 
-  const scraper = new GoodGamesScraper();
+  const scraper = new ShopifyScraper(SHOPIFY_STORES.find((s) => s.id === "good_games")!);
   const results: ValidatedCard[] = [];
   let pageCount = 0;
 

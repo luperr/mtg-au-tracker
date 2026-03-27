@@ -19,16 +19,20 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
 import { CardMatcher } from "../matching/card-matcher.js";
 import { MtgMateScraper } from "./mtgmate.js";
-import { GoodGamesScraper } from "./goodgames.js";
+import { ShopifyScraper } from "./shopify.js";
+import { SHOPIFY_STORES } from "./shopify-stores.config.js";
 import { seedStores } from "../seed.js";
 import type { BaseScraper } from "./base-scraper.js";
 import type { ScrapedCard } from "@mtg-au/shared";
 
 // ── Scraper registry ──────────────────────────────────────────────────────────
-// Add new scrapers here as they are built.
-const SCRAPERS: Record<string, () => BaseScraper> = {
+// To add a new Shopify store, add an entry to shopify-stores.config.ts.
+// Non-Shopify scrapers are registered here manually.
+export const SCRAPERS: Record<string, () => BaseScraper> = {
   mtg_mate: () => new MtgMateScraper(),
-  good_games: () => new GoodGamesScraper(),
+  ...Object.fromEntries(
+    SHOPIFY_STORES.map((config) => [config.id, () => new ShopifyScraper(config)])
+  ),
 };
 
 // Batch size for DB inserts — keeps memory bounded and avoids huge single queries

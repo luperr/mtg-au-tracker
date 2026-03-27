@@ -1,35 +1,35 @@
 /**
- * Good Games scraper — https://tcg.goodgames.com.au
+ * Generic Shopify scraper for Australian MTG stores.
  *
- * Good Games runs a Shopify TCG store at tcg.goodgames.com.au (not the main
- * goodgames.com.au domain). We hit the Shopify products.json API through
- * Playwright so Cloudflare challenges are handled automatically.
+ * Any store running Shopify can be added by creating a ShopifyStoreConfig entry
+ * in shopify-stores.config.ts — no scraper code changes needed.
+ *
+ * Tested stores:
+ *   - Good Games   (tcg.goodgames.com.au)
+ *   - Gameology    (gameology.com.au)
+ *   - Plenty of Games (plentyofgames.com.au)
  *
  * Strategy:
- *   Paginate /collections/mtg-singles-all-products/products.json?limit=250&page=N
- *   until an empty products array is returned. Each Shopify product has:
- *     - title: The card name (may include set in parentheses)
- *     - tags: Array of strings — includes set name/code, colours, etc.
+ *   Paginate /collections/{handle}/products.json?limit=250&page=N until an
+ *   empty products array is returned. Each Shopify product has:
+ *     - title: The card name (may include set in parentheses or after a dash)
+ *     - tags: Array of strings — may include set names, colours, etc.
  *     - options: Named option axes (Condition, Finish / Foil, etc.)
- *     - variants: One per condition+foil combo — each has price + stock count
+ *     - variants: One per condition+foil combo — each has price + stock status
  *
  * Parsing strategy:
  *   - Card name: strip common set-suffix patterns from product title.
  *   - Set name: prefer tags starting with "Set:" / "set:", else try title suffix.
  *   - Condition + foil: read from variant option values (option1/option2 keyed by
  *     option axis name). Falls back to splitting variant.title on " / ".
- *   - Stock: variant.inventory_quantity > 0, or variant.available = true.
- *
- * Debugging:
- *   Run `pnpm --filter @mtg-au/scraper test:goodgames` to execute a smoke test
- *   that prints the first page of parsed ScrapedCard objects.
+ *   - Stock: variant.available boolean, or fall back to inventory_quantity > 0.
+ *   - Only NM variants are emitted (same behaviour as original Good Games scraper).
  */
 
 import type { ScrapedCard } from "@mtg-au/shared";
 import { BaseScraper } from "./base-scraper.js";
+import type { ShopifyStoreConfig } from "./shopify-stores.config.js";
 
-const BASE_URL = "https://tcg.goodgames.com.au";
-const COLLECTION = "mtg-singles-all-products";
 const PAGE_SIZE = 250;
 
 // ── Shopify JSON API types ────────────────────────────────────────────────────
@@ -43,6 +43,7 @@ interface ShopifyVariant {
   id: number;
   title: string;          // e.g. "Near Mint / Non-Foil" or "Default Title"
   price: string;          // AUD as decimal string e.g. "4.50"
+  sku: string | null;     // e.g. "MOC-381-EN-NF-1" or "MTG-TLA-336-01WREUQWQQ"
   available: boolean;
   inventory_quantity: number;
   option1: string | null;
@@ -135,6 +136,64 @@ function extractSetFromTags(tags: string[]): string | null {
   return null;
 }
 
+// Gameology encodes foil in tags: "Printing_Non-Foil" or "Printing_Foil".
+function extractFoilFromTags(tags: string[]): boolean | null {
+  for (const tag of tags) {
+    const lower = tag.toLowerCase();
+    if (lower === "printing_non-foil" || lower === "printing_nonfoil") return false;
+    if (lower === "printing_foil") return true;
+  }
+  return null;
+}
+
+// ── SKU parsing ───────────────────────────────────────────────────────────────
+// Two known SKU formats used by AU Shopify MTG stores:
+//
+// Format A — Good Games / Plenty of Games:
+//   {SET}-{COLLECTOR}-{LANG}-{FINISH}-{CONDITION_NUM}
+//   e.g. "MOC-381-EN-NF-1", "LTR-123-EN-F-2"
+//   FINISH: NF = non-foil; F, FO, FOIL = foil
+//
+// Format B — Gameology:
+//   MTG-{SET}-{COLLECTOR}-{RANDOM_SUFFIX}
+//   e.g. "MTG-TLA-336-01WREUQWQQ"
+//   Foil is determined from product tags instead.
+
+interface SkuData {
+  setCode: string | null;
+  collectorNumber: string | null;
+  isFoil: boolean | null; // null = could not determine from SKU alone
+}
+
+const NON_FOIL_FINISHES = new Set(["NF", "NONFOIL", "NON-FOIL"]);
+
+function parseSkuData(sku: string | null | undefined): SkuData {
+  if (!sku) return { setCode: null, collectorNumber: null, isFoil: null };
+
+  // Format A: SET-COLLECTOR-LANG-FINISH-CONDITION  e.g. "MOC-381-EN-NF-1"
+  const formatA = sku.match(/^([A-Z0-9]{2,6})-(\d{1,4}[a-z]?)-[A-Z]{2}-([A-Z-]+)-\d+$/i);
+  if (formatA) {
+    const finish = formatA[3].toUpperCase();
+    return {
+      setCode: formatA[1].toLowerCase(),
+      collectorNumber: formatA[2],
+      isFoil: !NON_FOIL_FINISHES.has(finish),
+    };
+  }
+
+  // Format B: MTG-SET-COLLECTOR-RANDOMSUFFIX  e.g. "MTG-TLA-336-01WREUQWQQ"
+  const formatB = sku.match(/^MTG-([A-Z0-9]{2,6})-(\d{1,4}[a-z]?)-/i);
+  if (formatB) {
+    return {
+      setCode: formatB[1].toLowerCase(),
+      collectorNumber: formatB[2],
+      isFoil: null,
+    };
+  }
+
+  return { setCode: null, collectorNumber: null, isFoil: null };
+}
+
 // ── Variant option parsing ────────────────────────────────────────────────────
 // Map option axes by name to find which optionN slot holds Condition / Foil.
 // Falls back to splitting variant.title on " / " if no named axes match.
@@ -177,14 +236,19 @@ function parseVariant(variant: ShopifyVariant, options: ShopifyOption[]): Parsed
     }
   }
 
-  // If no named axes matched (e.g. only axis is "Title"), try splitting variant.title
-  if (!conditionRaw && !foilRaw && variant.title !== "Default Title") {
+  // If no named axes matched (e.g. only axis is "Title"), try splitting variant.title.
+  // Shopify's own "Default Title" / "Default" means a single-variant product with no
+  // condition options — treat it as NM non-foil (condition is implied by the listing).
+  if (!conditionRaw && !foilRaw) {
+    if (variant.title === "Default Title" || variant.title === "Default") {
+      return { condition: "NM", isFoil: false };
+    }
     const parts = variant.title.split(/\s*\/\s*/);
     if (parts.length >= 1) conditionRaw = parts[0];
     if (parts.length >= 2) foilRaw = parts[1].toLowerCase();
   }
 
-  // Good Games sometimes encodes foil in the condition string: "Near Mint Foil"
+  // Some stores encode foil in the condition string: "Near Mint Foil"
   // Strip the foil suffix and treat as isFoil=true
   const foilSuffix = /\s+foil$/i;
   let foilFromCondition = false;
@@ -211,11 +275,11 @@ function isInStock(variant: ShopifyVariant): boolean {
 }
 
 // ── Variant product detection ─────────────────────────────────────────────────
-// Good Games includes the variant type in the product title (e.g. "Quantum Riddler
-// Borderless"). Without collector numbers we can't reliably identify *which*
-// specific printing in a set this is, so non-borderless variants are skipped.
-// Borderless cards ARE handled: we strip the word and pass isBorderless=true so
-// the matcher can reverse its sort and prefer the high-collector-number printing.
+// Some stores include variant type keywords in the product title (e.g. "Quantum
+// Riddler Borderless"). Without collector numbers we can't reliably identify
+// *which* specific printing in a set this is, so non-borderless variants are
+// skipped. Borderless IS handled: we strip the word and pass isBorderless=true
+// so the matcher can reverse its sort and prefer the high-collector-number printing.
 
 const SKIP_VARIANT_KEYWORDS = [
   "extended art",
@@ -237,12 +301,10 @@ const SKIP_VARIANT_KEYWORDS = [
 ];
 
 // Matches "borderless" as a whole word anywhere in a string (case-insensitive).
-// Good Games titles can be "Card Borderless - Set Name" so end-of-string checks miss it.
 const BORDERLESS_WORD = /\bborderless\b/i;
 
-// Good Games encodes collector numbers as a zero-padded 4-digit number in
-// parentheses anywhere in the product title, e.g. "Spider-Man 2099 (0216) ()"
-// or "Kaalia of the Vast () (0343)".  We extract it before parsing the card name.
+// Collector numbers encoded as zero-padded 4-digit numbers in parentheses, e.g.
+// "Spider-Man 2099 (0216)" or "Kaalia of the Vast () (0343)".
 const COLLECTOR_NUM_RE = /\((\d{4})\)/;
 
 function isSkippedVariant(title: string): boolean {
@@ -250,8 +312,7 @@ function isSkippedVariant(title: string): boolean {
   return SKIP_VARIANT_KEYWORDS.some((kw) => lower.includes(kw));
 }
 
-// Tokens, emblems, and double-faced tokens (e.g. "Forest // Forest") are not
-// in our printings DB (they're filtered out during Scryfall import) so skip them.
+// Tokens, emblems, and double-faced tokens are not in our printings DB.
 function isTokenOrEmblem(product: ShopifyProduct): boolean {
   const lower = product.title.toLowerCase();
   if (/\btoken\b/.test(lower)) return true;
@@ -262,13 +323,12 @@ function isTokenOrEmblem(product: ShopifyProduct): boolean {
 }
 
 // ── LotR Commander "named land" detection ─────────────────────────────────────
-// Good Games lists LotR alternative-name cards as e.g.:
+// Some stores list LotR alternative-name cards as e.g.:
 //   "Helm's Deep - Shinka, the Bloodsoaked Keep - The LotR: Commander"
 // After parseProductTitle this becomes:
 //   cardName = "Helm's Deep"
 //   setName  = "Shinka, the Bloodsoaked Keep [The LotR: Commander]"
 // The real Scryfall card name is the part of setName before the first " [".
-// We detect this when setName contains " [" and the prefix looks like a card name.
 
 function extractLotRStyleName(cardName: string, setName: string | null): { rawName: string; resolvedSetName: string | null } {
   if (!setName) return { rawName: cardName, resolvedSetName: setName };
@@ -279,7 +339,6 @@ function extractLotRStyleName(cardName: string, setName: string | null): { rawNa
   const innerSet = setName.slice(bracketPos + 2, setName.lastIndexOf("]")).trim();
 
   // Only swap if the prefix looks like a card name (has a capital letter, no digits)
-  // and not like a set name fragment
   if (prefix.length > 2 && /^[A-Z]/.test(prefix)) {
     return { rawName: prefix, resolvedSetName: innerSet || null };
   }
@@ -288,15 +347,33 @@ function extractLotRStyleName(cardName: string, setName: string | null): { rawNa
 
 // ── Product → ScrapedCard[] ───────────────────────────────────────────────────
 
-function mapProduct(product: ShopifyProduct): ScrapedCard[] {
-  if (isSkippedVariant(product.title)) return [];
+function mapProduct(product: ShopifyProduct, baseUrl: string): ScrapedCard[] {
   if (isTokenOrEmblem(product)) return [];
+
+  // Parse set code + collector number + foil from the first variant's SKU.
+  // These are more reliable than title parsing and allow us to match special
+  // treatments (showcase, extended art, etc.) that would otherwise be skipped.
+  const skuData = parseSkuData(product.variants[0]?.sku);
+  const hasSkuMatch = skuData.setCode !== null && skuData.collectorNumber !== null;
+
+  // Only skip variant keywords (showcase, extended art, etc.) when we don't
+  // have a precise SKU match — without set+collector we can't reliably identify
+  // which specific printing it is.
+  if (!hasSkuMatch && isSkippedVariant(product.title)) return [];
+
+  // Foil from tags (e.g. Gameology's "Printing_Non-Foil" / "Printing_Foil").
+  // Used as fallback when the SKU format doesn't encode finish.
+  const tagFoil = extractFoilFromTags(product.tags);
 
   const isBorderless = BORDERLESS_WORD.test(product.title);
 
-  // Extract collector number before stripping anything else so we don't lose it.
+  // Title-based collector number extraction (4-digit zero-padded pattern).
+  // Used as fallback when SKU doesn't provide a collector number.
   const collectorMatch = COLLECTOR_NUM_RE.exec(product.title);
-  const collectorNumber = collectorMatch ? String(parseInt(collectorMatch[1], 10)) : null;
+  const titleCollectorNumber = collectorMatch ? String(parseInt(collectorMatch[1], 10)) : null;
+
+  const collectorNumber = skuData.collectorNumber ?? titleCollectorNumber;
+  const setCode = skuData.setCode;
 
   // Build a clean title for card name / set name parsing:
   // remove the zero-padded collector number and "Borderless" word.
@@ -312,21 +389,24 @@ function mapProduct(product: ShopifyProduct): ScrapedCard[] {
   // Resolve LotR-style "DisplayName - RealCardName [Set]" product titles
   const { rawName: cardName, resolvedSetName: setName } = extractLotRStyleName(parsedCardName, rawSetName);
 
-  const sourceUrl = `${BASE_URL}/products/${product.handle}`;
+  const sourceUrl = `${baseUrl}/products/${product.handle}`;
   const results: ScrapedCard[] = [];
 
   for (const variant of product.variants) {
     const priceNum = parseFloat(variant.price);
     if (isNaN(priceNum) || priceNum <= 0) continue;
 
-    const { condition, isFoil } = parseVariant(variant, product.options);
+    const { condition, isFoil: variantFoil } = parseVariant(variant, product.options);
     if (condition !== "NM") continue;
+
+    // Foil priority: SKU finish field > tag > variant option parsing
+    const isFoil = skuData.isFoil ?? tagFoil ?? variantFoil;
 
     results.push({
       rawName: cardName,
-      setCode: null,       // Good Games doesn't expose Scryfall set codes directly
-      setName,             // Resolved to setCode by CardMatcher.setNameIndex
-      collectorNumber,     // Extracted from title "(NNNN)" pattern when present
+      setCode,
+      setName,
+      collectorNumber,
       price: priceNum.toFixed(2),
       priceType: "sell",
       condition,
@@ -342,49 +422,53 @@ function mapProduct(product: ShopifyProduct): ScrapedCard[] {
 
 // ── Scraper class ─────────────────────────────────────────────────────────────
 
-export class GoodGamesScraper extends BaseScraper {
-  getBaseUrl(): string {
-    return BASE_URL;
+export class ShopifyScraper extends BaseScraper {
+  constructor(private config: ShopifyStoreConfig) {
+    super();
   }
 
-  private async fetchPage(pageNum: number): Promise<ShopifyProduct[]> {
-    const url = `${BASE_URL}/collections/${COLLECTION}/products.json?limit=${PAGE_SIZE}&page=${pageNum}`;
+  getBaseUrl(): string {
+    return this.config.baseUrl;
+  }
+
+  private async fetchProductsPage(pageNum: number): Promise<ShopifyProduct[]> {
+    const url = `${this.config.baseUrl}/collections/${this.config.collectionHandle}/products.json?limit=${PAGE_SIZE}&page=${pageNum}`;
     try {
       const data = await this.fetchJson<ProductsResponse>(url);
       return data.products ?? [];
     } catch (err: unknown) {
-      console.warn(`[Good Games] Failed to fetch page ${pageNum}: ${err}`);
+      console.warn(`[${this.config.id}] Failed to fetch page ${pageNum}: ${err}`);
       return [];
     }
   }
 
   async *scrapeAll(): AsyncGenerator<ScrapedCard> {
-    console.log("[Good Games] Starting scrape via Shopify products.json...");
+    console.log(`[${this.config.id}] Starting scrape via Shopify products.json...`);
 
     let page = 1;
     let totalProducts = 0;
     let totalCards = 0;
 
     while (true) {
-      console.log(`[Good Games] Fetching page ${page}...`);
-      const products = await this.fetchPage(page);
+      console.log(`[${this.config.id}] Fetching page ${page}...`);
+      const products = await this.fetchProductsPage(page);
 
       if (products.length === 0) {
-        console.log(`[Good Games] No products on page ${page} — done.`);
+        console.log(`[${this.config.id}] No products on page ${page} — done.`);
         break;
       }
 
       totalProducts += products.length;
 
       for (const product of products) {
-        const cards = mapProduct(product);
+        const cards = mapProduct(product, this.config.baseUrl);
         totalCards += cards.length;
         for (const card of cards) {
           yield card;
         }
       }
 
-      console.log(`[Good Games] Page ${page}: ${products.length} products → ${totalCards} card variants so far`);
+      console.log(`[${this.config.id}] Page ${page}: ${products.length} products → ${totalCards} card variants so far`);
 
       if (products.length < PAGE_SIZE) {
         // Last page — no need to fetch another
@@ -394,6 +478,6 @@ export class GoodGamesScraper extends BaseScraper {
       page++;
     }
 
-    console.log(`[Good Games] Done. ${totalProducts} products → ${totalCards} ScrapedCard entries.`);
+    console.log(`[${this.config.id}] Done. ${totalProducts} products → ${totalCards} ScrapedCard entries.`);
   }
 }

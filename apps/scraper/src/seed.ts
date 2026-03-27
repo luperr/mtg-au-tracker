@@ -25,6 +25,18 @@ const STORES = [
     scraperEnabled: true,
   },
   {
+    id: "gameology",
+    name: "Gameology",
+    baseUrl: "https://www.gameology.com.au",
+    scraperEnabled: true,
+  },
+  {
+    id: "plenty_of_games",
+    name: "Plenty of Games",
+    baseUrl: "https://plentyofgames.com.au",
+    scraperEnabled: true,
+  },
+  {
     id: "mana_market",
     name: "Mana Market",
     baseUrl: "https://manamarket.com.au",

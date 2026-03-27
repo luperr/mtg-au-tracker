@@ -6,15 +6,17 @@
  *   docker compose run --rm dev pnpm --filter @mtg-au/scraper test:goodgames
  */
 
-import { GoodGamesScraper } from "./goodgames.js";
+import { ShopifyScraper } from "./shopify.js";
+import { SHOPIFY_STORES } from "./shopify-stores.config.js";
 
-const BASE_URL = "https://tcg.goodgames.com.au";
+const GG_CONFIG = SHOPIFY_STORES.find((s) => s.id === "good_games")!;
+const BASE_URL = GG_CONFIG.baseUrl;
 const PRINT_LIMIT = 20;
 // Only fetch the first page to keep the smoke test fast
 const MAX_CARDS = 250;
 
 async function main() {
-  const scraper = new GoodGamesScraper();
+  const scraper = new ShopifyScraper(GG_CONFIG);
 
   try {
     // 1. Health check
@@ -24,7 +26,7 @@ async function main() {
 
     // 2. Fetch first page of Shopify products.json directly
     console.log(`\nFetching first page of products from ${BASE_URL}...`);
-    const url = `${BASE_URL}/collections/mtg-singles-all-products/products.json?limit=5&page=1`;
+    const url = `${BASE_URL}/collections/${GG_CONFIG.collectionHandle}/products.json?limit=5&page=1`;
     const raw = await (scraper as any).fetchJson(url) as { products: any[] };
 
     if (!raw.products || raw.products.length === 0) {
