@@ -35,4 +35,94 @@ export const SHOPIFY_STORES: ShopifyStoreConfig[] = [
     baseUrl: "https://plentyofgames.com.au",
     collectionHandle: "mtg-singles-all-products",
   },
+  {
+    id: "games_portal",
+    baseUrl: "https://gamesportal.com.au",
+    collectionHandle: "magic-singles-instock",
+  },
+  {
+    id: "guf",
+    baseUrl: "https://guf.com.au",
+    collectionHandle: "mtg-singles-all-products",
+  },
+  {
+    id: "inn_games",
+    baseUrl: "https://inngames.com.au",
+    collectionHandle: "mtg-singles-instock",
+  },
+  {
+    id: "irresistible_force",
+    baseUrl: "https://tcg.irresistibleforce.com.au",
+    collectionHandle: "magic-the-gathering-singles",
+  },
+  {
+    id: "legends_and_collectables",
+    baseUrl: "https://legendsandcollectables.com",
+    collectionHandle: "mtg-singles-all-products",
+  },
+  {
+    id: "lots_moore",
+    baseUrl: "https://online.lotsmoore.com.au",
+    collectionHandle: "mtg-singles-instock",
+  },
+  {
+    id: "mana_market",
+    baseUrl: "https://manamarket.com.au",
+    collectionHandle: "magic-the-gathering-singles",
+  },
+  {
+    id: "pro_gamers",
+    baseUrl: "https://progamers.com.au",
+    collectionHandle: "mtg-singles-instock",
+  },
+  {
+    id: "rhystic_nostalgia",
+    baseUrl: "https://rhysticnostalgiagaming.com.au",
+    collectionHandle: "mtg-singles-instock",
+  },
+  {
+    id: "tabernacle_games",
+    baseUrl: "https://tcg.tabernaclegames.com.au",
+    collectionHandle: "mtg-singles-instock",
+  },
+  {
+    id: "cardhouse",
+    baseUrl: "https://www.cardhouse.com.au",
+    collectionHandle: "mtg-singles",
+  },
+  {
+    id: "tcg_singles",
+    baseUrl: "https://tcgsingles.com.au",
+    collectionHandle: "mtg-singles-instock",
+  },
+  {
+    id: "chromatic_games",
+    baseUrl: "https://chromaticgamestcg.com.au",
+    collectionHandle: "mtg-singles-in-stock",
+  },
+  {
+    id: "general_games",
+    baseUrl: "https://www.generalgames.com.au",
+    collectionHandle: "mtg-singles",
+  },
+  {
+    id: "elemental_arcade",
+    baseUrl: "https://elementalarcade.com.au",
+    collectionHandle: "mtg-singles-all-products",
+  },
+  {
+    id: "ronin_games",
+    baseUrl: "https://roningames.com.au",
+    collectionHandle: "mtg-singles-instock",
+  },
+  {
+    id: "from_the_deep",
+    baseUrl: "https://fromthedeepgames.com.au",
+    collectionHandle: "mtg-singles-instock",
+  },
+  {
+    id: "crit_hit",
+    baseUrl: "https://www.crithit.com.au",
+    collectionHandle: "magic-the-gathering-singles",
+  },
 ];

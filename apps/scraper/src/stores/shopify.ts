@@ -171,12 +171,14 @@ function parseSkuData(sku: string | null | undefined): SkuData {
   if (!sku) return { setCode: null, collectorNumber: null, isFoil: null };
 
   // Format A: SET-COLLECTOR-LANG-FINISH-CONDITION  e.g. "MOC-381-EN-NF-1"
-  const formatA = sku.match(/^([A-Z0-9]{2,6})-(\d{1,4}[a-z]?)-[A-Z]{2}-([A-Z-]+)-\d+$/i);
+  // Handles DFC collector numbers:  "MH3-244//244-EN-NF-1" (the //NNN part is ignored)
+  // Handles letter-suffixed collector numbers: "PTHB-244S-EN-FO-1" (lowercased to "244s")
+  const formatA = sku.match(/^([A-Z0-9]{2,6})-(\d{1,4}[a-zA-Z]?)(?:\/\/\d+)?-[A-Z]{2}-([A-Z-]+)-\d+$/i);
   if (formatA) {
     const finish = formatA[3].toUpperCase();
     return {
       setCode: formatA[1].toLowerCase(),
-      collectorNumber: formatA[2],
+      collectorNumber: formatA[2].toLowerCase(),
       isFoil: !NON_FOIL_FINISHES.has(finish),
     };
   }
