@@ -186,6 +186,23 @@ See `.env.example` for all variables. Key ones:
 
 ---
 
+## Adding a new Shopify store scraper
+
+Any AU MTG store running Shopify can be added with config changes only — no new scraper code.
+
+1. **`apps/scraper/src/stores/shopify-stores.config.ts`** — add entry to `SHOPIFY_STORES`:
+   ```ts
+   { id: "store_id", baseUrl: "https://store.com.au", collectionHandle: "magic-the-gathering-singles" }
+   ```
+2. **`apps/scraper/src/seed.ts`** — add entry to `STORES` with `scraperEnabled: true`
+3. **`apps/web/src/lib/store-shipping.ts`** — add flat-rate postage to `STORE_FLAT_SHIPPING_AUD` (use `null` if postage varies per item)
+4. Seed the DB: `docker compose run --rm scraper pnpm --filter @mtg-au/scraper seed`
+5. Test: `docker compose run --rm scraper pnpm --filter @mtg-au/scraper scrape:stores`
+
+To find the collection handle, browse to `/collections.json` on the store's domain and look for the MTG singles collection slug.
+
+---
+
 ## What's been built
 
 - [x] pnpm monorepo with scraper, web, and shared packages

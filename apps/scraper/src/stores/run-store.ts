@@ -5,18 +5,8 @@
  */
 
 import { fileURLToPath } from "url";
-import { eq } from "drizzle-orm";
-import { db, schema } from "../lib/db.js";
 import { CardMatcher } from "../matching/card-matcher.js";
-import { MtgMateScraper } from "./mtgmate.js";
-import { GoodGamesScraper } from "./goodgames.js";
-import type { BaseScraper } from "./base-scraper.js";
-import { runStore } from "./run-all.js";
-
-const SCRAPERS: Record<string, () => BaseScraper> = {
-  mtg_mate: () => new MtgMateScraper(),
-  good_games: () => new GoodGamesScraper(),
-};
+import { SCRAPERS, runStore } from "./run-all.js";
 
 async function main() {
   const storeId = process.argv[2];

@@ -6,6 +6,8 @@
  */
 export const STORE_FLAT_SHIPPING_AUD: Record<string, number | null> = {
   good_games: 6.50,
-  mtg_mate: 6.50,      
+  mtg_mate: 6.50,
+  gameology: 10.00,
+  plenty_of_games: 7.00,
   ebay_au: null,    // per-seller — handled as per-item shipping, not flat rate
 };
