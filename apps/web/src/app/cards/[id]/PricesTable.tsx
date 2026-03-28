@@ -367,7 +367,7 @@ export function PricesTable({
                     {row.url && (
                       <BuyLink
                         href={row.url}
-                        store={row.storeName}
+                        storeId={row.storeId}
                         card={cardName}
                         price={row.priceAud}
                         source="card-detail"

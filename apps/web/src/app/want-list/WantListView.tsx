@@ -822,7 +822,7 @@ export function WantListView() {
                           {item.url && (
                             <BuyLink
                               href={item.url}
-                              store={item.storeName}
+                              storeId={item.storeId}
                               card={item.cardName}
                               price={item.priceAud}
                               source="want-list"
