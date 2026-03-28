@@ -306,64 +306,62 @@ export function PricesTable({
       {/* Card view */}
       {view === "card" && rows.length > 0 && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {pageRows.map((row, i) => (
               <div
                 key={`${row.printing.id}-${row.storeName}-${i}`}
-                className={`rounded-lg border bg-surface p-3 flex flex-col gap-2 transition-colors cursor-default ${
-                  row.inStock ? "border-subtle hover:border-accent hover:bg-muted" : "border-subtle/40 opacity-60"
+                className={`flex flex-col rounded-lg overflow-hidden border transition-colors ${
+                  row.inStock
+                    ? "border-subtle hover:border-accent"
+                    : "border-subtle/30 opacity-40 grayscale"
                 }`}
                 onMouseEnter={() => onHoverImage(row.printing.imageUri)}
                 onMouseLeave={() => onHoverImage(defaultImage)}
               >
-                {/* Set + foil */}
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <SetSymbol
-                    setCode={row.printing.setCode}
-                    setName={row.printing.setName}
-                    rarity={row.printing.rarity}
-                  />
-                  <span className="text-xs text-cream truncate">{row.printing.setName}</span>
-                  {row.printing.isFoil && <span className="text-[10px] text-accent shrink-0">✦</span>}
+                {/* Card image */}
+                <div className="relative w-full" style={{ paddingBottom: "139.4%" }}>
+                  {row.printing.imageUri ? (
+                    <img
+                      src={row.printing.imageUri}
+                      alt={`${row.printing.setName}${row.printing.isFoil ? " foil" : ""}`}
+                      className="absolute inset-0 w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center bg-muted text-cream-dim/30 text-xs">
+                      No image
+                    </div>
+                  )}
+                  {row.printing.isFoil && (
+                    <span className="absolute top-1.5 right-1.5 text-[10px] text-accent bg-black/60 rounded px-1">✦</span>
+                  )}
                 </div>
 
-                {/* Store */}
-                <div className="text-xs text-cream-dim font-medium truncate">{row.storeName}</div>
-
-                {/* Price + stock */}
-                <div className="flex items-center justify-between gap-1 mt-auto">
-                  <div>
-                    <span className="text-sm text-price font-semibold">{fmtAUD(row.priceAud)}</span>
-                    {row.shippingAud !== null && (
-                      <span className="ml-1 text-[10px] text-cream-dim/50">
-                        +{row.shippingAud === 0 ? "free" : fmtAUD(row.shippingAud)}
+                {/* Footer: store, price, buy */}
+                <div className="bg-surface px-2 py-2 flex flex-col gap-1">
+                  <div className="text-[10px] text-cream-dim/60 truncate">{row.storeName}</div>
+                  <div className="flex items-center justify-between gap-1">
+                    <div>
+                      <span className={`text-sm font-semibold ${row.inStock ? "text-price" : "text-cream-dim/50"}`}>
+                        {fmtAUD(row.priceAud)}
                       </span>
+                      {row.shippingAud !== null && (
+                        <span className="ml-1 text-[10px] text-cream-dim/40">
+                          +{row.shippingAud === 0 ? "free" : fmtAUD(row.shippingAud)}
+                        </span>
+                      )}
+                    </div>
+                    {row.url && row.inStock && (
+                      <a
+                        href={row.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-price hover:text-cream transition-colors shrink-0"
+                      >
+                        Buy ↗
+                      </a>
                     )}
                   </div>
-                  <span
-                    className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0 ${
-                      row.inStock ? "bg-green-900/50 text-green-400" : "bg-red-900/50 text-red-400"
-                    }`}
-                  >
-                    {row.inStock ? "In stock" : "Out"}
-                  </span>
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center justify-between gap-1">
-                  {row.url ? (
-                    <a
-                      href={row.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-price hover:text-cream transition-colors"
-                    >
-                      Buy ↗
-                    </a>
-                  ) : <span />}
-                  {row.inStock && (
-                    <WantListButton row={row} cardId={cardId} cardName={cardName} />
-                  )}
                 </div>
               </div>
             ))}
