@@ -7,6 +7,7 @@ import { useWantList } from "@/app/WantListContext";
 import { fmtAUD } from "@/lib/format";
 import { Dropdown, OptionItem } from "@/app/Dropdown";
 import { SetSymbol } from "@/app/SetSymbol";
+import { BuyLink } from "@/app/BuyLink";
 
 type FoilFilter = "all" | "nonfoil" | "foil";
 type SortBy = "price_asc" | "price_desc" | "total_asc" | "total_desc" | "newest" | "oldest";
@@ -364,14 +365,13 @@ export function PricesTable({
 
                   <td className="px-3 py-2.5 text-right">
                     {row.url && (
-                      <a
+                      <BuyLink
                         href={row.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-price hover:text-cream text-sm transition-colors"
-                      >
-                        Buy ↗
-                      </a>
+                        storeId={row.storeId}
+                        card={cardName}
+                        price={row.priceAud}
+                        source="card-detail"
+                      />
                     )}
                   </td>
 
