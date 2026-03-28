@@ -179,3 +179,21 @@ export const ebaySearchLog = pgTable("ebay_search_log", {
   lastSearchedAt: date("last_searched_at").notNull(),
   lastResultCount: integer("last_result_count").notNull().default(0),
 });
+
+// ─── Card Searches ────────────────────────────────────────────────────────────
+// Append-only log of user card searches. One row per search event.
+// Powers the "top searched cards" store dashboard and demand analytics.
+
+export const cardSearches = pgTable(
+  "card_searches",
+  {
+    id: serial("id").primaryKey(),
+    cardId: text("card_id").references(() => cards.id), // null if query matched no card
+    query: text("query").notNull(),                     // raw user query string
+    searchedAt: timestamp("searched_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("card_searches_card_id_idx").on(table.cardId),
+    index("card_searches_searched_at_idx").on(table.searchedAt),
+  ]
+);

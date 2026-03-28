@@ -31,6 +31,11 @@ export async function GET(req: NextRequest) {
 
   if (!q) return NextResponse.json({ results: [], hasMore: false });
 
+  // Log the search query to DB on the first page only (offset=0 = new search, not pagination)
+  if (offset === 0) {
+    sql`INSERT INTO card_searches (query) VALUES (${q})`.execute().catch(() => {});
+  }
+
   try {
     const results = await searchCards(q, offset);
 
