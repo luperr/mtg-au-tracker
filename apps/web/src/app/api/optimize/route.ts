@@ -61,20 +61,72 @@ export type OptimizeResult = {
 // ── Optimization logic ────────────────────────────────────────────────────────
 
 /**
- * Evaluate one combination of pool stores.
+ * Branch-and-bound over the set of pool stores to activate.
  *
- * Pool stores (Good Games, MTG Mate) charge a flat shipping fee per order.
- * All other stores (eBay) charge per-listing shipping.
+ * At each node we compute an optimistic lower bound by opening all undecided
+ * stores at $0 flat fee. If that bound cannot beat the current best we prune
+ * the entire subtree. The active Set is mutated in-place and restored on
+ * backtrack to avoid O(S) allocation per node.
  *
- * byCard is keyed by cardId → all available listings for that card (already
- * filtered to respect locked printings). Each card is assigned to the cheapest
- * listing, where pool-store items don't pay per-card shipping (amortised).
- * Flat shipping is added once per used pool store.
+ * Stores should be sorted cheapest-flat-rate-first before calling so that
+ * free/cheap stores are explored early, producing tight bounds quickly.
+ */
+function branchAndBound(
+  stores: string[],
+  idx: number,
+  active: Set<string>,
+  available: OptimizeItem[],
+  byCard: Map<string, Listing[]>,
+  allPoolStoreIds: Set<string>,
+  flatRates: Record<string, number | null>,
+  best: { cost: number; assignments: Map<string, Listing> | null }
+): void {
+  // Build optimistic lower bound: open every undecided store at $0 flat fee.
+  const optimisticActive = new Set(active);
+  const optimisticRates: Record<string, number | null> = { ...flatRates };
+  for (let i = idx; i < stores.length; i++) {
+    optimisticActive.add(stores[i]);
+    optimisticRates[stores[i]] = 0;
+  }
+  const lb = evaluateSubset(available, byCard, optimisticActive, allPoolStoreIds, optimisticRates);
+  if (!lb || lb.cost >= best.cost) return; // prune
+
+  if (idx === stores.length) {
+    // Leaf: no undecided stores remain, so optimisticRates === flatRates and the
+    // bound is the exact cost for this active set.
+    best.cost = lb.cost;
+    best.assignments = lb.assignments;
+    return;
+  }
+
+  const storeId = stores[idx];
+
+  // Include branch first — cheaper stores (sorted first) tend to produce tight
+  // upper bounds early, maximising pruning on subsequent branches.
+  active.add(storeId);
+  branchAndBound(stores, idx + 1, active, available, byCard, allPoolStoreIds, flatRates, best);
+  active.delete(storeId);
+
+  // Exclude branch
+  branchAndBound(stores, idx + 1, active, available, byCard, allPoolStoreIds, flatRates, best);
+}
+
+/**
+ * Evaluate one combination of active pool stores.
+ *
+ * Pool stores (Good Games, MTG Mate, etc.) charge a flat shipping fee per order.
+ * Non-pool stores (eBay AU) charge per-listing shipping.
+ *
+ * Pool stores NOT in activePoolStoreIds are excluded from consideration —
+ * if a store isn't activated, we're not paying its flat fee so we can't use it.
+ * Flat shipping is added once per used active pool store at the end.
  */
 function evaluateSubset(
   items: OptimizeItem[],
   byCard: Map<string, Listing[]>,
-  activePoolStoreIds: Set<string>
+  activePoolStoreIds: Set<string>,
+  allPoolStoreIds: Set<string>,
+  flatRates: Record<string, number | null>
 ): { cost: number; assignments: Map<string, Listing> } | null {
   const assignments = new Map<string, Listing>(); // cardId → chosen listing
 
@@ -86,25 +138,33 @@ function evaluateSubset(
     let bestCost = Infinity;
 
     for (const l of listings) {
-      // Effective marginal cost of this listing in this subset:
-      // - Pool stores in active set: just card price (shipping shared later)
-      // - Everything else: card price + per-listing shipping
-      const isPoolInSubset = activePoolStoreIds.has(l.storeId);
-      const effectiveCost = isPoolInSubset
+      // Pool stores not in the active set are off-limits — we won't pay their
+      // flat shipping fee so we can't buy from them in this subset.
+      if (allPoolStoreIds.has(l.storeId) && !activePoolStoreIds.has(l.storeId)) continue;
+
+      // Marginal cost: active pool store items don't pay per-card shipping
+      // (the flat fee is amortised across the whole order, added below).
+      const effectiveCost = activePoolStoreIds.has(l.storeId)
         ? l.priceAud
         : l.priceAud + (l.shippingAud ?? 0);
 
-      if (effectiveCost < bestCost) {
+      // Tie-break on flat rate: equal card prices should prefer the store with
+      // lower flat fee so we don't trigger an $80 flat fee when a $6.50 store
+      // has the same card at the same price.
+      const flatL = activePoolStoreIds.has(l.storeId) ? (flatRates[l.storeId] ?? 0) : 0;
+      const flatBest = best && activePoolStoreIds.has(best.storeId) ? (flatRates[best.storeId] ?? 0) : 0;
+
+      if (effectiveCost < bestCost || (effectiveCost === bestCost && flatL < flatBest)) {
         bestCost = effectiveCost;
         best = l;
       }
     }
 
-    if (!best) return null;
+    if (!best) return null; // no valid listing for this card in this subset
     assignments.set(item.cardId, best);
   }
 
-  // Calculate true total: card prices + shipping
+  // Calculate true total: card prices + per-listing shipping + flat fees
   const usedPoolStores = new Set<string>();
   let totalCost = 0;
 
@@ -113,14 +173,12 @@ function evaluateSubset(
     if (activePoolStoreIds.has(listing.storeId)) {
       usedPoolStores.add(listing.storeId);
     } else {
-      // Per-listing shipping (eBay etc.)
       totalCost += listing.shippingAud ?? 0;
     }
   }
 
-  // Add flat shipping for each pool store used in this assignment
   for (const storeId of usedPoolStores) {
-    const flat = STORE_FLAT_SHIPPING_AUD[storeId];
+    const flat = flatRates[storeId];
     totalCost += flat ?? 0;
   }
 
@@ -147,6 +205,15 @@ export async function POST(request: Request) {
   const lockedPrintingIds = new Set<string>(
     (body as { lockedPrintingIds?: string[] }).lockedPrintingIds ?? []
   );
+  // Per-store shipping overrides from the client (user-edited values)
+  const shippingOverrides = (body as { shippingOverrides?: Record<string, number> }).shippingOverrides ?? {};
+  const flatRates: Record<string, number | null> = { ...STORE_FLAT_SHIPPING_AUD, ...shippingOverrides };
+  if (Object.keys(shippingOverrides).length > 0) {
+    console.log("[optimize] shippingOverrides received:", shippingOverrides);
+    console.log("[optimize] effective flatRates for overridden stores:", Object.fromEntries(
+      Object.keys(shippingOverrides).map(id => [id, flatRates[id]])
+    ));
+  }
 
   const cardIds = typedItems.map((i) => i.cardId);
 
@@ -252,31 +319,69 @@ export async function POST(request: Request) {
   }
 
   // Identify pool store IDs (flat-rate, non-eBay) that appear in any listing
-  const allStoreIds = new Set(rows.map((r) => r.store_id));
-  const poolStoreIds = [...allStoreIds].filter(
-    (id) => id in STORE_FLAT_SHIPPING_AUD && id !== "ebay_au"
+  const allStoreIds = new Set<string>(rows.map((r: { store_id: string }) => r.store_id));
+  const allPoolStoreIds = new Set<string>(
+    [...allStoreIds].filter((id): id is string => id in STORE_FLAT_SHIPPING_AUD && id !== "ebay_au")
   );
 
-  // Enumerate all subsets of pool stores (2^N where N is typically 2)
-  let bestCost = Infinity;
-  let bestAssignments: Map<string, Listing> | null = null;
+  // Enumerate only pool stores that actually have at least one listing for the requested
+  // cards. Price-based pruning is incorrect when flat rates differ across stores (e.g. a
+  // $0 collect store is always competitive regardless of per-card price). Bounding by
+  // stores-with-listings is sufficient: a typical want list draws from ≤ 10 stores so
+  // the 2^N subset search stays well under 1024 iterations.
+  const competitivePoolStores = [...allPoolStoreIds].filter(storeId =>
+    [...byCard.values()].some(listings => listings.some(l => l.storeId === storeId))
+  );
 
-  for (let mask = 0; mask < 1 << poolStoreIds.length; mask++) {
-    const activeSet = new Set(poolStoreIds.filter((_, i) => mask & (1 << i)));
-    const result = evaluateSubset(available, byCard, activeSet);
-    if (result && result.cost < bestCost) {
-      bestCost = result.cost;
-      bestAssignments = result.assignments;
+  // Sort cheapest flat rate first so free/cheap stores are explored early,
+  // producing tight upper bounds quickly and maximising B&B pruning.
+  const sortedPoolStores = [...competitivePoolStores].sort(
+    (a, b) => (flatRates[a] ?? 0) - (flatRates[b] ?? 0)
+  );
+
+  // Warm-start B&B by evaluating eBay-only and each single-store solution.
+  // This gives a tight initial upper bound so pruning is effective from node 1,
+  // rather than waiting until B&B stumbles into a good solution organically.
+  const best: { cost: number; assignments: Map<string, Listing> | null } = {
+    cost: Infinity,
+    assignments: null,
+  };
+  for (const seed of [new Set<string>(), ...sortedPoolStores.map(s => new Set([s]))]) {
+    const r = evaluateSubset(available, byCard, seed, allPoolStoreIds, flatRates);
+    if (r && r.cost < best.cost) { best.cost = r.cost; best.assignments = r.assignments; }
+  }
+  branchAndBound(sortedPoolStores, 0, new Set<string>(), available, byCard, allPoolStoreIds, flatRates, best);
+
+  if (best.assignments) {
+    const usedStores = new Set([...best.assignments.values()].map(l => l.storeId));
+    const postageByStore = [...usedStores]
+      .filter(id => id in STORE_FLAT_SHIPPING_AUD && id !== "ebay_au")
+      .map(id => `${id}: $${flatRates[id] ?? 0}`);
+    console.log("[optimize] result uses stores:", [...usedStores]);
+    console.log("[optimize] postage applied:", postageByStore);
+    console.log("[optimize] total cost:", best.cost);
+
+    // Per-card: show chosen store + price, and cheapest alternative
+    for (const item of available) {
+      const chosen = best.assignments.get(item.cardId);
+      if (!chosen) continue;
+      const listings = byCard.get(item.cardId) ?? [];
+      const alternatives = listings
+        .filter(l => l.storeId !== chosen.storeId && !(allPoolStoreIds.has(l.storeId) && !usedStores.has(l.storeId)))
+        .sort((a, b) => a.priceAud - b.priceAud)
+        .slice(0, 3)
+        .map(l => `${l.storeId}@$${l.priceAud}`);
+      console.log(`  ${item.cardName}: ${chosen.storeId}@$${chosen.priceAud} | alts: ${alternatives.join(", ") || "none"}`);
     }
   }
 
-  if (!bestAssignments) {
+  if (!best.assignments) {
     return NextResponse.json({ error: "Could not find valid assignment" }, { status: 500 });
   }
 
   // Build response — look up by cardId; printingId comes from the chosen listing
   const assignments: OptimizeAssignment[] = available.map((item) => {
-    const listing = bestAssignments!.get(item.cardId)!;
+    const listing = best.assignments!.get(item.cardId)!;
     return {
       cardId: item.cardId,
       cardName: item.cardName,
@@ -310,7 +415,7 @@ export async function POST(request: Request) {
     const isPool = storeId in STORE_FLAT_SHIPPING_AUD && storeId !== "ebay_au";
     let shipping: number | null;
     if (isPool) {
-      shipping = STORE_FLAT_SHIPPING_AUD[storeId] ?? null;
+      shipping = flatRates[storeId] ?? null;
     } else {
       shipping = storeItems.reduce((s, i) => s + (i.shippingAud ?? 0), 0);
     }

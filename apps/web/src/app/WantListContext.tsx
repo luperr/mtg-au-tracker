@@ -28,15 +28,19 @@ interface WantListContextValue {
   clearAll: () => void;
   totalCount: number;
   totalPrice: number;
+  storeShippingOverrides: Record<string, number>;
+  setStoreShipping: (storeId: string, amount: number | null) => void;
 }
 
 const WantListContext = createContext<WantListContextValue | null>(null);
 
 const STORAGE_KEY = "scrymarket_buy_list"; // keep old key to preserve saved data
+const SHIPPING_KEY = "scrymarket_shipping_overrides";
 
 export function WantListProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<WantListItem[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [storeShippingOverrides, setStoreShippingOverrides] = useState<Record<string, number>>({});
 
   // Load from localStorage once on mount
   useEffect(() => {
@@ -58,13 +62,17 @@ export function WantListProvider({ children }: { children: React.ReactNode }) {
           };
         }));
       }
+      const storedShipping = localStorage.getItem(SHIPPING_KEY);
+      if (storedShipping) {
+        setStoreShippingOverrides(JSON.parse(storedShipping));
+      }
     } catch {
       // ignore parse errors
     }
     setHydrated(true);
   }, []);
 
-  // Persist to localStorage whenever items change (after hydration)
+  // Persist items to localStorage whenever they change (after hydration)
   useEffect(() => {
     if (!hydrated) return;
     try {
@@ -73,6 +81,16 @@ export function WantListProvider({ children }: { children: React.ReactNode }) {
       // ignore quota errors
     }
   }, [items, hydrated]);
+
+  // Persist shipping overrides whenever they change (after hydration)
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      localStorage.setItem(SHIPPING_KEY, JSON.stringify(storeShippingOverrides));
+    } catch {
+      // ignore quota errors
+    }
+  }, [storeShippingOverrides, hydrated]);
 
   const addItem = useCallback((item: WantListItem) => {
     setItems((prev: WantListItem[]) => prev.some((i: WantListItem) => i.id === item.id) ? prev : [...prev, item]);
@@ -88,10 +106,26 @@ export function WantListProvider({ children }: { children: React.ReactNode }) {
 
   const clearAll = useCallback(() => setItems([]), []);
 
+  const setStoreShipping = useCallback((storeId: string, amount: number | null) => {
+    setStoreShippingOverrides((prev: Record<string, number>) => {
+      const next = { ...prev };
+      if (amount === null) {
+        delete next[storeId];
+      } else {
+        next[storeId] = amount;
+      }
+      return next;
+    });
+  }, []);
+
   const totalPrice = items.reduce((sum: number, i: WantListItem) => sum + i.priceAud, 0);
 
   return (
-    <WantListContext.Provider value={{ items, addItem, removeItem, hasItem, clearAll, totalCount: items.length, totalPrice }}>
+    <WantListContext.Provider value={{
+      items, addItem, removeItem, hasItem, clearAll,
+      totalCount: items.length, totalPrice,
+      storeShippingOverrides, setStoreShipping,
+    }}>
       {children}
     </WantListContext.Provider>
   );
