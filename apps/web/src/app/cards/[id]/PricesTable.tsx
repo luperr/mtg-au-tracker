@@ -2,16 +2,19 @@
 
 import React, { useState, useMemo, useRef } from "react";
 import { useClickOutside } from "@/lib/hooks/useClickOutside";
+import { useViewPreference } from "@/lib/hooks/useViewPreference";
 import type { PrintingWithPrices } from "@/lib/db";
 import { useWantList } from "@/app/WantListContext";
 import { fmtAUD } from "@/lib/format";
 import { Dropdown, OptionItem } from "@/app/Dropdown";
 import { SetSymbol } from "@/app/SetSymbol";
+import { ViewToggle } from "@/app/ViewToggle";
 
 type FoilFilter = "all" | "nonfoil" | "foil";
-type SortBy = "price_asc" | "price_desc" | "total_asc" | "total_desc" | "newest" | "oldest";
+type SortBy = "in_stock_asc" | "price_asc" | "price_desc" | "total_asc" | "total_desc" | "newest" | "oldest";
 
 const SORT_LABELS: Record<SortBy, string> = {
+  in_stock_asc: "In Stock First",
   price_asc: "Price: Low → High",
   price_desc: "Price: High → Low",
   total_asc: "Price + Postage: Low → High",
@@ -100,7 +103,8 @@ export function PricesTable({
   const [foilFilter, setFoilFilter] = useState<FoilFilter>("all");
   const [selectedStores, setSelectedStores] = useState<Set<string>>(new Set());
   const [selectedSets, setSelectedSets] = useState<Set<string>>(new Set());
-  const [sortBy, setSortBy] = useState<SortBy>("price_asc");
+  const [sortBy, setSortBy] = useState<SortBy>("in_stock_asc");
+  const [view, setView] = useViewPreference();
   const [page, setPage] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filtersRef = useRef<HTMLDivElement>(null);
@@ -156,6 +160,10 @@ export function PricesTable({
       const totalA = a.priceAud + (a.shippingAud ?? 0);
       const totalB = b.priceAud + (b.shippingAud ?? 0);
       switch (sortBy) {
+        case "in_stock_asc": {
+          if (a.inStock !== b.inStock) return a.inStock ? -1 : 1;
+          return a.priceAud - b.priceAud;
+        }
         case "price_asc":    return a.priceAud - b.priceAud;
         case "price_desc":   return b.priceAud - a.priceAud;
         case "total_asc":    return totalA - totalB;
@@ -274,147 +282,180 @@ export function PricesTable({
           )}
         </div>
 
-        {/* Right: sort + count */}
+        {/* Right: view toggle + sort + count */}
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-[10px] text-cream-dim/30">{rows.length}</span>
-          <Dropdown label="Sort" active={sortBy !== "price_asc"} align="right">
+          <Dropdown label="Sort" active={sortBy !== "in_stock_asc"} align="right">
             <div className="py-1">
               {(Object.entries(SORT_LABELS) as [SortBy, string][]).map(([key, label]) => (
                 <OptionItem key={key} label={label} checked={sortBy === key} onClick={() => { setSortBy(key); setPage(0); }} />
               ))}
             </div>
           </Dropdown>
+          <ViewToggle view={view} onChange={setView} />
         </div>
       </div>
 
-      {/* Table */}
-      <div className="rounded-lg border border-subtle bg-surface overflow-hidden">
-        {rows.length === 0 && !filtersActive ? (
-          <div className="px-4 py-8 text-center text-cream-dim/50">
-            No prices available
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[360px]">
-            <colgroup>
-              <col className="w-[180px] sm:w-[220px]" />  {/* Set */}
-              <col className="w-[110px] sm:w-[140px]" />  {/* Store */}
-              <col className="w-auto" />                   {/* Price */}
-              <col className="w-[68px]" />                 {/* Stock */}
-              <col className="w-[52px]" />                 {/* Buy link */}
-              <col className="w-[40px]" />                 {/* Want button */}
-            </colgroup>
-            <thead>
-              <tr className="text-xs bg-cream-muted border-b border-subtle">
-                <th className="px-4 py-2 text-left font-medium text-cream-dim">Set</th>
-                <th className="px-3 py-2 text-left font-medium text-cream-dim">Store</th>
-                <th className="px-3 py-2 text-right font-medium text-cream-dim">Price AUD <span className="font-normal text-cream-dim/50">(postage)</span></th>
-                <th className="px-3 py-2 text-center font-medium text-cream-dim">Stock</th>
-                <th className="px-3 py-2" />
-                <th className="px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {pageRows.map((row, i) => (
-                <tr
-                  key={`${row.printing.id}-${row.storeName}-${i}`}
-                  className="border-b border-subtle/60 last:border-0 hover:bg-muted transition-colors cursor-default"
-                  onMouseEnter={() => onHoverImage(row.printing.imageUri)}
-                  onMouseLeave={() => onHoverImage(defaultImage)}
-                >
-                  {/* Set symbol + name */}
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <SetSymbol
-                        setCode={row.printing.setCode}
-                        setName={row.printing.setName}
-                        rarity={row.printing.rarity}
-                      />
-                      <span className="text-cream truncate max-w-[160px] hidden sm:inline">
-                        {row.printing.setName}
-                      </span>
-                      {row.printing.isFoil && (
-                        <span className="text-[10px] text-accent shrink-0">✦</span>
-                      )}
-                    </div>
-                  </td>
+      {/* Empty state */}
+      {rows.length === 0 && (
+        <div className="rounded-lg border border-subtle bg-surface px-4 py-8 text-center text-cream-dim/50">
+          {filtersActive ? "No prices match the current filters" : "No prices available"}
+        </div>
+      )}
 
-                  <td className="px-3 py-2.5 text-cream font-medium">{row.storeName}</td>
+      {/* Card view */}
+      {view === "card" && rows.length > 0 && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            {pageRows.map((row, i) => (
+              <div
+                key={`${row.printing.id}-${row.storeName}-${i}`}
+                className={`rounded-lg border bg-surface p-3 flex flex-col gap-2 transition-colors cursor-default ${
+                  row.inStock ? "border-subtle hover:border-accent hover:bg-muted" : "border-subtle/40 opacity-60"
+                }`}
+                onMouseEnter={() => onHoverImage(row.printing.imageUri)}
+                onMouseLeave={() => onHoverImage(defaultImage)}
+              >
+                {/* Set + foil */}
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <SetSymbol
+                    setCode={row.printing.setCode}
+                    setName={row.printing.setName}
+                    rarity={row.printing.rarity}
+                  />
+                  <span className="text-xs text-cream truncate">{row.printing.setName}</span>
+                  {row.printing.isFoil && <span className="text-[10px] text-accent shrink-0">✦</span>}
+                </div>
 
-                  <td className="px-3 py-2.5 text-right text-price font-semibold">
-                    {fmtAUD(row.priceAud)}
+                {/* Store */}
+                <div className="text-xs text-cream-dim font-medium truncate">{row.storeName}</div>
+
+                {/* Price + stock */}
+                <div className="flex items-center justify-between gap-1 mt-auto">
+                  <div>
+                    <span className="text-sm text-price font-semibold">{fmtAUD(row.priceAud)}</span>
                     {row.shippingAud !== null && (
-                      <span className="ml-1 text-xs font-normal text-cream-dim/60">
-                        (+{row.shippingAud === 0 ? "free" : fmtAUD(row.shippingAud)})
+                      <span className="ml-1 text-[10px] text-cream-dim/50">
+                        +{row.shippingAud === 0 ? "free" : fmtAUD(row.shippingAud)}
                       </span>
                     )}
-                  </td>
+                  </div>
+                  <span
+                    className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0 ${
+                      row.inStock ? "bg-green-900/50 text-green-400" : "bg-red-900/50 text-red-400"
+                    }`}
+                  >
+                    {row.inStock ? "In stock" : "Out"}
+                  </span>
+                </div>
 
-                  <td className="px-3 py-2.5 text-center">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                        row.inStock
-                          ? "bg-green-900/50 text-green-400"
-                          : "bg-red-900/50 text-red-400"
-                      }`}
+                {/* Actions */}
+                <div className="flex items-center justify-between gap-1">
+                  {row.url ? (
+                    <a
+                      href={row.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-price hover:text-cream transition-colors"
                     >
-                      {row.inStock ? "In stock" : "Out"}
-                    </span>
-                  </td>
+                      Buy ↗
+                    </a>
+                  ) : <span />}
+                  {row.inStock && (
+                    <WantListButton row={row} cardId={cardId} cardName={cardName} />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
 
-                  <td className="px-3 py-2.5 text-right">
-                    {row.url && (
-                      <a
-                        href={row.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-price hover:text-cream text-sm transition-colors"
-                      >
-                        Buy ↗
-                      </a>
-                    )}
-                  </td>
-
-                  <td className="px-2 py-2.5 text-right">
-                    {row.inStock && (
-                      <WantListButton row={row} cardId={cardId} cardName={cardName} />
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-cream-dim/50">
-                    No prices match the current filters
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          {/* Card view pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-2 border-t border-subtle bg-cream-muted text-xs text-cream-dim/60">
-              <button
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-                disabled={page === 0}
-                className="disabled:opacity-30 hover:text-cream transition-colors"
-              >
-                ← Prev
-              </button>
-              <span>
-                {page + 1} / {totalPages}
-              </span>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                disabled={page >= totalPages - 1}
-                className="disabled:opacity-30 hover:text-cream transition-colors"
-              >
-                Next →
-              </button>
+            <div className="flex items-center justify-between px-1 py-2 mt-1 text-xs text-cream-dim/60">
+              <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="disabled:opacity-30 hover:text-cream transition-colors">← Prev</button>
+              <span>{page + 1} / {totalPages}</span>
+              <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className="disabled:opacity-30 hover:text-cream transition-colors">Next →</button>
             </div>
           )}
+        </>
+      )}
+
+      {/* Text (table) view */}
+      {view === "text" && rows.length > 0 && (
+        <div className="rounded-lg border border-subtle bg-surface overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[360px]">
+              <colgroup>
+                <col className="w-[180px] sm:w-[220px]" />
+                <col className="w-[110px] sm:w-[140px]" />
+                <col className="w-auto" />
+                <col className="w-[68px]" />
+                <col className="w-[52px]" />
+                <col className="w-[40px]" />
+              </colgroup>
+              <thead>
+                <tr className="text-xs bg-cream-muted border-b border-subtle">
+                  <th className="px-4 py-2 text-left font-medium text-cream-dim">Set</th>
+                  <th className="px-3 py-2 text-left font-medium text-cream-dim">Store</th>
+                  <th className="px-3 py-2 text-right font-medium text-cream-dim">Price AUD <span className="font-normal text-cream-dim/50">(postage)</span></th>
+                  <th className="px-3 py-2 text-center font-medium text-cream-dim">Stock</th>
+                  <th className="px-3 py-2" />
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {pageRows.map((row, i) => (
+                  <tr
+                    key={`${row.printing.id}-${row.storeName}-${i}`}
+                    className="border-b border-subtle/60 last:border-0 hover:bg-muted transition-colors cursor-default"
+                    onMouseEnter={() => onHoverImage(row.printing.imageUri)}
+                    onMouseLeave={() => onHoverImage(defaultImage)}
+                  >
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <SetSymbol setCode={row.printing.setCode} setName={row.printing.setName} rarity={row.printing.rarity} />
+                        <span className="text-cream truncate max-w-[160px] hidden sm:inline">{row.printing.setName}</span>
+                        {row.printing.isFoil && <span className="text-[10px] text-accent shrink-0">✦</span>}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-cream font-medium">{row.storeName}</td>
+                    <td className="px-3 py-2.5 text-right text-price font-semibold">
+                      {fmtAUD(row.priceAud)}
+                      {row.shippingAud !== null && (
+                        <span className="ml-1 text-xs font-normal text-cream-dim/60">
+                          (+{row.shippingAud === 0 ? "free" : fmtAUD(row.shippingAud)})
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${row.inStock ? "bg-green-900/50 text-green-400" : "bg-red-900/50 text-red-400"}`}>
+                        {row.inStock ? "In stock" : "Out"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      {row.url && (
+                        <a href={row.url} target="_blank" rel="noopener noreferrer" className="text-price hover:text-cream text-sm transition-colors">
+                          Buy ↗
+                        </a>
+                      )}
+                    </td>
+                    <td className="px-2 py-2.5 text-right">
+                      {row.inStock && <WantListButton row={row} cardId={cardId} cardName={cardName} />}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-2 border-t border-subtle bg-cream-muted text-xs text-cream-dim/60">
+                <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="disabled:opacity-30 hover:text-cream transition-colors">← Prev</button>
+                <span>{page + 1} / {totalPages}</span>
+                <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className="disabled:opacity-30 hover:text-cream transition-colors">Next →</button>
+              </div>
+            )}
+          </div>
         </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
