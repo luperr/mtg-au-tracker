@@ -1,4 +1,4 @@
-import { searchCards, PAGE_SIZE } from "@/lib/db";
+import sql, { searchCards, PAGE_SIZE } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 // Rate limit: 60 requests per IP per minute
@@ -33,6 +33,14 @@ export async function GET(req: NextRequest) {
 
   try {
     const results = await searchCards(q, offset);
+
+    // Log the search query to DB on the first page only (offset=0 = new search, not pagination).
+    // Top result's card ID is stored so demand-gap reports can join against store inventory.
+    if (offset === 0) {
+      const topCardId = results[0]?.id ?? null;
+      sql`INSERT INTO card_searches (query, card_id) VALUES (${q}, ${topCardId})`.execute().catch(() => {});
+    }
+
     return NextResponse.json(
       { results, hasMore: results.length === PAGE_SIZE },
       { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" } }
