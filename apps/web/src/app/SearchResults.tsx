@@ -7,6 +7,12 @@ import { TrendBadge } from "./TrendBadge";
 import { fmtAUD } from "@/lib/format";
 import type { CardSearchResult } from "@/lib/db";
 
+declare global {
+  interface Window {
+    umami?: { track: (event: string, data?: Record<string, unknown>) => void };
+  }
+}
+
 function toSmallImage(uri: string | null): string | null {
   return uri ? uri.replace("/normal/", "/small/") : null;
 }
@@ -16,6 +22,7 @@ function CardRow({ card }: { card: CardSearchResult }) {
   return (
     <a
       href={`/cards/${card.id}`}
+      onClick={() => window.umami?.track("card-click", { card: card.name })}
       className="flex items-center gap-3 rounded-lg border border-subtle bg-surface hover:border-accent hover:bg-muted transition-colors overflow-hidden"
     >
       {/* Thumbnail */}
@@ -79,6 +86,7 @@ export function SearchResults({ initialResults, query, initialHasMore, totalCoun
     setCards(initialResults);
     setHasMore(initialHasMore);
     offsetRef.current = initialResults.length;
+    if (query) window.umami?.track("card-search", { query });
   }, [initialResults, initialHasMore, query]);
 
   useEffect(() => {

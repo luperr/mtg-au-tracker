@@ -1,4 +1,4 @@
-import { searchCards, PAGE_SIZE } from "@/lib/db";
+import sql, { searchCards, PAGE_SIZE } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 // Rate limit: 60 requests per IP per minute
@@ -30,6 +30,11 @@ export async function GET(req: NextRequest) {
   const offset = Math.max(0, Math.min(parseInt(req.nextUrl.searchParams.get("offset") ?? "0", 10), 10000));
 
   if (!q) return NextResponse.json({ results: [], hasMore: false });
+
+  // Log the search query to DB on the first page only (offset=0 = new search, not pagination)
+  if (offset === 0) {
+    sql`INSERT INTO card_searches (query) VALUES (${q})`.execute().catch(() => {});
+  }
 
   try {
     const results = await searchCards(q, offset);
