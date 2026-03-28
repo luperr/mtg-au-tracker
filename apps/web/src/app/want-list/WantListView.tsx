@@ -6,6 +6,7 @@ import { useWantList, type WantListItem } from "@/app/WantListContext";
 import { fmtAUD } from "@/lib/format";
 import { STORE_FLAT_SHIPPING_AUD } from "@/lib/store-shipping";
 import { SetSymbol } from "@/app/SetSymbol";
+import { BuyLink } from "@/app/BuyLink";
 import { ImportCards } from "./ImportCards";
 import type { OptimizeResult } from "@/app/api/optimize/route";
 
@@ -735,23 +736,14 @@ export function WantListView() {
                         {/* Buy link */}
                         <td className="px-2 py-1.5 text-right">
                           {item.url && (
-                            <a
+                            <BuyLink
                               href={item.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                              store={item.storeName}
+                              card={item.cardName}
+                              price={item.priceAud}
+                              source="want-list"
                               className="text-xs text-price hover:text-cream transition-colors"
-                              onClick={() =>
-                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                (window as any).umami?.track("store-click", {
-                                  store: item.storeName,
-                                  card: item.cardName,
-                                  price: item.priceAud,
-                                  source: "want-list",
-                                })
-                              }
-                            >
-                              Buy ↗
-                            </a>
+                            />
                           )}
                         </td>
 
