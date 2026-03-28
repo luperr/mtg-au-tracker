@@ -133,17 +133,88 @@ function PrintingSelector({
   );
 }
 
-// ── Postage tooltip ───────────────────────────────────────────────────────────
+// ── Editable postage row ──────────────────────────────────────────────────────
 
-function PostageRow({ amount }: { amount: number | null }) {
-  if (amount === null) return null;
-  return (
-    <div className="relative group flex items-center gap-1 text-xs text-cream-dim/50">
-      <span>Postage: {amount === 0 ? "free" : fmtAUD(amount)}</span>
-      <span className="cursor-help text-[10px] text-cream-dim/30">ⓘ</span>
-      <div className="absolute bottom-full left-0 mb-2 w-60 rounded-md bg-surface border border-subtle px-2.5 py-2 text-[10px] text-cream-dim/60 shadow-lg pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-20 leading-relaxed">
-        Estimated. Postage is charged once per order and the actual amount may vary at checkout.
+function EditablePostageRow({
+  amount,
+  isOverride,
+  onSave,
+}: {
+  amount: number | null;
+  isOverride: boolean;
+  onSave: (amount: number | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  function startEdit() {
+    setDraft(amount !== null ? String(amount) : "");
+    setEditing(true);
+  }
+
+  function commit() {
+    const n = parseFloat(draft);
+    if (!isNaN(n) && n >= 0) onSave(n);
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-cream-dim/50">
+        <span>Postage: $</span>
+        <input
+          autoFocus
+          type="number"
+          min="0"
+          step="0.50"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
+          className="w-14 bg-muted border border-accent-border rounded px-1 py-0.5 text-cream text-xs text-right [appearance:textfield]"
+        />
+        <button
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => { onSave(0); setEditing(false); }}
+          className="text-[10px] text-cream-dim/40 hover:text-green-400 transition-colors whitespace-nowrap"
+        >
+          Collect (free)
+        </button>
+        {isOverride && (
+          <button
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => { onSave(null); setEditing(false); }}
+            className="text-[10px] text-cream-dim/30 hover:text-cream-dim/60 transition-colors"
+          >
+            Reset
+          </button>
+        )}
       </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1 text-xs text-cream-dim/50">
+      <button
+        onClick={startEdit}
+        title="Click to edit postage"
+        className="hover:text-cream-dim transition-colors cursor-pointer"
+      >
+        {amount === null
+          ? "Postage: unknown"
+          : amount === 0
+          ? "Postage: free (collect)"
+          : `Postage: ${fmtAUD(amount)}`}
+        {isOverride && <span className="ml-1 text-[9px] text-accent-light/60">·edited</span>}
+      </button>
+      {!isOverride && amount !== null && (
+        <span
+          className="cursor-help text-[10px] text-cream-dim/30"
+          title="Estimated. Postage is charged once per order and the actual amount may vary at checkout."
+        >
+          ⓘ
+        </span>
+      )}
     </div>
   );
 }
@@ -162,11 +233,18 @@ function groupByStore(items: WantListItem[]): Map<string, WantListItem[]> {
 
 /** Returns the shipping charge for a store group.
  *  eBay items are per-seller so each row has its own shippingAud → sum them.
- *  Other stores charge flat rate per order → take from first item or static config. */
-function getStoreShipping(items: WantListItem[]): { isPerItem: boolean; flatAmount: number | null } {
+ *  Other stores charge flat rate per order — user overrides take precedence,
+ *  then DB value, then static config. */
+function getStoreShipping(
+  items: WantListItem[],
+  overrides: Record<string, number>
+): { isPerItem: boolean; flatAmount: number | null } {
   const storeId = items[0]?.storeId ?? "";
   if (storeId === "ebay_au") {
     return { isPerItem: true, flatAmount: null };
+  }
+  if (storeId in overrides) {
+    return { isPerItem: false, flatAmount: overrides[storeId] };
   }
   const fromDb = items.find((i) => i.shippingAud !== null)?.shippingAud;
   const flatAmount = fromDb !== undefined ? fromDb : (STORE_FLAT_SHIPPING_AUD[storeId] ?? null);
@@ -179,6 +257,7 @@ function OptimiseModal({
   result,
   loading,
   currentItems,
+  currentPostage,
   lockedPrintingIds,
   checkedCardIds,
   unchangedExpanded,
@@ -193,6 +272,7 @@ function OptimiseModal({
   result: OptimizeResult | null;
   loading: boolean;
   currentItems: WantListItem[];
+  currentPostage: number;
   lockedPrintingIds: Set<string>;
   checkedCardIds: Set<string>;
   unchangedExpanded: boolean;
@@ -217,7 +297,7 @@ function OptimiseModal({
   }) ?? [];
 
   const currentTotal = currentItems.reduce((s, i) => s + i.priceAud, 0);
-  const savings = result ? currentTotal - result.totalCost : 0;
+  const savings = result ? (currentTotal + currentPostage) - result.totalCost : 0;
   const checkedCount = changed.filter((a) => checkedCardIds.has(a.cardId)).length;
   const allChecked = changed.length > 0 && checkedCount === changed.length;
 
@@ -253,11 +333,14 @@ function OptimiseModal({
         {/* Summary bar */}
         {result && (
           <div className="px-4 py-2 border-b border-subtle/50 bg-cream-muted/20 shrink-0 text-xs text-cream-dim/60">
-            Current: <span className="text-cream-dim">{fmtAUD(currentTotal)}</span>
+            Current: <span className="text-cream-dim">{fmtAUD(currentTotal + currentPostage)}</span>
+            {currentPostage > 0 && (
+              <span className="ml-1 text-cream-dim/40">(~{fmtAUD(currentPostage)} postage)</span>
+            )}
             <span className="mx-1.5 text-cream-dim/30">→</span>
             Optimised: <span className="text-price font-semibold">{fmtAUD(result.totalCost)}</span>
             {result.totalPostage > 0 && (
-              <span className="ml-1 text-cream-dim/40">(incl. ~{fmtAUD(result.totalPostage)} postage)</span>
+              <span className="ml-1 text-cream-dim/40">(~{fmtAUD(result.totalPostage)} postage)</span>
             )}
           </div>
         )}
@@ -280,7 +363,7 @@ function OptimiseModal({
               )}
               {changed.length > 0 && (
                 <div className="divide-y divide-subtle/40">
-                  {changed.map((a) => {
+                  {changed.map((a, idx) => {
                     const cur = currentByCardId.get(a.cardId)!;
                     const isLocked = lockedPrintingIds.has(cur.printingId);
                     const isChecked = !isLocked && checkedCardIds.has(a.cardId);
@@ -290,7 +373,7 @@ function OptimiseModal({
                     const priceDelta = a.priceAud - cur.priceAud;
 
                     return (
-                      <div key={a.cardId} className={`flex items-center gap-2 px-3 py-2.5 transition-opacity ${isLocked ? "opacity-50" : ""}`}>
+                      <div key={`${a.cardId}-${a.printingId}-${a.storeId}-${idx}`} className={`flex items-center gap-2 px-3 py-2.5 transition-opacity ${isLocked ? "opacity-50" : ""}`}>
                         {/* Checkbox — hidden when locked */}
                         <input
                           type="checkbox"
@@ -358,8 +441,8 @@ function OptimiseModal({
                   </button>
                   {unchangedExpanded && (
                     <div className="divide-y divide-subtle/20">
-                      {unchanged.map((a) => (
-                        <div key={a.cardId} className="flex items-center gap-2 px-3 py-1.5 opacity-40">
+                      {unchanged.map((a, idx) => (
+                        <div key={`${a.cardId}-${a.printingId}-${a.storeId}-${idx}`} className="flex items-center gap-2 px-3 py-1.5 opacity-40">
                           <SetSymbol setCode={a.setCode} setName={a.setName} rarity={a.rarity} />
                           <span className="text-xs text-cream-dim flex-1 truncate">{a.cardName}</span>
                           <span className="text-xs text-price">{fmtAUD(a.priceAud)}</span>
@@ -431,7 +514,7 @@ function OptimiseModal({
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function WantListView() {
-  const { items, removeItem, addItem, clearAll, totalCount } = useWantList();
+  const { items, removeItem, addItem, clearAll, totalCount, storeShippingOverrides, setStoreShipping } = useWantList();
   const byStore = groupByStore(items);
   const [optimiseOpen, setOptimiseOpen] = useState(false);
   const [cardPreview, setCardPreview] = useState<{ uri: string; top: number; left: number } | null>(null);
@@ -472,6 +555,7 @@ export function WantListView() {
         body: JSON.stringify({
           items: items.map((i) => ({ cardId: i.cardId, cardName: i.cardName, printingId: i.printingId })),
           lockedPrintingIds: [...locked],
+          shippingOverrides: storeShippingOverrides,
         }),
       });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
@@ -575,7 +659,7 @@ export function WantListView() {
   let grandPostage = 0;
   for (const storeItems of byStore.values()) {
     grandCards += storeItems.reduce((s, i) => s + i.priceAud, 0);
-    const { isPerItem, flatAmount } = getStoreShipping(storeItems);
+    const { isPerItem, flatAmount } = getStoreShipping(storeItems, storeShippingOverrides);
     if (isPerItem) {
       grandPostage += storeItems.reduce((s, i) => s + (i.shippingAud ?? 0), 0);
     } else {
@@ -584,7 +668,7 @@ export function WantListView() {
   }
   const grandTotal = grandCards + grandPostage;
   const hasUnknownPostage = Array.from(byStore.values()).some(
-    (storeItems) => !getStoreShipping(storeItems).isPerItem && getStoreShipping(storeItems).flatAmount === null
+    (storeItems) => !getStoreShipping(storeItems, storeShippingOverrides).isPerItem && getStoreShipping(storeItems, storeShippingOverrides).flatAmount === null
   );
 
   function handlePrintingChange(item: WantListItem, p: StorePrinting) {
@@ -653,7 +737,7 @@ export function WantListView() {
       ) : (
         <div className="space-y-6 mb-8">
           {Array.from(byStore.entries()).map(([storeName, storeItems]) => {
-            const { isPerItem, flatAmount } = getStoreShipping(storeItems);
+            const { isPerItem, flatAmount } = getStoreShipping(storeItems, storeShippingOverrides);
             const itemsTotal = storeItems.reduce((s, i) => s + i.priceAud, 0);
             const perItemPostage = isPerItem
               ? storeItems.reduce((s, i) => s + (i.shippingAud ?? 0), 0)
@@ -764,7 +848,13 @@ export function WantListView() {
 
                 {!collapsed && <div className="flex justify-end px-3 py-2 pr-[72px] border-t border-subtle bg-cream-muted/50 rounded-b-lg">
                   <div className="flex flex-col items-end gap-0.5">
-                    {!isPerItem && <PostageRow amount={flatAmount} />}
+                    {!isPerItem && (
+                      <EditablePostageRow
+                        amount={flatAmount}
+                        isOverride={storeItems[0]?.storeId in storeShippingOverrides}
+                        onSave={(amt) => setStoreShipping(storeItems[0]?.storeId, amt)}
+                      />
+                    )}
                     {isPerItem && perItemPostage > 0 && (
                       <span className="text-xs text-cream-dim/50">Postage: {fmtAUD(perItemPostage)}</span>
                     )}
@@ -821,6 +911,7 @@ export function WantListView() {
           result={optimiseResult}
           loading={optimiseLoading}
           currentItems={items}
+          currentPostage={grandPostage}
           lockedPrintingIds={lockedPrintingIds}
           checkedCardIds={checkedCardIds}
           unchangedExpanded={unchangedExpanded}
