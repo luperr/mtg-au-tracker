@@ -369,6 +369,15 @@ export function PricesTable({
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-price hover:text-cream text-sm transition-colors"
+                        onClick={() =>
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          (window as any).umami?.track("store-click", {
+                            store: row.storeName,
+                            card: cardName,
+                            price: row.priceAud,
+                            source: "card-detail",
+                          })
+                        }
                       >
                         Buy ↗
                       </a>

@@ -740,6 +740,15 @@ export function WantListView() {
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-xs text-price hover:text-cream transition-colors"
+                              onClick={() =>
+                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                (window as any).umami?.track("store-click", {
+                                  store: item.storeName,
+                                  card: item.cardName,
+                                  price: item.priceAud,
+                                  source: "want-list",
+                                })
+                              }
                             >
                               Buy ↗
                             </a>
