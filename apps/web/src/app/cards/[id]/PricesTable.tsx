@@ -99,11 +99,11 @@ export function PricesTable({
   cardId: string;
   cardName: string;
 }) {
-  const [inStockOnly, setInStockOnly] = useState(false);
+  const [inStockOnly, setInStockOnly] = useState(true);
   const [foilFilter, setFoilFilter] = useState<FoilFilter>("all");
   const [selectedStores, setSelectedStores] = useState<Set<string>>(new Set());
   const [selectedSets, setSelectedSets] = useState<Set<string>>(new Set());
-  const [sortBy, setSortBy] = useState<SortBy>("in_stock_asc");
+  const [sortBy, setSortBy] = useState<SortBy>("price_asc");
   const [view, setView] = useViewPreference();
   const [page, setPage] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -175,13 +175,13 @@ export function PricesTable({
   }, [printings, inStockOnly, foilFilter, selectedStores, selectedSets, sortBy]);
 
   const filtersActive =
-    inStockOnly || foilFilter !== "all" || selectedStores.size > 0 || selectedSets.size > 0;
+    !inStockOnly || foilFilter !== "all" || selectedStores.size > 0 || selectedSets.size > 0;
 
   const activeFilterCount =
-    (inStockOnly ? 1 : 0) + (foilFilter !== "all" ? 1 : 0) + selectedStores.size + selectedSets.size;
+    (!inStockOnly ? 1 : 0) + (foilFilter !== "all" ? 1 : 0) + selectedStores.size + selectedSets.size;
 
   const clearFilters = () => {
-    setInStockOnly(false);
+    setInStockOnly(true);
     setFoilFilter("all");
     setSelectedStores(new Set());
     setSelectedSets(new Set());
@@ -285,7 +285,7 @@ export function PricesTable({
         {/* Right: view toggle + sort + count */}
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-[10px] text-cream-dim/30">{rows.length}</span>
-          <Dropdown label="Sort" active={sortBy !== "in_stock_asc"} align="right">
+          <Dropdown label="Sort" active={sortBy !== "price_asc"} align="right">
             <div className="py-1">
               {(Object.entries(SORT_LABELS) as [SortBy, string][]).map(([key, label]) => (
                 <OptionItem key={key} label={label} checked={sortBy === key} onClick={() => { setSortBy(key); setPage(0); }} />
