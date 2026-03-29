@@ -191,7 +191,6 @@ docker compose up -d
 # All run via docker compose:
 docker compose run --rm scraper pnpm --filter @mtg-au/scraper db:generate   # after schema changes
 docker compose run --rm scraper pnpm --filter @mtg-au/scraper db:migrate    # apply pending migrations
-docker compose run --rm scraper pnpm --filter @mtg-au/scraper db:studio     # Drizzle Studio
 ```
 
 ---
