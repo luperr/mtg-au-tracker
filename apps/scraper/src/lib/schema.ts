@@ -26,6 +26,10 @@ import {
   integer,
   date,
 } from "drizzle-orm/pg-core";
+// Note: price_history is a PARTITIONED table (RANGE by recorded_at, monthly).
+// Drizzle does not model the partition structure — it sees the parent table only.
+// The id column was dropped as part of partitioning; natural key is
+// (printing_id, store_id, price_type, recorded_at).
 
 // ─── Cards ────────────────────────────────────────────────────────────────────
 // One row per unique game object, keyed by Scryfall oracle_id.
@@ -119,12 +123,11 @@ export const storePrices = pgTable(
 
 // ─── Price history ────────────────────────────────────────────────────────────
 // One row per printing/store/priceType per day. Append-only — never updated.
-// TODO: convert to monthly partitioned table before data accumulates.
+// Partitioned by recorded_at (monthly RANGE). See migration 0004.
 
 export const priceHistory = pgTable(
   "price_history",
   {
-    id: serial("id").primaryKey(),
     printingId: text("printing_id")
       .notNull()
       .references(() => printings.id),
@@ -143,6 +146,7 @@ export const priceHistory = pgTable(
       table.recordedAt,
     ),
     index("price_history_recorded_at_idx").on(table.recordedAt),
+    index("price_history_store_id_idx").on(table.storeId),
   ]
 );
 

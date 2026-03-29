@@ -298,12 +298,12 @@ export function PricesTable({
           <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[360px]">
             <colgroup>
-              <col className="w-[180px] sm:w-[220px]" />  {/* Set */}
-              <col className="w-[110px] sm:w-[140px]" />  {/* Store */}
-              <col className="w-auto" />                   {/* Price */}
-              <col className="w-[68px]" />                 {/* Stock */}
-              <col className="w-[52px]" />                 {/* Buy link */}
-              <col className="w-[40px]" />                 {/* Want button */}
+              {/* Set */}<col className="w-[180px] sm:w-[220px]" />
+              {/* Store */}<col className="w-[110px] sm:w-[140px]" />
+              {/* Price */}<col className="w-auto" />
+              {/* Stock */}<col className="w-[68px]" />
+              {/* Buy link */}<col className="w-[52px]" />
+              {/* Want button */}<col className="w-[40px]" />
             </colgroup>
             <thead>
               <tr className="text-xs bg-cream-muted border-b border-subtle">
