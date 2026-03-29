@@ -64,9 +64,9 @@ On first boot the scraper imports all Scryfall data (~10 min), then runs store a
 
 ### Phase 1 — Stability (now)
 - [ ] Fix DFC unmatched card bug
-- [ ] `price_history` table partitioning by month (2.7M rows)
+- [x] `price_history` table partitioning by month (2.7M rows)
 - [ ] Wire `pino` structured logging to scraper (Loki is live)
-- [ ] DB indexes on FK columns + UNIQUE constraints on price tables
+- [x] DB indexes on FK columns + UNIQUE constraints on price tables
 - [ ] Vitest unit tests for card-matcher and normalizeName
 - [ ] Pin `:latest` image tags in docker-compose
 
