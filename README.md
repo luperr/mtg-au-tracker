@@ -1,6 +1,6 @@
 # Scrymarket
 
-AUD price tracker for Magic: The Gathering singles in Australia. Pulls card data from Scryfall, scrapes AU store prices, and tracks eBay AU market prices — served through a Next.js web UI for price comparison and history charts.
+AUD price tracker for Magic: The Gathering singles in Australia. Pulls card data from Scryfall, scrapes 21+ AU store prices, and tracks eBay AU market prices — served through a Next.js web UI for price comparison, history charts, and want list optimisation.
 
 ## Requirements
 
@@ -8,7 +8,7 @@ AUD price tracker for Magic: The Gathering singles in Australia. Pulls card data
 
 ## Stack
 
-TypeScript · Next.js 15 · PostgreSQL 16 · Drizzle ORM · Node.js · Docker Compose · Cloudflare Tunnel
+TypeScript · Next.js 15 · PostgreSQL 16 · Drizzle ORM · Node.js · Docker Compose · Cloudflare Tunnel · Umami
 
 ```
 apps/scraper/    — Scryfall importer, eBay API client, store scrapers
@@ -32,14 +32,14 @@ On first boot the scraper imports all Scryfall data (~10 min), then runs store a
 ### Data pipeline
 
 - [x] Scryfall bulk import — 32k cards, 141k printings, daily refresh at 3 AM
-- [x] eBay AU API client — OAuth, Browse API search, rate limiting + retry
-- [x] eBay title parser — extracts card name, set, foil, condition, price from listing titles
-- [x] Card matcher — links scraped listings to Scryfall printings (exact → fuzzy fallback)
-- [x] eBay tiered scheduler — rolls searches across days to stay within API quota
-- [x] Price history — append-only daily snapshots per printing/store
-- [x] Good Games HTML scraper — 99.5% high-confidence match rate
+- [x] Generic Shopify scraper — 21 AU stores, config-driven (no code changes to add a new store)
 - [x] MTG Mate HTML scraper
-- [ ] Mana Market scraper
+- [x] eBay AU API client — OAuth, Browse API, rate limiting + retry
+- [x] eBay title parser — extracts card name, set, foil, condition from listing titles
+- [x] Card matcher — links scraped listings to Scryfall printings (exact → fuzzy fallback)
+- [x] eBay tiered scheduler — quota-filling approach, targets stalest cards first
+- [x] Price history — append-only daily snapshots per printing/store
+- [x] Demand analytics — `card_searches` table logs queries + matched card ID
 
 ### Web UI
 
@@ -47,6 +47,10 @@ On first boot the scraper imports all Scryfall data (~10 min), then runs store a
 - [x] Price comparison table (all printings × all stores, filterable)
 - [x] Price history charts (overall + per printing)
 - [x] Card magnifier, color identity pips, set symbols
+- [x] Want List — add cards, compare stores, edit per-store postage
+- [x] Want List optimiser — Branch-and-Bound finds cheapest store combination
+- [x] Buy links — centralised tracking and affiliate-ready via `BuyLink` component
+- [x] Umami analytics — card-search, card-click, store-click events
 
 ### Infrastructure
 
@@ -54,5 +58,7 @@ On first boot the scraper imports all Scryfall data (~10 min), then runs store a
 - [x] PostgreSQL schema with Drizzle ORM migrations
 - [x] Self-hosted on Proxmox via Cloudflare tunnel (no open ports)
 - [x] Security headers (CSP, X-Frame-Options, etc.)
+- [x] Cron jobs pinned to Australia/Sydney timezone
 - [ ] Structured logging (pino) + metrics (Prometheus/Grafana)
+- [ ] B2B store dashboards — demand gap, buy-link CTR, search trends
 - [ ] AWS ECS + RDS deployment
