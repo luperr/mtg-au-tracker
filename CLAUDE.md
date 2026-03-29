@@ -251,14 +251,53 @@ To find the collection handle, browse to `/collections.json` on the store's doma
 - [x] Security headers (CSP, X-Frame-Options, etc.) via Next.js config
 - [x] Cron jobs pinned to Australia/Sydney timezone
 
-## What's next
+## Roadmap
 
-- [ ] **Demand-gap dashboard** — cards searched but not in stock at any store (uses `card_searches` + `store_prices`)
-- [ ] **B2B store dashboards** — nightly ETL of Umami events into PG, Next.js dashboard behind auth
-- [ ] **Structured logging** — `pino` for scraper
-- [ ] **Monitoring** — `prom-client` → Pushgateway → Prometheus → Grafana (separate Proxmox LXC on vmbr2)
-- [ ] **Proxmox network hardening** — move Docker LXC to vmbr1 (Services VLAN), SSH hardening, 2FA
-- [ ] **AWS deployment** — ECS + RDS (future milestone)
+Phases are gated — nothing from Phase N+1 starts until Phase N exit criteria are met.
+
+### Phase 1 — Stability & Foundations
+*Must be done before any new features ship.*
+
+- [ ] Fix DFC unmatched card bug — strip condition/set/format junk after `//` pattern in card names
+- [ ] `price_history` table partitioning by month — 2.7M rows already, easier now than at 20M. Drop partitions >2 years.
+- [ ] Wire `pino` structured logging to scraper — Loki is live but receiving unstructured `console.log`
+- [ ] Add DB indexes on FK columns (`printing_id`, `store_id`) on `store_prices` and `price_history`
+- [ ] Add UNIQUE constraints to `price_history` and `store_prices` — prevents silent duplicate rows on partial reruns
+- [ ] Vitest unit tests for `card-matcher` and `normalizeName` — zero coverage on the most critical code path
+- [ ] Pin `:latest` image tags in docker-compose — `promtail`, `cloudflared`, `cadvisor`
+
+### Phase 2 — Observability & Data Quality
+*Visibility before growth.*
+
+- [ ] Deploy Prometheus + Grafana + Pushgateway on monitoring LXC (`vmbr2`)
+- [ ] `prom-client` gauges: `cards_scraped`, `match_rate`, `scrape_duration_seconds` — per-store match rate catches silent regressions
+- [ ] MTG Mate set code cache — save valid codes to `data/mtgmate-valid-sets.json`, weekly full rescan (~30 min → ~3 min)
+- [ ] Live AUD/USD rate (RBA or Open Exchange Rates API) — replace static `AUD_USD_RATE` env var
+- [ ] eBay atomic swap — staging table → `TRUNCATE + INSERT` in transaction, eliminates zero-price window on interrupted runs
+- [ ] GitHub Actions CI — typecheck + `pnpm audit` on PR
+- [ ] Proxmox network hardening — move Docker LXC to vmbr1 (Services VLAN), SSH hardening + fail2ban, 2FA
+
+### Phase 3 — Analytics & User Features
+*Monetisation & engagement.*
+
+- [ ] Demand-gap dashboard — cards searched but not in stock anywhere (`card_searches` + `store_prices`)
+- [ ] B2B store dashboards — nightly ETL of Umami events into PG, Next.js dashboard behind auth
+- [ ] Auth layer — NextAuth + GitHub/Google (required for B2B dashboards)
+- [ ] Price alerts — email/push on threshold drop
+- [ ] Rate limiting on all API routes — `@upstash/ratelimit` or Cloudflare rule
+- [ ] Branding polish — favicon, OG images, CSP `unsafe-inline` cleanup (see Branding section below)
+
+### Phase 4 — Scale
+*Only when Proxmox constrains you.*
+
+- [ ] AWS ECS + RDS deployment
+- [ ] Replace `node-cron` with BullMQ — retry, concurrency, per-job visibility
+- [ ] Public API for AU MTG prices — rate-limited, community goodwill + discovery
+- [ ] Additional AU stores — Hareruya AU, Nerd Cave, etc. (pure config if Shopify)
+- [ ] Per-card OG images — card art + price snapshot for social sharing / SEO
+
+### Deliberately out of scope
+Deck builder integration, international price comparison, MTG Arena/MTGO pricing, social features, mobile app, ML price prediction. None of these strengthen the core value prop before it's fully locked in.
 
 ---
 

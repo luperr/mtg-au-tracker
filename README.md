@@ -59,6 +59,31 @@ On first boot the scraper imports all Scryfall data (~10 min), then runs store a
 - [x] Self-hosted on Proxmox via Cloudflare tunnel (no open ports)
 - [x] Security headers (CSP, X-Frame-Options, etc.)
 - [x] Cron jobs pinned to Australia/Sydney timezone
-- [ ] Structured logging (pino) + metrics (Prometheus/Grafana)
-- [ ] B2B store dashboards — demand gap, buy-link CTR, search trends
+
+## Roadmap
+
+### Phase 1 — Stability (now)
+- [ ] Fix DFC unmatched card bug
+- [x] `price_history` table partitioning by month (2.7M rows)
+- [ ] Wire `pino` structured logging to scraper (Loki is live)
+- [x] DB indexes on FK columns + UNIQUE constraints on price tables
+- [ ] Vitest unit tests for card-matcher and normalizeName
+- [ ] Pin `:latest` image tags in docker-compose
+
+### Phase 2 — Observability
+- [ ] Prometheus + Grafana + Pushgateway on dedicated monitoring LXC
+- [ ] `prom-client` gauges per store (match rate, scrape duration)
+- [ ] MTG Mate set code cache (~30 min scrape → ~3 min)
+- [ ] Live AUD/USD rate feed
+- [ ] eBay atomic swap to eliminate zero-price window
+- [ ] GitHub Actions CI — typecheck + audit on PR
+
+### Phase 3 — Analytics & Monetisation
+- [ ] Demand-gap dashboard — cards searched but not in stock anywhere
+- [ ] B2B store dashboards — search trends, buy-link CTR, inventory gaps
+- [ ] Sealed product integration
+- [ ] Auth layer (NextAuth) + price alerts
+
+### Phase 4 — Scale
 - [ ] AWS ECS + RDS deployment
+- [ ] BullMQ job queue, public API, additional stores
