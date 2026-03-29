@@ -259,10 +259,10 @@ Phases are gated — nothing from Phase N+1 starts until Phase N exit criteria a
 *Must be done before any new features ship.*
 
 - [ ] Fix DFC unmatched card bug — strip condition/set/format junk after `//` pattern in card names
-- [ ] `price_history` table partitioning by month — 2.7M rows already, easier now than at 20M. Drop partitions >2 years.
+- [x] `price_history` table partitioning by month — monthly RANGE partitions 2025–2028 + DEFAULT catch-all. Add new year's partitions before 2029.
 - [ ] Wire `pino` structured logging to scraper — Loki is live but receiving unstructured `console.log`
-- [ ] Add DB indexes on FK columns (`printing_id`, `store_id`) on `store_prices` and `price_history`
-- [ ] Add UNIQUE constraints to `price_history` and `store_prices` — prevents silent duplicate rows on partial reruns
+- [x] Add DB indexes on FK columns (`printing_id`, `store_id`) on `store_prices` and `price_history`
+- [ ] Add UNIQUE constraints to `price_history` and `store_prices` — deferred; delete-then-insert pattern is sufficient guard for now
 - [ ] Vitest unit tests for `card-matcher` and `normalizeName` — zero coverage on the most critical code path
 - [ ] Pin `:latest` image tags in docker-compose — `promtail`, `cloudflared`, `cadvisor`
 

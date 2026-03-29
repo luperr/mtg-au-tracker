@@ -1,0 +1,1577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scrymarket — Project Review</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Lora:ital,wght@0,400;0,500;1,400&display=swap');
+
+  :root {
+    --bg: #0d0f14;
+    --surface: #13161e;
+    --surface2: #1a1e28;
+    --border: #252a38;
+    --border2: #2e3448;
+    --accent: #5b8af5;
+    --accent2: #9b6dff;
+    --gold: #d4a843;
+    --green: #3ecf8e;
+    --red: #f56565;
+    --orange: #f6a623;
+    --text: #e8eaf0;
+    --muted: #6b7394;
+    --dim: #3d4460;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Lora', serif;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  /* ─── NAV ─── */
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(13,15,20,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    height: 52px;
+  }
+  .nav-logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 15px;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-right: 32px;
+    white-space: nowrap;
+  }
+  .nav-links {
+    display: flex;
+    gap: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .nav-links a {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-decoration: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .nav-links a:hover { color: var(--text); background: var(--surface2); }
+
+  /* ─── LAYOUT ─── */
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 32px; }
+
+  section {
+    padding: 72px 0 48px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-label {
+    font-family: 'Syne', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+
+  h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 42px;
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--text);
+    margin-bottom: 16px;
+  }
+
+  h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 24px;
+  }
+
+  h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 16px;
+    margin-top: 32px;
+  }
+
+  p { margin-bottom: 12px; color: #b0b8d4; }
+
+  /* ─── HERO ─── */
+  .hero {
+    padding: 80px 0 64px;
+    border-bottom: 1px solid var(--border);
+  }
+  .hero-meta {
+    display: flex;
+    gap: 24px;
+    margin-top: 24px;
+    flex-wrap: wrap;
+  }
+  .hero-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+  }
+  .hero-badge .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100%{opacity:1} 50%{opacity:0.4}
+  }
+
+  /* ─── CARDS ─── */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    margin: 24px 0;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .card-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .card-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .card-sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* ─── ARCHITECTURE DIAGRAM ─── */
+  .arch-diagram {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px;
+    margin: 24px 0;
+    overflow-x: auto;
+  }
+
+  .arch-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    margin-bottom: 0;
+    flex-wrap: nowrap;
+  }
+
+  .arch-layer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin: 16px 0;
+  }
+
+  .arch-layer-label {
+    font-family: 'Syne', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 4px;
+    text-align: center;
+  }
+
+  .node {
+    background: var(--surface2);
+    border: 1.5px solid var(--border2);
+    border-radius: 10px;
+    padding: 12px 16px;
+    text-align: center;
+    min-width: 120px;
+    position: relative;
+    transition: border-color 0.2s;
+  }
+  .node:hover { border-color: var(--accent); }
+  .node-icon { font-size: 20px; margin-bottom: 4px; }
+  .node-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .node-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .node.accent { border-color: var(--accent); background: rgba(91,138,245,0.08); }
+  .node.green { border-color: var(--green); background: rgba(62,207,142,0.06); }
+  .node.gold { border-color: var(--gold); background: rgba(212,168,67,0.06); }
+  .node.purple { border-color: var(--accent2); background: rgba(155,109,255,0.06); }
+  .node.red { border-color: var(--red); background: rgba(245,101,101,0.06); }
+
+  .arch-arrow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 8px;
+    color: var(--dim);
+    font-size: 18px;
+    min-width: 40px;
+    text-align: center;
+  }
+  .arch-arrow-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--dim);
+    margin-top: 2px;
+    white-space: nowrap;
+  }
+
+  .arch-section {
+    margin-bottom: 32px;
+  }
+  .arch-section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--dim);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+    margin-bottom: 20px;
+  }
+
+  .arch-full {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .tier {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 0;
+    border-bottom: 1px dashed var(--border);
+  }
+  .tier:last-child { border-bottom: none; }
+  .tier-label {
+    font-family: 'Syne', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--dim);
+    writing-mode: vertical-rl;
+    width: 20px;
+    min-width: 20px;
+  }
+  .tier-nodes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    flex: 1;
+  }
+  .tier-arrow {
+    font-size: 16px;
+    color: var(--dim);
+  }
+
+  /* ─── FLOW DIAGRAM ─── */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 24px 0;
+  }
+  .flow-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 0 0 0 0;
+  }
+  .flow-left {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 36px;
+    min-width: 36px;
+  }
+  .flow-num {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 1.5px solid var(--border2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+  .flow-line {
+    width: 1.5px;
+    flex: 1;
+    min-height: 32px;
+    background: var(--border);
+    margin: 4px 0;
+  }
+  .flow-content {
+    padding-bottom: 32px;
+    flex: 1;
+  }
+  .flow-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .flow-desc {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0;
+  }
+  .flow-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    color: var(--muted);
+  }
+  .tag.blue { color: var(--accent); border-color: rgba(91,138,245,0.3); background: rgba(91,138,245,0.08); }
+  .tag.green { color: var(--green); border-color: rgba(62,207,142,0.3); background: rgba(62,207,142,0.06); }
+  .tag.gold { color: var(--gold); border-color: rgba(212,168,67,0.3); background: rgba(212,168,67,0.06); }
+  .tag.red { color: var(--red); border-color: rgba(245,101,101,0.3); background: rgba(245,101,101,0.06); }
+
+  /* ─── DB SCHEMA ─── */
+  .db-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin: 24px 0;
+  }
+  .db-table {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .db-table-header {
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .db-table-icon { font-size: 14px; }
+  .db-table-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .db-table-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    margin-left: auto;
+  }
+  .db-fields { padding: 8px 0; }
+  .db-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    transition: background 0.15s;
+  }
+  .db-field:hover { background: var(--surface2); }
+  .db-field-key {
+    width: 16px;
+    text-align: center;
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+  .db-field-name { color: var(--text); flex: 1; }
+  .db-field-type { color: var(--muted); font-size: 10px; }
+  .db-field-pk { color: var(--gold); }
+  .db-field-fk { color: var(--accent2); }
+  .db-rel {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 16px 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--dim);
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+  }
+
+  /* ─── SECURITY ─── */
+  .security-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 24px 0;
+  }
+  .sec-item {
+    display: flex;
+    gap: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    align-items: flex-start;
+  }
+  .sec-status {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .sec-status.pass { background: rgba(62,207,142,0.1); border: 1px solid rgba(62,207,142,0.3); }
+  .sec-status.warn { background: rgba(246,166,35,0.1); border: 1px solid rgba(246,166,35,0.3); }
+  .sec-status.fail { background: rgba(245,101,101,0.1); border: 1px solid rgba(245,101,101,0.3); }
+  .sec-status.info { background: rgba(91,138,245,0.1); border: 1px solid rgba(91,138,245,0.3); }
+  .sec-body { flex: 1; }
+  .sec-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .sec-desc { font-size: 13px; color: var(--muted); margin: 0; line-height: 1.5; }
+  .sec-fix {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--orange);
+    margin-top: 6px;
+    padding: 6px 10px;
+    background: rgba(246,166,35,0.06);
+    border-radius: 6px;
+    border: 1px solid rgba(246,166,35,0.15);
+  }
+
+  /* ─── ROADMAP ─── */
+  .roadmap {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+    margin: 24px 0;
+  }
+  .roadmap-phase {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .roadmap-phase-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .roadmap-phase-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .roadmap-phase-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .roadmap-phase-sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .roadmap-items { padding: 12px 0; }
+  .roadmap-item {
+    display: flex;
+    gap: 10px;
+    padding: 8px 20px;
+    align-items: flex-start;
+  }
+  .roadmap-item-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-top: 6px;
+    flex-shrink: 0;
+  }
+  .roadmap-item-text {
+    font-size: 13px;
+    color: #b0b8d4;
+    line-height: 1.4;
+  }
+  .roadmap-item-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--muted);
+    display: block;
+    margin-top: 1px;
+  }
+  .phase-1 .roadmap-phase-header { background: rgba(91,138,245,0.06); border-bottom-color: rgba(91,138,245,0.2); }
+  .phase-1 .roadmap-item-dot { background: var(--accent); }
+  .phase-2 .roadmap-phase-header { background: rgba(62,207,142,0.05); border-bottom-color: rgba(62,207,142,0.2); }
+  .phase-2 .roadmap-item-dot { background: var(--green); }
+  .phase-3 .roadmap-phase-header { background: rgba(155,109,255,0.05); border-bottom-color: rgba(155,109,255,0.2); }
+  .phase-3 .roadmap-item-dot { background: var(--accent2); }
+  .phase-4 .roadmap-phase-header { background: rgba(212,168,67,0.05); border-bottom-color: rgba(212,168,67,0.2); }
+  .phase-4 .roadmap-item-dot { background: var(--gold); }
+
+  /* ─── CODE ─── */
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: var(--accent);
+  }
+  pre {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    overflow-x: auto;
+    color: #b0b8d4;
+    margin: 16px 0;
+    line-height: 1.6;
+  }
+
+  /* ─── TABLE ─── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin: 16px 0;
+  }
+  th {
+    font-family: 'Syne', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    color: #b0b8d4;
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+
+  /* ─── ALERT ─── */
+  .alert {
+    padding: 14px 18px;
+    border-radius: 10px;
+    margin: 16px 0;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .alert-warn { background: rgba(246,166,35,0.08); border: 1px solid rgba(246,166,35,0.25); color: #c8952a; }
+  .alert-info { background: rgba(91,138,245,0.08); border: 1px solid rgba(91,138,245,0.25); color: #7da4f5; }
+  .alert-success { background: rgba(62,207,142,0.08); border: 1px solid rgba(62,207,142,0.25); color: #3ecf8e; }
+
+  /* ─── SCORE ─── */
+  .score-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin: 20px 0;
+  }
+  .score-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+  }
+  .score-value {
+    font-family: 'Syne', sans-serif;
+    font-size: 32px;
+    font-weight: 800;
+    margin-bottom: 4px;
+  }
+  .score-label {
+    font-family: 'Syne', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .score-A { color: var(--green); }
+  .score-B { color: var(--accent); }
+  .score-C { color: var(--orange); }
+  .score-D { color: var(--red); }
+
+  /* ─── SECTION DIVIDERS ─── */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border2), transparent);
+    margin: 8px 0;
+  }
+
+  /* ─── UML RELATIONS ─── */
+  .uml-rel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin: 16px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+  .uml-rel-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 5px 0;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+  }
+  .uml-rel-row:last-child { border-bottom: none; }
+  .uml-from { color: var(--accent); min-width: 120px; }
+  .uml-arrow { color: var(--dim); }
+  .uml-to { color: var(--green); min-width: 120px; }
+  .uml-type { color: var(--muted); font-size: 10px; margin-left: auto; }
+
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">Scrymarket Review</div>
+  <div class="nav-links">
+    <a href="#overview">Overview</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#dataflow">Data Flow</a>
+    <a href="#database">Database</a>
+    <a href="#security">Security</a>
+    <a href="#structure">Structure</a>
+    <a href="#roadmap">Roadmap</a>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════════════════ HERO -->
+<section class="hero" id="overview">
+<div class="container">
+  <div class="section-label">Project Review — March 2026</div>
+  <h1>Scrymarket</h1>
+  <p style="font-size:17px; color: #8090b8; max-width: 600px;">AUD price tracker for Magic: The Gathering singles in Australia. Full technical review covering architecture, database design, security posture, and strategic roadmap.</p>
+  <div class="hero-meta">
+    <div class="hero-badge"><div class="dot"></div> Self-hosted · Proxmox + Cloudflare</div>
+    <div class="hero-badge">⚡ TypeScript · Next.js 15 · PostgreSQL 16</div>
+    <div class="hero-badge">📦 pnpm monorepo · Docker Compose</div>
+    <div class="hero-badge">🔐 AGPL-3.0</div>
+  </div>
+
+  <div class="card-grid" style="margin-top: 40px;">
+    <div class="card">
+      <div class="card-title">Cards indexed</div>
+      <div class="card-value">32,330</div>
+      <div class="card-sub">Unique game objects via Scryfall</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Printings</div>
+      <div class="card-value">141,656</div>
+      <div class="card-sub">Physical versions tracked</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Stores scraped</div>
+      <div class="card-value" style="color: var(--green);">24</div>
+      <div class="card-sub">21 Shopify + MTG Mate + eBay AU</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Price history rows</div>
+      <div class="card-value">2.7M</div>
+      <div class="card-sub">Append-only daily snapshots</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Store prices</div>
+      <div class="card-value">125,767</div>
+      <div class="card-sub">Current snapshot, $0.20–$258k AUD</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Unmatched</div>
+      <div class="card-value" style="color: var(--orange);">2,939</div>
+      <div class="card-sub">2.7% — tokens, DFCs, SLD variants</div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════ STACK SUMMARY -->
+<section>
+<div class="container">
+  <div class="section-label">Stack Assessment</div>
+  <h2>Overall Health Scores</h2>
+  <div class="score-grid">
+    <div class="score-item"><div class="score-value score-A">A</div><div class="score-label">Architecture</div></div>
+    <div class="score-item"><div class="score-value score-A">A</div><div class="score-label">Data Model</div></div>
+    <div class="score-item"><div class="score-value score-A">A</div><div class="score-label">Security</div></div>
+    <div class="score-item"><div class="score-value score-A">A−</div><div class="score-label">Observability</div></div>
+    <div class="score-item"><div class="score-value score-D">D</div><div class="score-label">Test Coverage</div></div>
+    <div class="score-item"><div class="score-value score-A">A</div><div class="score-label">Documentation</div></div>
+  </div>
+
+  <div class="alert alert-success" style="margin-top: 24px;">
+    <strong>Verdict:</strong> Scrymarket is production-grade across the board. Container hardening (non-root, read-only, no-new-privileges, network segmentation), full VLAN network isolation on Proxmox (3 VLANs, SSH hardened, 2FA), and a complete observability stack (Promtail → Loki, cAdvisor → Prometheus → Grafana) are all live. The remaining gaps are focused: pino not wired (Loki receiving unstructured logs), price_history needs partitioning (2.7M rows), the DFC unmatched card bug, and zero test coverage on critical matching logic.
+  </div>
+
+  <h3>Tech Stack</h3>
+  <table>
+    <thead><tr><th>Layer</th><th>Technology</th><th>Assessment</th></tr></thead>
+    <tbody>
+      <tr><td>Language</td><td><code>TypeScript (strict)</code></td><td style="color:var(--green)">✓ Excellent — strict mode everywhere</td></tr>
+      <tr><td>Package Manager</td><td><code>pnpm workspaces</code></td><td style="color:var(--green)">✓ Correct choice for monorepo</td></tr>
+      <tr><td>Web Framework</td><td><code>Next.js 15 App Router</code></td><td style="color:var(--green)">✓ Modern, appropriate for this scale</td></tr>
+      <tr><td>ORM</td><td><code>Drizzle ORM</code></td><td style="color:var(--green)">✓ Type-safe, no runtime codegen, fast</td></tr>
+      <tr><td>Database</td><td><code>PostgreSQL 16</code></td><td style="color:var(--green)">✓ Right tool — relational, JSONB available</td></tr>
+      <tr><td>HTML Scraping</td><td><code>Cheerio</code></td><td style="color:var(--green)">✓ Lightweight, well-suited</td></tr>
+      <tr><td>Scheduling</td><td><code>node-cron</code></td><td style="color:var(--orange)">⚠ Fine for now, but in-process scheduling is fragile at scale</td></tr>
+      <tr><td>Analytics</td><td><code>Umami (self-hosted)</code></td><td style="color:var(--green)">✓ Live — card-search, card-click, store-click events</td></tr>
+      <tr><td>Logging</td><td><code>pino (planned)</code></td><td style="color:var(--red)">✗ Not wired — currently console.log in scraper</td></tr>
+      <tr><td>Metrics</td><td><code>Prometheus + Grafana (planned)</code></td><td style="color:var(--red)">✗ Not deployed — planned on separate Proxmox LXC</td></tr>
+      <tr><td>Infra</td><td><code>Docker Compose + Proxmox + CF Tunnel</code></td><td style="color:var(--green)">✓ Clever zero-port-exposure setup</td></tr>
+      <tr><td>Currency</td><td><code>Static AUD_USD_RATE env var</code></td><td style="color:var(--red)">✗ Stale rate risk — should use live FX API</td></tr>
+    </tbody>
+  </table>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════ ARCHITECTURE -->
+<section id="architecture">
+<div class="container">
+  <div class="section-label">Architecture</div>
+  <h2>System Architecture Diagram</h2>
+
+  <div class="arch-diagram">
+
+    <div class="arch-section">
+      <div class="arch-section-title">External Sources</div>
+      <div class="tier">
+        <div class="tier-label">EXTERNAL</div>
+        <div class="tier-nodes">
+          <div class="node gold"><div class="node-icon">🃏</div><div class="node-name">Scryfall API</div><div class="node-sub">Bulk JSON · 300MB · 3AM</div></div>
+          <div class="tier-arrow">+</div>
+          <div class="node gold"><div class="node-icon">🛒</div><div class="node-name">21 Shopify Stores</div><div class="node-sub">products.json API · config-driven · 5AM</div></div>
+          <div class="tier-arrow">+</div>
+          <div class="node gold"><div class="node-icon">🧩</div><div class="node-name">MTG Mate</div><div class="node-sub">Custom HTML scraper · 5AM</div></div>
+          <div class="tier-arrow">+</div>
+          <div class="node gold"><div class="node-icon">📦</div><div class="node-name">eBay AU</div><div class="node-sub">Browse API · OAuth · 6AM · 4,500/day quota</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arch-section">
+      <div class="arch-section-title">Data Collection Service — apps/scraper</div>
+      <div class="tier">
+        <div class="tier-label">INGESTION</div>
+        <div class="tier-nodes">
+          <div class="node accent"><div class="node-icon">📥</div><div class="node-name">bulk-import.ts</div><div class="node-sub">Scryfall transformer</div></div>
+          <div class="tier-arrow">+</div>
+          <div class="node accent"><div class="node-icon">🛒</div><div class="node-name">shopify.ts</div><div class="node-sub">products.json · SKU matching · 21 stores</div></div>
+          <div class="tier-arrow">+</div>
+          <div class="node accent"><div class="node-icon">🕷️</div><div class="node-name">mtgmate.ts</div><div class="node-sub">Custom HTML · Playwright base</div></div>
+          <div class="tier-arrow">+</div>
+          <div class="node accent"><div class="node-icon">🏷️</div><div class="node-name">eBay pipeline</div><div class="node-sub">oauth → browse → parse → match</div></div>
+        </div>
+      </div>
+      <div style="text-align:center; color: var(--dim); font-size: 18px; margin: 8px 0;">↓</div>
+      <div class="tier">
+        <div class="tier-label">MATCHING</div>
+        <div class="tier-nodes">
+          <div class="node purple"><div class="node-icon">🔗</div><div class="node-name">card-matcher.ts</div><div class="node-sub">collector# → exact → name-only → fuzzy</div></div>
+          <div class="tier-arrow">→</div>
+          <div class="node purple"><div class="node-icon">📝</div><div class="node-name">matching.ts</div><div class="node-sub">normalizeName · Levenshtein</div></div>
+        </div>
+      </div>
+      <div style="text-align:center; color: var(--dim); font-size: 18px; margin: 8px 0;">↓</div>
+      <div class="tier">
+        <div class="tier-label">SCHEDULE</div>
+        <div class="tier-nodes">
+          <div class="node"><div class="node-icon">⏰</div><div class="node-name">node-cron</div><div class="node-sub">3AM / 5AM / 6AM daily</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arch-section">
+      <div class="arch-section-title">Persistence — PostgreSQL 16</div>
+      <div class="tier">
+        <div class="tier-label">DATABASE</div>
+        <div class="tier-nodes">
+          <div class="node green"><div class="node-icon">🗃️</div><div class="node-name">cards</div><div class="node-sub">32k rows</div></div>
+          <div class="tier-arrow">→</div>
+          <div class="node green"><div class="node-icon">🗃️</div><div class="node-name">printings</div><div class="node-sub">141k rows</div></div>
+          <div class="tier-arrow">→</div>
+          <div class="node green"><div class="node-icon">🗃️</div><div class="node-name">store_prices</div><div class="node-sub">125k rows · current snapshot</div></div>
+          <div class="tier-arrow">→</div>
+          <div class="node green"><div class="node-icon">🗃️</div><div class="node-name">price_history</div><div class="node-sub">2.7M rows · ✓ partitioned monthly</div></div>
+          <div class="tier-arrow">→</div>
+          <div class="node green"><div class="node-icon">🗃️</div><div class="node-name">card_searches</div><div class="node-sub">demand analytics</div></div>
+          <div class="tier-arrow">→</div>
+          <div class="node green"><div class="node-icon">🗃️</div><div class="node-name">ebay_search_log</div><div class="node-sub">quota scheduler</div></div>
+          <div class="tier-arrow">→</div>
+          <div class="node green"><div class="node-icon">🗃️</div><div class="node-name">unmatched_cards</div><div class="node-sub">2,939 rows · review queue</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arch-section" style="margin-bottom:0">
+      <div class="arch-section-title">Web UI — apps/web (Next.js 15 App Router)</div>
+      <div class="tier">
+        <div class="tier-label">WEB</div>
+        <div class="tier-nodes">
+          <div class="node accent"><div class="node-icon">🔍</div><div class="node-name">Search page</div><div class="node-sub">infinite scroll · drag-to-search · Umami</div></div>
+          <div class="tier-arrow">+</div>
+          <div class="node accent"><div class="node-icon">📊</div><div class="node-name">Card detail</div><div class="node-sub">prices × stores · history chart</div></div>
+          <div class="tier-arrow">+</div>
+          <div class="node accent"><div class="node-icon">🛒</div><div class="node-name">Want List</div><div class="node-sub">B&B optimiser · per-store postage</div></div>
+          <div class="tier-arrow">→</div>
+          <div class="node red"><div class="node-icon">🌐</div><div class="node-name">Cloudflare Tunnel</div><div class="node-sub">Zero open ports · free TLS</div></div>
+          <div class="tier-arrow">→</div>
+          <div class="node"><div class="node-icon">👤</div><div class="node-name">Users</div><div class="node-sub">AU MTG players</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <h3>Shared Package</h3>
+  <p><code>packages/shared</code> provides the contracts that bind scraper and web together: <code>Card</code>, <code>Printing</code>, <code>StorePrice</code>, <code>PriceHistory</code>, <code>Store</code> types, plus <code>StoreScraper</code> interface and pure utility functions (<code>normalizeName</code>, <code>levenshteinDistance</code>). Zero runtime deps — pure TypeScript.</p>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════ DATA FLOW -->
+<section id="dataflow">
+<div class="container">
+  <div class="section-label">Data Flow</div>
+  <h2>Scrape-to-Display Pipeline</h2>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+
+    <div>
+      <h3 style="margin-top:0">Scryfall Import Flow</h3>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="flow-left"><div class="flow-num">1</div><div class="flow-line"></div></div>
+          <div class="flow-content">
+            <div class="flow-title">Download bulk JSON</div>
+            <div class="flow-desc">~300MB "default_cards" from Scryfall bulk-data endpoint. Streamed — not held in memory.</div>
+            <div class="flow-tags"><span class="tag blue">3AM cron</span><span class="tag">~10 min</span></div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-left"><div class="flow-num">2</div><div class="flow-line"></div></div>
+          <div class="flow-content">
+            <div class="flow-title">Transform & deduplicate</div>
+            <div class="flow-desc">Split into <code>cards</code> (by oracle_id) and <code>printings</code> (by Scryfall card id). Token/digital variants filtered.</div>
+            <div class="flow-tags"><span class="tag">bulk-import.ts</span></div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-left"><div class="flow-num">3</div><div class="flow-line"></div></div>
+          <div class="flow-content">
+            <div class="flow-title">Batch upsert</div>
+            <div class="flow-desc">Drizzle ORM batch insert with ON CONFLICT DO UPDATE. Safe to re-run. Preserves price history.</div>
+            <div class="flow-tags"><span class="tag green">idempotent</span></div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-left"><div class="flow-num">4</div></div>
+          <div class="flow-content">
+            <div class="flow-title">Index rebuild</div>
+            <div class="flow-desc">In-memory name index and setNameIndex rebuilt from DB for use by card-matcher.</div>
+            <div class="flow-tags"><span class="tag">card-matcher.ts</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h3 style="margin-top:0">Store Scrape Flow</h3>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="flow-left"><div class="flow-num">1</div><div class="flow-line"></div></div>
+          <div class="flow-content">
+            <div class="flow-title">AsyncGenerator yield</div>
+            <div class="flow-desc">Each scraper implements <code>StoreScraper</code> interface and yields <code>ScrapedCard</code> objects incrementally — no full-scrape buffering.</div>
+            <div class="flow-tags"><span class="tag blue">5AM cron</span></div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-left"><div class="flow-num">2</div><div class="flow-line"></div></div>
+          <div class="flow-content">
+            <div class="flow-title">4-level matching</div>
+            <div class="flow-desc">collector# (1.0) → exact name+set (1.0) → name-only (0.8) → fuzzy Levenshtein ≤2 (0.6–0.8) → unmatched queue.</div>
+            <div class="flow-tags"><span class="tag">confidence scored</span></div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-left"><div class="flow-num">3</div><div class="flow-line"></div></div>
+          <div class="flow-content">
+            <div class="flow-title">Upsert store_prices</div>
+            <div class="flow-desc">Current prices overwritten. Append-only snapshot written to <code>price_history</code>.</div>
+            <div class="flow-tags"><span class="tag green">idempotent</span><span class="tag gold">history preserved</span></div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-left"><div class="flow-num">4</div></div>
+          <div class="flow-content">
+            <div class="flow-title">Unmatched logging</div>
+            <div class="flow-desc">Failed matches written to <code>unmatched_cards</code> with raw name, store, confidence. Feeds the reclassification feature.</div>
+            <div class="flow-tags"><span class="tag red">review queue</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <h3>eBay Flow</h3>
+  <div class="flow" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; padding: 0;">
+    <div style="text-align:center; padding: 16px 8px;">
+      <div class="node"><div class="node-icon">🔑</div><div class="node-name">OAuth</div><div class="node-sub">Client Credentials</div></div>
+    </div>
+    <div style="display:flex; align-items:center; justify-content:center; color:var(--dim); font-size:20px;">→</div>
+    <div style="text-align:center; padding: 16px 8px;">
+      <div class="node"><div class="node-icon">🔎</div><div class="node-name">Browse API</div><div class="node-sub">500ms rate limit · 3× retry</div></div>
+    </div>
+    <div style="display:flex; align-items:center; justify-content:center; color:var(--dim); font-size:20px;">→</div>
+    <div style="text-align:center; padding: 16px 8px;">
+      <div class="node"><div class="node-icon">🏷️</div><div class="node-name">Title Parser</div><div class="node-sub">name · set · foil · condition</div></div>
+    </div>
+  </div>
+  <div class="alert alert-warn" style="margin-top: 8px;">
+    <strong>eBay caveat:</strong> Delete-then-insert strategy means a mid-run crash leaves zero eBay prices. Consider writing to a staging table and swapping atomically (transaction + TRUNCATE + INSERT) to avoid the gap window.
+  </div>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════ DATABASE -->
+<section id="database">
+<div class="container">
+  <div class="section-label">Database UML</div>
+  <h2>Schema & Entity Relationships</h2>
+
+  <div class="db-grid">
+
+    <div class="db-table">
+      <div class="db-table-header">
+        <div class="db-table-icon">🃏</div>
+        <div class="db-table-name">cards</div>
+        <div class="db-table-count">~32,330 rows</div>
+      </div>
+      <div class="db-fields">
+        <div class="db-field"><div class="db-field-key db-field-pk">🔑</div><div class="db-field-name">id</div><div class="db-field-type">uuid PK</div></div>
+        <div class="db-field"><div class="db-field-key">◇</div><div class="db-field-name">oracle_id</div><div class="db-field-type">text UNIQUE</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">name</div><div class="db-field-type">text</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">type_line</div><div class="db-field-type">text</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">mana_cost</div><div class="db-field-type">text nullable</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">colors</div><div class="db-field-type">text[]</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">color_identity</div><div class="db-field-type">text[]</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">oracle_text</div><div class="db-field-type">text nullable</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">updated_at</div><div class="db-field-type">timestamp</div></div>
+      </div>
+      <div class="db-rel">📎 One Card → many Printings</div>
+    </div>
+
+    <div class="db-table">
+      <div class="db-table-header">
+        <div class="db-table-icon">🖨️</div>
+        <div class="db-table-name">printings</div>
+        <div class="db-table-count">~141,656 rows</div>
+      </div>
+      <div class="db-fields">
+        <div class="db-field"><div class="db-field-key db-field-pk">🔑</div><div class="db-field-name">id</div><div class="db-field-type">uuid PK</div></div>
+        <div class="db-field"><div class="db-field-key db-field-fk">↗</div><div class="db-field-name">card_id</div><div class="db-field-type">uuid FK → cards</div></div>
+        <div class="db-field"><div class="db-field-key">◇</div><div class="db-field-name">scryfall_id</div><div class="db-field-type">text UNIQUE</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">set_code</div><div class="db-field-type">text</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">set_name</div><div class="db-field-type">text</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">collector_number</div><div class="db-field-type">text</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">is_foil</div><div class="db-field-type">boolean</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">rarity</div><div class="db-field-type">text</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">image_uri</div><div class="db-field-type">text nullable</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">usd_price</div><div class="db-field-type">numeric nullable</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">released_at</div><div class="db-field-type">date</div></div>
+      </div>
+      <div class="db-rel">📎 One Printing → many StorePrice, PriceHistory</div>
+    </div>
+
+    <div class="db-table">
+      <div class="db-table-header">
+        <div class="db-table-icon">🏪</div>
+        <div class="db-table-name">stores</div>
+        <div class="db-table-count">seeded manually</div>
+      </div>
+      <div class="db-fields">
+        <div class="db-field"><div class="db-field-key db-field-pk">🔑</div><div class="db-field-name">id</div><div class="db-field-type">text PK (slug)</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">name</div><div class="db-field-type">text</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">url</div><div class="db-field-type">text</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">scraper_enabled</div><div class="db-field-type">boolean</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">store_type</div><div class="db-field-type">text (html/shopify/ebay)</div></div>
+      </div>
+    </div>
+
+    <div class="db-table">
+      <div class="db-table-header">
+        <div class="db-table-icon">💰</div>
+        <div class="db-table-name">store_prices</div>
+        <div class="db-table-count">current snapshot</div>
+      </div>
+      <div class="db-fields">
+        <div class="db-field"><div class="db-field-key db-field-pk">🔑</div><div class="db-field-name">id</div><div class="db-field-type">uuid PK</div></div>
+        <div class="db-field"><div class="db-field-key db-field-fk">↗</div><div class="db-field-name">printing_id</div><div class="db-field-type">uuid FK → printings</div></div>
+        <div class="db-field"><div class="db-field-key db-field-fk">↗</div><div class="db-field-name">store_id</div><div class="db-field-type">text FK → stores</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">price_aud</div><div class="db-field-type">numeric</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">price_type</div><div class="db-field-type">text (sell/buylist)</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">condition</div><div class="db-field-type">text nullable</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">in_stock</div><div class="db-field-type">boolean</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">source_url</div><div class="db-field-type">text nullable</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">scraped_at</div><div class="db-field-type">timestamp</div></div>
+      </div>
+      <div class="db-rel">⚠ No UNIQUE constraint on (printing_id, store_id, price_type)</div>
+    </div>
+
+    <div class="db-table">
+      <div class="db-table-header">
+        <div class="db-table-icon">📈</div>
+        <div class="db-table-name">price_history</div>
+        <div class="db-table-count">append-only</div>
+      </div>
+      <div class="db-fields">
+        <div class="db-field"><div class="db-field-key db-field-pk">🔑</div><div class="db-field-name">id</div><div class="db-field-type">uuid PK</div></div>
+        <div class="db-field"><div class="db-field-key db-field-fk">↗</div><div class="db-field-name">printing_id</div><div class="db-field-type">uuid FK → printings</div></div>
+        <div class="db-field"><div class="db-field-key db-field-fk">↗</div><div class="db-field-name">store_id</div><div class="db-field-type">text FK → stores</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">price_aud</div><div class="db-field-type">numeric</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">price_type</div><div class="db-field-type">text</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">recorded_date</div><div class="db-field-type">date</div></div>
+      </div>
+      <div class="db-rel">📎 UNIQUE on (printing_id, store_id, price_type, recorded_date) — recommended</div>
+    </div>
+
+    <div class="db-table">
+      <div class="db-table-header">
+        <div class="db-table-icon">🔍</div>
+        <div class="db-table-name">card_searches</div>
+        <div class="db-table-count">append-only</div>
+      </div>
+      <div class="db-fields">
+        <div class="db-field"><div class="db-field-key db-field-pk">🔑</div><div class="db-field-name">id</div><div class="db-field-type">uuid PK</div></div>
+        <div class="db-field"><div class="db-field-key db-field-fk">↗</div><div class="db-field-name">card_id</div><div class="db-field-type">uuid FK → cards nullable</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">query</div><div class="db-field-type">text</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">searched_at</div><div class="db-field-type">timestamp</div></div>
+      </div>
+      <div class="db-rel">📎 Powers demand-gap analytics</div>
+    </div>
+
+    <div class="db-table">
+      <div class="db-table-header">
+        <div class="db-table-icon">📅</div>
+        <div class="db-table-name">ebay_search_log</div>
+        <div class="db-table-count">quota scheduler</div>
+      </div>
+      <div class="db-fields">
+        <div class="db-field"><div class="db-field-key db-field-pk">🔑</div><div class="db-field-name">id</div><div class="db-field-type">uuid PK</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">card_name</div><div class="db-field-type">text</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">last_searched_at</div><div class="db-field-type">timestamp</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">result_count</div><div class="db-field-type">integer</div></div>
+      </div>
+      <div class="db-rel">📎 Drives stalest-first daily eBay quota fill</div>
+    </div>
+      <div class="db-fields">
+        <div class="db-field"><div class="db-field-key db-field-pk">🔑</div><div class="db-field-name">id</div><div class="db-field-type">uuid PK</div></div>
+        <div class="db-field"><div class="db-field-key db-field-fk">↗</div><div class="db-field-name">store_id</div><div class="db-field-type">text FK → stores</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">raw_name</div><div class="db-field-type">text</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">raw_set_name</div><div class="db-field-type">text nullable</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">price_aud</div><div class="db-field-type">numeric</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">confidence</div><div class="db-field-type">numeric (0–1)</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">match_type</div><div class="db-field-type">text</div></div>
+        <div class="db-field"><div class="db-field-key"></div><div class="db-field-name">first_seen_at</div><div class="db-field-type">timestamp</div></div>
+      </div>
+      <div class="db-rel">🔮 Feeds future reclassification feature</div>
+    </div>
+
+  </div>
+
+  <h3>Relationships</h3>
+  <div class="uml-rel">
+    <div class="uml-rel-row"><span class="uml-from">cards</span><span class="uml-arrow">──1──&lt;──N──</span><span class="uml-to">printings</span><span class="uml-type">one oracle → many physical versions</span></div>
+    <div class="uml-rel-row"><span class="uml-from">printings</span><span class="uml-arrow">──1──&lt;──N──</span><span class="uml-to">store_prices</span><span class="uml-type">one printing → prices at multiple stores</span></div>
+    <div class="uml-rel-row"><span class="uml-from">printings</span><span class="uml-arrow">──1──&lt;──N──</span><span class="uml-to">price_history</span><span class="uml-type">one printing → daily snapshots</span></div>
+    <div class="uml-rel-row"><span class="uml-from">stores</span><span class="uml-arrow">──1──&lt;──N──</span><span class="uml-to">store_prices</span><span class="uml-type">one store → many price rows</span></div>
+    <div class="uml-rel-row"><span class="uml-from">stores</span><span class="uml-arrow">──1──&lt;──N──</span><span class="uml-to">unmatched_cards</span><span class="uml-type">one store → many unresolved listings</span></div>
+  </div>
+
+  <h3>Schema Recommendations</h3>
+  <table>
+    <thead><tr><th>Issue</th><th>Risk</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>No UNIQUE on <code>store_prices(printing_id, store_id, price_type)</code></td><td style="color:var(--muted)">Deferred — delete-then-insert pattern is sufficient guard; eBay legitimately has multiple rows per key</td><td>Revisit in Phase 2 with observability in place</td></tr>
+      <tr><td>No UNIQUE on <code>price_history(printing_id, store_id, price_type, recorded_date)</code></td><td style="color:var(--green)">✓ Done — unique index added as part of partitioning migration</td><td>ON CONFLICT DO NOTHING on all inserts</td></tr>
+      <tr><td>No indexes on FK columns (<code>printing_id</code>, <code>store_id</code>)</td><td style="color:var(--green)">✓ Done — btree indexes added to store_prices and price_history via migration 0004</td><td>Complete</td></tr>
+      <tr><td>Static <code>AUD_USD_RATE</code> env var</td><td style="color:var(--orange)">Medium — rate drifts silently</td><td>Integrate RBA or Open Exchange Rates API, cache daily</td></tr>
+      <tr><td>Missing <code>card_reclassifications</code> table</td><td style="color:var(--accent)">Feature gap — unmatched queue exists but no correction path</td><td>Add reclassification table (future roadmap)</td></tr>
+    </tbody>
+  </table>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════ SECURITY -->
+<section id="security">
+<div class="container">
+  <div class="section-label">Security Audit</div>
+  <h2>Security Review</h2>
+
+  <div class="alert alert-success">
+    <strong>Overall posture: Strong.</strong> The production docker-compose is significantly hardened — non-root UIDs, read-only filesystems, no-new-privileges, frontend/backend network isolation, DB never exposed externally. Promtail and cAdvisor are co-deployed for log shipping and container metrics. Prometheus/Loki/Grafana live on a separate monitoring LXC on vmbr2. The remaining gaps are around package pinning, pino not yet wired (so Promtail is shipping sparse logs), and the Proxmox host itself still needing hardening.
+  </div>
+
+  <div class="security-grid">
+
+    <div class="sec-item">
+      <div class="sec-status pass">✓</div>
+      <div class="sec-body">
+        <div class="sec-title">Non-root container UIDs</div>
+        <div class="sec-desc">Scraper runs as <code>1002:1002</code>, web as <code>1001:1001</code>. Neither container can escalate to root. This is the correct approach and was previously listed as a gap — it's done.</div>
+      </div>
+    </div>
+
+    <div class="sec-item">
+      <div class="sec-status pass">✓</div>
+      <div class="sec-body">
+        <div class="sec-title">Read-only container filesystems</div>
+        <div class="sec-desc"><code>read_only: true</code> on scraper, web, tunnel, and promtail. Only explicitly declared tmpfs and named volumes are writable. Significantly limits blast radius of any container compromise.</div>
+      </div>
+    </div>
+
+    <div class="sec-item">
+      <div class="sec-status pass">✓</div>
+      <div class="sec-body">
+        <div class="sec-title">no-new-privileges on all containers</div>
+        <div class="sec-desc"><code>security_opt: no-new-privileges:true</code> prevents privilege escalation via setuid binaries inside any container. Applied consistently across scraper, web, tunnel, and promtail.</div>
+      </div>
+    </div>
+
+    <div class="sec-item">
+      <div class="sec-status pass">✓</div>
+      <div class="sec-body">
+        <div class="sec-title">Network segmentation — frontend / backend split</div>
+        <div class="sec-desc">DB is backend-only and never reachable from the tunnel or internet. Web sits on both networks. Tunnel is frontend-only and can only reach the web container. Correct isolation.</div>
+      </div>
+    </div>
+
+    <div class="sec-item">
+      <div class="sec-status pass">✓</div>
+      <div class="sec-body">
+        <div class="sec-title">DB not exposed externally</div>
+        <div class="sec-desc">PostgreSQL has no <code>ports:</code> binding — only reachable on the internal Docker backend network. Combined with network segmentation, the DB surface is minimal.</div>
+      </div>
+    </div>
+
+    <div class="sec-item">
+      <div class="sec-status pass">✓</div>
+      <div class="sec-body">
+        <div class="sec-title">Cloudflare Tunnel — zero open inbound ports</div>
+        <div class="sec-desc">All public traffic routes via Cloudflare edge. No firewall rules, free TLS, DDoS protection. cAdvisor metrics port bound to <code>10.10.20.10:8080</code> — Services VLAN only, not internet-facing.</div>
+      </div>
+    </div>
+
+    <div class="sec-item">
+      <div class="sec-status pass">✓</div>
+      <div class="sec-body">
+        <div class="sec-title">Full observability stack live</div>
+        <div class="sec-desc">Promtail + cAdvisor co-deployed in app compose. Prometheus and Grafana running in a separate monitoring repo on the vmbr2 monitoring VLAN LXC. Scrapes cAdvisor at <code>10.10.20.10:8080</code> via inter-VLAN routing. Complete metrics and log pipeline is operational.</div>
+      </div>
+    </div>
+
+    <div class="sec-item">
+      <div class="sec-status pass">✓</div>
+      <div class="sec-body">
+        <div class="sec-title">Next.js security headers</div>
+        <div class="sec-desc">CSP, X-Frame-Options, and related headers configured via Next.js config. Mitigates XSS and clickjacking at the HTTP layer.</div>
+      </div>
+    </div>
+
+    <div class="sec-item">
+      <div class="sec-status warn">⚠</div>
+      <div class="sec-body">
+        <div class="sec-title">Unpinned image tags — <code>:latest</code> on three containers</div>
+        <div class="sec-desc"><code>grafana/promtail:latest</code>, <code>cloudflare/cloudflared:latest</code>, and <code>gcr.io/cadvisor/cadvisor:latest</code> all use floating tags. A breaking upstream change will silently affect your next <code>docker compose pull</code>. <code>postgres:16-alpine</code> is correctly pinned to a major version.</div>
+        <div class="sec-fix">→ Pin to specific digest or semver tag: e.g. <code>grafana/promtail:3.4.2</code>, <code>cloudflare/cloudflared:2025.4.0</code>. Add <code>docker compose pull</code> to a monthly review checklist rather than relying on auto-updates.</div>
+      </div>
+    </div>
+
+    <div class="sec-item">
+      <div class="sec-status warn">⚠</div>
+      <div class="sec-body">
+        <div class="sec-title">cAdvisor runs privileged</div>
+        <div class="sec-desc"><code>privileged: true</code> on cAdvisor is standard for container metrics collection (needs access to cgroups and the host filesystem). It's a known trade-off, not a mistake — but worth documenting in CLAUDE.md so it's not accidentally removed or questioned.</div>
+        <div class="sec-fix">→ Add a comment in docker-compose explaining why privileged is required. Consider binding to vmbr2 address only once monitoring VLAN is set up (currently on 10.10.20.10 which is Services VLAN — check this matches your planned topology).</div>
+      </div>
+    </div>
+
+    <div class="sec-item">
+      <div class="sec-status warn">⚠</div>
+      <div class="sec-body">
+        <div class="sec-title">pino not wired — Promtail shipping sparse logs</div>
+        <div class="sec-desc">Promtail is running and shipping logs to Loki, but the scraper and web are still using <code>console.log</code>. That means Loki is receiving unstructured text rather than structured JSON — no queryable fields, no log levels, no context. Promtail without pino is like having a dashboard with no data.</div>
+        <div class="sec-fix">→ Wire pino to scraper first — it's the most log-dense service. One afternoon of work makes Loki dramatically more useful.</div>
+      </div>
+    </div>
+
+    <div class="sec-item">
+      <div class="sec-status pass">✓</div>
+      <div class="sec-body">
+        <div class="sec-title">Proxmox network fully hardened</div>
+        <div class="sec-desc">3-VLAN segmentation complete: management (vmbr0), services (vmbr1), monitoring (vmbr2). Docker LXC is on the services VLAN. SSH hardened, 2FA enabled on Proxmox host. This is a strong infra posture.</div>
+      </div>
+    </div>
+
+    <div class="sec-item">
+      <div class="sec-status warn">⚠</div>
+      <div class="sec-body">
+        <div class="sec-title">No rate limiting on web API routes</div>
+        <div class="sec-desc">Search and card detail API routes have no rate limiting. A scraper targeting your own site could exhaust the DB connection pool. Low risk now, real risk with public traffic growth.</div>
+        <div class="sec-fix">→ Add <code>@upstash/ratelimit</code> or a Cloudflare rate limit rule (free tier). 100 req/min per IP is a reasonable default for the search endpoint.</div>
+      </div>
+    </div>
+
+    <div class="sec-item">
+      <div class="sec-status warn">⚠</div>
+      <div class="sec-body">
+        <div class="sec-title">Static AUD/USD rate</div>
+        <div class="sec-desc"><code>AUD_USD_RATE=0.65</code> env var — the AUD has moved meaningfully vs USD over the past year. USD reference prices shown to users will silently drift from reality.</div>
+        <div class="sec-fix">→ Fetch from RBA or Open Exchange Rates API daily, cache in DB or Redis.</div>
+      </div>
+    </div>
+
+    <div class="sec-item">
+      <div class="sec-status info">ℹ</div>
+      <div class="sec-body">
+        <div class="sec-title">No dependency audit in CI</div>
+        <div class="sec-desc">No GitHub Actions workflow — <code>pnpm audit</code> isn't automated. Known vulnerabilities won't surface until manually checked.</div>
+        <div class="sec-fix">→ Simple workflow: on push → <code>pnpm install</code> + <code>pnpm audit</code> + <code>pnpm typecheck</code>.</div>
+      </div>
+    </div>
+
+    <div class="sec-item">
+      <div class="sec-status info">ℹ</div>
+      <div class="sec-body">
+        <div class="sec-title">No authentication layer</div>
+        <div class="sec-desc">Currently a read-only public app — no auth needed now. B2B store dashboards (Phase 3) will require it. Plan the auth layer before building the dashboards, not after.</div>
+        <div class="sec-fix">→ NextAuth.js with GitHub/Google OAuth. Keep out of scope until Phase 3 is started.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════ STRUCTURE -->
+<section id="structure">
+<div class="container">
+  <div class="section-label">Project Structure</div>
+  <h2>Structure Assessment</h2>
+
+  <pre>mtg-au-tracker/
+├── apps/
+│   ├── scraper/
+│   │   └── src/
+│   │       ├── lib/schema.ts                    ← DB schema (source of truth)
+│   │       ├── scryfall/bulk-import.ts
+│   │       ├── matching/card-matcher.ts
+│   │       ├── stores/
+│   │       │   ├── shopify.ts                   ← Generic Shopify (21 stores)
+│   │       │   ├── shopify-stores.config.ts     ← Store config list
+│   │       │   └── mtgmate.ts                   ← Custom HTML scraper
+│   │       ├── ebay/
+│   │       │   ├── oauth.ts
+│   │       │   ├── browse-client.ts             ← Rate limit + retry
+│   │       │   ├── transform.ts                 ← Title parser
+│   │       │   └── ebay-import.ts               ← Orchestrator
+│   │       ├── data/
+│   │       │   └── default_cards.json           ← Scryfall bulk cache
+│   │       ├── seed.ts
+│   │       └── index.ts                         ← Cron scheduler
+│   └── web/
+│       └── src/
+│           ├── app/
+│           │   ├── page.tsx                     ← Search
+│           │   ├── cards/[id]/page.tsx          ← Card detail
+│           │   ├── want-list/WantListView.tsx   ← B&B optimiser UI
+│           │   └── api/optimize/               ← B&B API route
+│           ├── components/
+│           │   └── BuyLink.tsx                  ← Centralised tracking
+│           └── lib/
+│               ├── db.ts
+│               └── store-shipping.ts
+├── packages/
+│   └── shared/src/
+│       ├── types/ card.ts · scraper.ts
+│       └── utils/ matching.ts · currency.ts
+├── docker/ · docs/ · memory/
+├── CLAUDE.md · README.md
+└── docker-compose.yml / prod.yml</pre>
+
+  <h3>What's working well</h3>
+  <table>
+    <thead><tr><th>Pattern</th><th>Why it's good</th></tr></thead>
+    <tbody>
+      <tr><td>Generic Shopify scraper</td><td>One class, 21 stores, zero code per new store — the right abstraction</td></tr>
+      <tr><td><code>StoreScraper</code> interface</td><td>MTG Mate and Shopify both implement the same contract — consistent orchestration</td></tr>
+      <tr><td>AsyncGenerator for scraping</td><td>Incremental processing, no memory spikes on large scrapes</td></tr>
+      <tr><td>Branch-and-Bound optimiser</td><td>Correct algorithm for facility location problem — not a naive greedy approach</td></tr>
+      <tr><td><code>BuyLink</code> component</td><td>Centralised affiliate + tracking — one place to add affiliate params for any store</td></tr>
+      <tr><td><code>card_searches</code> table</td><td>Demand-gap analytics baked in from day one — forward-thinking</td></tr>
+      <tr><td><code>ebay_search_log</code> stalest-first quota fill</td><td>Smart use of limited eBay API quota — covers the full catalogue over time</td></tr>
+      <tr><td><code>packages/shared</code></td><td>Types and utils shared between apps without duplication</td></tr>
+      <tr><td>Drizzle schema as source of truth</td><td>DB state always reproducible from code</td></tr>
+      <tr><td><code>CLAUDE.md</code> project guide</td><td>Best-in-class onboarding doc — every design decision explained with rationale</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Gaps & recommendations</h3>
+  <table>
+    <thead><tr><th>Gap</th><th>Impact</th><th>Recommendation</th></tr></thead>
+    <tbody>
+      <tr><td>DFC unmatched card bug</td><td style="color:var(--red)">High — "Delver of Secrets // Insectile Aberration" is a format staple worth real money</td><td>Strip everything after the DFC name pattern before matching — condition/set/format junk is appended by stores</td></tr>
+      <tr><td><s>No <code>price_history</code> partitioning</s></td><td style="color:var(--green)">✓ Done — monthly RANGE partitions 2025–2028 + DEFAULT catch-all. 2.7M rows migrated live.</td><td>Add new year partitions before 2029.</td></tr>
+      <tr><td>No test coverage</td><td style="color:var(--red)">High — card-matcher is critical, untested</td><td>Vitest unit tests for <code>normalizeName</code>, <code>levenshteinDistance</code>, match levels</td></tr>
+      <tr><td>pino not wired</td><td style="color:var(--orange)">Medium — can't diagnose scrape failures in prod</td><td>Wrap console.log calls — minimal effort, big diagnostic value</td></tr>
+      <tr><td>Prometheus/Grafana not deployed</td><td style="color:var(--orange)">Medium — no visibility into match rates, scrape durations</td><td>Separate monitoring LXC on vmbr2 as planned</td></tr>
+      <tr><td>Docker on management VLAN</td><td style="color:var(--orange)">Medium — security risk if any container is compromised</td><td>Move to vmbr1 Services VLAN, SSH hardening, 2FA on Proxmox</td></tr>
+      <tr><td>Static AUD/USD rate</td><td style="color:var(--orange)">Medium — USD reference prices silently drift</td><td>RBA API or Open Exchange Rates, cached daily</td></tr>
+      <tr><td>No CI pipeline</td><td style="color:var(--orange)">Medium — no automated typecheck or audit on PRs</td><td>Simple GitHub Actions workflow</td></tr>
+      <tr><td>MTG Mate set cache not built</td><td style="color:var(--accent)">Low-medium — ~30 min scrape vs ~3 min with cache</td><td>Option E: save valid codes post-run, weekly full rescan</td></tr>
+      <tr><td><code>memory/</code> directory in repo</td><td style="color:var(--accent)">Low — Claude context files committed</td><td>Add to <code>.gitignore</code> or convert to proper docs</td></tr>
+    </tbody>
+  </table>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════ ROADMAP -->
+<section id="roadmap">
+<div class="container">
+  <div class="section-label">Strategic Roadmap</div>
+  <h2>Phased Roadmap</h2>
+
+  <div class="alert alert-warn" style="margin-bottom: 28px;">
+    <strong>The problem you named:</strong> "endlessly adding features without purpose." The cure is a locked Phase gate — nothing from Phase N+1 starts until Phase N exits criteria are met. Treat each phase like a mini-milestone with a clear "done" definition.
+  </div>
+
+  <div class="roadmap">
+
+    <div class="roadmap-phase phase-1">
+      <div class="roadmap-phase-header">
+        <div class="roadmap-phase-num">PHASE 1 — NOW</div>
+        <div class="roadmap-phase-title">Stability & Foundations</div>
+        <div class="roadmap-phase-sub">Before any new features ship</div>
+      </div>
+      <div class="roadmap-items">
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Fix DFC unmatched card bug<span class="roadmap-item-label">Strip condition/set/format junk after DFC name (// pattern). Real cards, real money.</span></div></div>
+        <div class="roadmap-item" style="opacity:0.45;text-decoration:line-through"><div class="roadmap-item-dot" style="background:var(--green)"></div><div class="roadmap-item-text">price_history table partitioning by month<span class="roadmap-item-label">✓ Done — monthly RANGE partitions 2025–2028, 2.7M rows migrated live on 2026-03-29</span></div></div>
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Wire pino structured logging to scraper<span class="roadmap-item-label">Loki is live but receiving unstructured console.log — pino turns it into queryable structured data</span></div></div>
+        <div class="roadmap-item" style="opacity:0.45;text-decoration:line-through"><div class="roadmap-item-dot" style="background:var(--green)"></div><div class="roadmap-item-text">Add DB indexes on FK columns (printing_id, store_id)<span class="roadmap-item-label">✓ Done — btree indexes added to store_prices and price_history via migration 0004</span></div></div>
+        <div class="roadmap-item" style="opacity:0.45"><div class="roadmap-item-dot" style="background:var(--muted)"></div><div class="roadmap-item-text">Add UNIQUE constraints to price_history and store_prices<span class="roadmap-item-label">Deferred — price_history has unique index via partitioning; store_prices delete-then-insert is sufficient guard for now</span></div></div>
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Vitest unit tests for card-matcher and normalizeName<span class="roadmap-item-label">Zero coverage on the most critical code path</span></div></div>
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Pin :latest image tags in docker-compose<span class="roadmap-item-label">promtail, cloudflared, cadvisor — pin to semver to prevent silent breaking changes</span></div></div>
+      </div>
+    </div>
+
+    <div class="roadmap-phase phase-2">
+      <div class="roadmap-phase-header">
+        <div class="roadmap-phase-num">PHASE 2 — NEXT</div>
+        <div class="roadmap-phase-title">Observability & Data Quality</div>
+        <div class="roadmap-phase-sub">Visibility before growth</div>
+      </div>
+      <div class="roadmap-items">
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Deploy Prometheus + Grafana + Pushgateway on monitoring LXC (vmbr2)<span class="roadmap-item-label">Already planned — separate Proxmox LXC</span></div></div>
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">prom-client gauges: cards_scraped, match_rate, scrape_duration_seconds<span class="roadmap-item-label">Per-store match rate in Grafana catches silent regressions</span></div></div>
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">MTG Mate set code cache (Option E)<span class="roadmap-item-label">~30 min scrape → ~3 min. Save valid codes to data/mtgmate-valid-sets.json, weekly full rescan.</span></div></div>
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Live AUD/USD rate (RBA or Open Exchange Rates API)<span class="roadmap-item-label">Replace static env var — stale rate silently mis-prices USD reference</span></div></div>
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">eBay atomic swap (staging table → TRUNCATE + INSERT in transaction)<span class="roadmap-item-label">Eliminates zero-eBay-price window on interrupted runs</span></div></div>
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">GitHub Actions CI: typecheck + pnpm audit on PR<span class="roadmap-item-label">No automated checks currently</span></div></div>
+      </div>
+    </div>
+
+    <div class="roadmap-phase phase-3">
+      <div class="roadmap-phase-header">
+        <div class="roadmap-phase-num">PHASE 3 — GROWTH</div>
+        <div class="roadmap-phase-title">Analytics & User Features</div>
+        <div class="roadmap-phase-sub">Monetisation & engagement</div>
+      </div>
+      <div class="roadmap-items">
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Demand-gap dashboard<span class="roadmap-item-label">Cards searched but not in stock anywhere — uses card_searches + store_prices</span></div></div>
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">B2B store dashboards<span class="roadmap-item-label">Nightly ETL of Umami events into PG, Next.js dashboard behind auth. Potential revenue.</span></div></div>
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Auth layer (NextAuth + GitHub/Google)<span class="roadmap-item-label">Required for B2B dashboards and user-specific features</span></div></div>
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Price alerts (email/push on threshold drop)<span class="roadmap-item-label">High user value — drives return visits</span></div></div>
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">MTG Matcher reclassification game<span class="roadmap-item-label">Crowd-sources correction of unmatched_cards — gamified data quality</span></div></div>
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Rate limiting on API routes<span class="roadmap-item-label">Needed before user growth — @upstash/ratelimit or Cloudflare rule</span></div></div>
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Branding polish — favicon, OG images, CSP unsafe-inline cleanup<span class="roadmap-item-label">Already in CLAUDE.md nice-to-haves — bundle with Phase 3 launch prep</span></div></div>
+      </div>
+    </div>
+
+    <div class="roadmap-phase phase-4">
+      <div class="roadmap-phase-header">
+        <div class="roadmap-phase-num">PHASE 4 — SCALE</div>
+        <div class="roadmap-phase-title">Infrastructure Scale</div>
+        <div class="roadmap-phase-sub">Only when Proxmox constrains you</div>
+      </div>
+      <div class="roadmap-items">
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">AWS ECS + RDS deployment<span class="roadmap-item-label">Already planned as Milestone 6 — defer until needed</span></div></div>
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Replace node-cron with BullMQ job queue<span class="roadmap-item-label">Retry, concurrency, per-job visibility — needed at scale</span></div></div>
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Public API for AU MTG prices<span class="roadmap-item-label">Community goodwill + drives discovery. Rate-limited.</span></div></div>
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Additional AU stores (Hareruya AU, Nerd Cave, etc.)<span class="roadmap-item-label">Pure config if Shopify, custom scraper otherwise</span></div></div>
+        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Per-card OG images (card art + price snapshot)<span class="roadmap-item-label">Social sharing — significant SEO value for card detail pages</span></div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <h3>Feature Triage — What NOT to build next</h3>
+  <div class="alert alert-warn">
+    <strong>Deliberately out of scope for now:</strong> Deck builder integration, international price comparison, MTG Arena / MTGO price tracking, social features (comments/ratings), mobile app, ML-based price prediction. These are all interesting but none of them strengthen the core value proposition — being the best AU MTG price tracker — which isn't fully locked in yet.
+  </div>
+
+  <h3>Competitive differentiation vs AU alternatives</h3>
+  <table>
+    <thead><tr><th>Feature</th><th>Scrymarket</th><th>Typical AU alternatives</th></tr></thead>
+    <tbody>
+      <tr><td>AU store price comparison</td><td style="color:var(--green)">✓ Multi-store</td><td>Usually single-store or manual</td></tr>
+      <tr><td>eBay AU market prices</td><td style="color:var(--green)">✓ Live Browse API</td><td>Rarely included</td></tr>
+      <tr><td>Price history charts</td><td style="color:var(--green)">✓ Daily snapshots</td><td>Often missing</td></tr>
+      <tr><td>Self-hosted / open source</td><td style="color:var(--green)">✓ AGPL</td><td>Almost never</td></tr>
+      <tr><td>Buylist prices</td><td style="color:var(--accent)">Partial</td><td>Varies</td></tr>
+      <tr><td>Price alerts</td><td style="color:var(--orange)">Phase 3</td><td>Rare in AU</td></tr>
+      <tr><td>Collection tracking</td><td style="color:var(--orange)">Phase 3</td><td>Some do this</td></tr>
+    </tbody>
+  </table>
+</div>
+</section>
+
+<section style="border-bottom: none; padding-bottom: 80px;">
+<div class="container">
+  <div class="section-label">Summary</div>
+  <h2>Key Takeaways</h2>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    <div>
+      <h3 style="color: var(--green); margin-top: 0;">Strengths to protect</h3>
+      <ul style="color: #b0b8d4; font-size: 14px; padding-left: 20px; line-height: 2;">
+        <li>Generic Shopify scraper — config only, no code per store</li>
+        <li>Branch-and-Bound optimiser — correct algorithm, not a hack</li>
+        <li>BuyLink centralisation — affiliate-ready from day one</li>
+        <li>card_searches demand analytics — baked in before it was needed</li>
+        <li>Container hardening — non-root, read-only, no-new-privileges, network split</li>
+        <li>Full VLAN segmentation + SSH hardened + Proxmox 2FA ✓</li>
+        <li>Complete observability stack — Promtail→Loki, cAdvisor→Prometheus→Grafana</li>
+        <li>CLAUDE.md — keep it updated after every significant session</li>
+      </ul>
+    </div>
+    <div>
+      <h3 style="color: var(--red); margin-top: 0;">Do these before new features</h3>
+      <ul style="color: #b0b8d4; font-size: 14px; padding-left: 20px; line-height: 2;">
+        <li>Fix DFC unmatched card bug (real cards, real money)</li>
+        <li style="text-decoration:line-through;opacity:0.45">price_history partitioning — ✓ done (2026-03-29)</li>
+        <li>Wire pino — Loki is live but receiving unstructured logs</li>
+        <li style="text-decoration:line-through;opacity:0.45">DB indexes on FK columns — ✓ done</li>
+        <li style="opacity:0.45">UNIQUE constraints on price tables — deferred</li>
+        <li>Vitest tests for card-matcher</li>
+        <li>Pin :latest image tags in docker-compose</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</section>
+
+</body>
+</html>
