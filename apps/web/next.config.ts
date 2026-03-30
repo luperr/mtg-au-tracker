@@ -32,6 +32,17 @@ const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: path.resolve("../../"),
   transpilePackages: ["@mtg-au/shared"],
+  webpack(config) {
+    // transpilePackages processes @mtg-au/shared TypeScript source via webpack,
+    // but webpack doesn't resolve .js → .ts by default (unlike TypeScript's
+    // "moduleResolution: bundler"). extensionAlias teaches it to do so.
+    config.resolve.extensionAlias = {
+      ...config.resolve.extensionAlias,
+      ".js": [".js", ".ts"],
+      ".jsx": [".jsx", ".tsx"],
+    };
+    return config;
+  },
   async headers() {
     return [
       {
