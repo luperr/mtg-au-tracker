@@ -6,10 +6,11 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "dependencies": {
+  "peerDependencies": {
     "pino": "^9.6.0"
   },
   "devDependencies": {
+    "pino": "^9.6.0",
     "pino-pretty": "^13.0.0"
   }
 }
