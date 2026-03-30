@@ -29,6 +29,7 @@
 import type { ScrapedCard } from "@mtg-au/shared";
 import { BaseScraper } from "./base-scraper.js";
 import type { ShopifyStoreConfig } from "./shopify-stores.config.js";
+import { logger } from "../lib/logger.js";
 
 const PAGE_SIZE = 250;
 
@@ -425,8 +426,11 @@ function mapProduct(product: ShopifyProduct, baseUrl: string): ScrapedCard[] {
 // ── Scraper class ─────────────────────────────────────────────────────────────
 
 export class ShopifyScraper extends BaseScraper {
+  private readonly log;
+
   constructor(private config: ShopifyStoreConfig) {
     super();
+    this.log = logger.child({ component: "shopify", store: config.id });
   }
 
   getBaseUrl(): string {
@@ -439,24 +443,24 @@ export class ShopifyScraper extends BaseScraper {
       const data = await this.fetchJson<ProductsResponse>(url);
       return data.products ?? [];
     } catch (err: unknown) {
-      console.warn(`[${this.config.id}] Failed to fetch page ${pageNum}: ${err}`);
+      this.log.warn({ page: pageNum, err: String(err) }, "Failed to fetch products page");
       return [];
     }
   }
 
   async *scrapeAll(): AsyncGenerator<ScrapedCard> {
-    console.log(`[${this.config.id}] Starting scrape via Shopify products.json...`);
+    this.log.info("Starting Shopify scrape");
 
     let page = 1;
     let totalProducts = 0;
     let totalCards = 0;
 
     while (true) {
-      console.log(`[${this.config.id}] Fetching page ${page}...`);
+      this.log.debug({ page }, "Fetching products page");
       const products = await this.fetchProductsPage(page);
 
       if (products.length === 0) {
-        console.log(`[${this.config.id}] No products on page ${page} — done.`);
+        this.log.debug({ page }, "No products on page — done");
         break;
       }
 
@@ -470,7 +474,7 @@ export class ShopifyScraper extends BaseScraper {
         }
       }
 
-      console.log(`[${this.config.id}] Page ${page}: ${products.length} products → ${totalCards} card variants so far`);
+      this.log.debug({ page, products: products.length, total_cards: totalCards }, "Page fetched");
 
       if (products.length < PAGE_SIZE) {
         // Last page — no need to fetch another
@@ -480,6 +484,6 @@ export class ShopifyScraper extends BaseScraper {
       page++;
     }
 
-    console.log(`[${this.config.id}] Done. ${totalProducts} products → ${totalCards} ScrapedCard entries.`);
+    this.log.info({ total_products: totalProducts, total_cards: totalCards }, "Shopify scrape complete");
   }
 }

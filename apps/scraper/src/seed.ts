@@ -10,6 +10,9 @@
 import { fileURLToPath } from "url";
 import { sql } from "drizzle-orm";
 import { db, schema } from "./lib/db.js";
+import { logger } from "./lib/logger.js";
+
+const log = logger.child({ component: "seed" });
 
 const STORES = [
   {
@@ -159,7 +162,7 @@ const STORES = [
 ];
 
 export async function seedStores(): Promise<void> {
-  console.log("[Seed] Seeding stores...");
+  log.info("Seeding stores");
 
   await db
     .insert(schema.stores)
@@ -173,7 +176,7 @@ export async function seedStores(): Promise<void> {
       },
     });
 
-  console.log(`[Seed] Upserted ${STORES.length} stores.`);
+  log.info({ count: STORES.length }, "Stores upserted");
 }
 
 async function main() {
@@ -185,7 +188,7 @@ async function main() {
 // not when seedStores() is imported by run-all.ts or index.ts.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   main().catch((err) => {
-    console.error("Seed failed:", err);
+    log.fatal({ err }, "Seed failed");
     process.exit(1);
   });
 }

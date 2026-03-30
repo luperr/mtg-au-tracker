@@ -29,6 +29,9 @@
 
 import type { ScrapedCard } from "@mtg-au/shared";
 import { BaseScraper } from "./base-scraper.js";
+import { logger } from "../lib/logger.js";
+
+const log = logger.child({ component: "mtgmate" });
 
 const BASE_URL = "https://www.mtgmate.com.au";
 
@@ -122,23 +125,23 @@ export class MtgMateScraper extends BaseScraper {
       // 404 = this set code doesn't exist on MTG Mate — expected for many codes
       const is404 = err instanceof Error && err.message.includes("HTTP 404");
       if (!is404) {
-        console.warn(`[MTG Mate] Failed to fetch ${url}: ${err}`);
+        log.warn({ url, err: String(err) }, "Failed to fetch set data");
       }
       return [];
     }
   }
 
   async *scrapeAll(): AsyncGenerator<ScrapedCard> {
-    console.log("[MTG Mate] Fetching set list...");
+    log.info("Fetching MTG Mate set list");
     const setsHtml = await this.fetchPage(`${BASE_URL}/magic_sets`);
     const codes = parseSetCodes(setsHtml);
 
     if (codes.length === 0) {
-      console.warn("[MTG Mate] No set codes found on /magic_sets");
+      log.warn("No set codes found on /magic_sets");
       return;
     }
 
-    console.log(`[MTG Mate] Found ${codes.length} set codes — fetching in parallel (concurrency=${CONCURRENCY})`);
+    log.info({ set_count: codes.length, concurrency: CONCURRENCY }, "Fetching set data in parallel");
 
     let scraped = 0;
     let withData = 0;
@@ -154,7 +157,7 @@ export class MtgMateScraper extends BaseScraper {
         scraped++;
         if (entries.length > 0) {
           withData++;
-          console.log(`[MTG Mate] ${batch[j]}: ${entries.length} cards (${scraped}/${codes.length})`);
+          log.debug({ set_code: batch[j], card_count: entries.length, scraped, total: codes.length }, "Set data fetched");
           for (const entry of entries) {
             yield mapEntry(entry);
           }
@@ -162,6 +165,6 @@ export class MtgMateScraper extends BaseScraper {
       }
     }
 
-    console.log(`[MTG Mate] Done. ${withData} sets with data out of ${codes.length} probed.`);
+    log.info({ sets_with_data: withData, sets_probed: codes.length }, "MTG Mate scrape complete");
   }
 }

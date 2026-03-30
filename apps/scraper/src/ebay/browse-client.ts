@@ -15,6 +15,9 @@
  */
 
 import { getAccessToken, MARKETPLACE_ID } from "./oauth.js";
+import { logger } from "../lib/logger.js";
+
+const log = logger.child({ component: "ebay-browse" });
 
 // eBay category ID for "Collectible Card Games > Magic: The Gathering"
 const MTG_CATEGORY_ID = "2536";
@@ -94,7 +97,7 @@ async function fetchPage(
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     if (attempt > 0) {
       const wait = RETRY_BACKOFF_MS[attempt - 1] ?? 30_000;
-      console.warn(`[eBay Browse] Rate limited — waiting ${wait / 1000}s before retry ${attempt}/${MAX_RETRIES} for "${query}" page ${page}`);
+      log.warn({ query, page, attempt, max_retries: MAX_RETRIES, wait_ms: wait }, "Rate limited — waiting before retry");
       await sleep(wait);
     }
 

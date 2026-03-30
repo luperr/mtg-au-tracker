@@ -20,6 +20,9 @@
 
 import { chromium, type Browser, type BrowserContext } from "playwright";
 import type { ScrapedCard, StoreScraper } from "@mtg-au/shared";
+import { logger } from "../lib/logger.js";
+
+const log = logger.child({ component: "base-scraper" });
 
 const USER_AGENT =
   process.env.USER_AGENT ??
@@ -52,7 +55,7 @@ export abstract class BaseScraper implements StoreScraper {
     await page
       .waitForFunction(() => !document.title.includes("Just a moment"), { timeout: 15000 })
       .catch(() => {
-        console.warn("[BaseScraper] Cloudflare challenge may not have cleared");
+        log.warn("Cloudflare challenge may not have cleared");
       });
   }
 
@@ -81,7 +84,7 @@ export abstract class BaseScraper implements StoreScraper {
       await page.goto(url, { waitUntil: "networkidle", timeout: 45000 });
       await this.waitForCloudflare(page);
       await page.waitForSelector(selector, { timeout: 20000 }).catch(() => {
-        console.warn(`[BaseScraper] Selector "${selector}" not found at ${url}`);
+        log.warn({ url, selector }, "Selector not found after page load");
       });
       const content = await page.content();
       this.lastRequestAt = Date.now();
