@@ -2,6 +2,11 @@
   "name": "mtg-au-tracker",
   "private": true,
   "license": "AGPL-3.0-only",
+  "pnpm": {
+    "overrides": {
+      "undici": ">=7.24.6"
+    }
+  },
   "scripts": {
     "scrape:scryfall": "pnpm --filter @mtg-au/scraper scrape:scryfall",
     "import:scryfall": "pnpm --filter @mtg-au/scraper import:scryfall"
