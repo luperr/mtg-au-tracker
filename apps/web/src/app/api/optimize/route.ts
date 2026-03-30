@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import sql from "@/lib/db";
 import { STORE_FLAT_SHIPPING_AUD } from "@/lib/store-shipping";
+import { logger } from "@/lib/logger";
+
+const log = logger.child({ component: "api-optimize" });
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -209,10 +212,7 @@ export async function POST(request: Request) {
   const shippingOverrides = (body as { shippingOverrides?: Record<string, number> }).shippingOverrides ?? {};
   const flatRates: Record<string, number | null> = { ...STORE_FLAT_SHIPPING_AUD, ...shippingOverrides };
   if (Object.keys(shippingOverrides).length > 0) {
-    console.log("[optimize] shippingOverrides received:", shippingOverrides);
-    console.log("[optimize] effective flatRates for overridden stores:", Object.fromEntries(
-      Object.keys(shippingOverrides).map(id => [id, flatRates[id]])
-    ));
+    log.debug({ shipping_overrides: shippingOverrides }, "Shipping overrides received");
   }
 
   const cardIds = typedItems.map((i) => i.cardId);
@@ -354,28 +354,11 @@ export async function POST(request: Request) {
 
   if (best.assignments) {
     const usedStores = new Set([...best.assignments.values()].map(l => l.storeId));
-    const postageByStore = [...usedStores]
-      .filter(id => id in STORE_FLAT_SHIPPING_AUD && id !== "ebay_au")
-      .map(id => `${id}: $${flatRates[id] ?? 0}`);
-    console.log("[optimize] result uses stores:", [...usedStores]);
-    console.log("[optimize] postage applied:", postageByStore);
-    console.log("[optimize] total cost:", best.cost);
-
-    // Per-card: show chosen store + price, and cheapest alternative
-    for (const item of available) {
-      const chosen = best.assignments.get(item.cardId);
-      if (!chosen) continue;
-      const listings = byCard.get(item.cardId) ?? [];
-      const alternatives = listings
-        .filter(l => l.storeId !== chosen.storeId && !(allPoolStoreIds.has(l.storeId) && !usedStores.has(l.storeId)))
-        .sort((a, b) => a.priceAud - b.priceAud)
-        .slice(0, 3)
-        .map(l => `${l.storeId}@$${l.priceAud}`);
-      console.log(`  ${item.cardName}: ${chosen.storeId}@$${chosen.priceAud} | alts: ${alternatives.join(", ") || "none"}`);
-    }
+    log.debug({ stores: [...usedStores], total_cost: best.cost, item_count: available.length }, "Optimiser result");
   }
 
   if (!best.assignments) {
+    log.error({ item_count: available.length }, "Optimiser could not find valid assignment");
     return NextResponse.json({ error: "Could not find valid assignment" }, { status: 500 });
   }
 

@@ -25,6 +25,9 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
 import { normalizeName, normalizeSetName, stripVariant, levenshteinDistance } from "@mtg-au/shared";
 import type { ScrapedCard } from "@mtg-au/shared";
+import { logger } from "../lib/logger.js";
+
+const log = logger.child({ component: "card-matcher" });
 
 export interface MatchResult {
   printingId: string | null;
@@ -102,8 +105,9 @@ export class CardMatcher {
       this.nameIndex.set(nameKey, existing);
     }
 
-    console.log(
-      `[CardMatcher] Built index: ${rows.length} printings, ${this.nameIndex.size} unique names`,
+    log.info(
+      { printings: rows.length, unique_names: this.nameIndex.size },
+      "Card matcher index built",
     );
   }
 

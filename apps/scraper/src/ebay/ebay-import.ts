@@ -31,6 +31,9 @@ import { CardMatcher } from "../matching/card-matcher.js";
 import { searchEbayByCardName } from "./browse-client.js";
 import { transformEbayItem } from "./transform.js";
 import type { EbayItemSummary } from "./browse-client.js";
+import { logger } from "../lib/logger.js";
+
+const log = logger.child({ component: "ebay-import" });
 
 const STORE_ID = "ebay_au";
 const BATCH_SIZE = 500;
@@ -231,29 +234,26 @@ function processItem(
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export async function runEbayImport(): Promise<void> {
-  console.log("[eBay Import] Starting tiered eBay AU price import...");
+  log.info("Starting tiered eBay AU price import");
 
   const today = new Date().toISOString().slice(0, 10);
 
   // Build card matcher index once
-  console.log("[eBay Import] Building card matcher index...");
+  log.info("Building card matcher index");
   const matcher = new CardMatcher();
   await matcher.build();
 
   // Determine which cards to search today
-  console.log("[eBay Import] Querying cards due for search today...");
+  log.info("Querying cards due for search today");
   const cardsToSearch = await getCardsToSearch();
 
   const tierCounts = { hot: 0, active: 0, longTail: 0 };
   for (const { tier } of cardsToSearch) tierCounts[tier]++;
 
-  console.log(`[eBay Import] Cards due today: ${cardsToSearch.length} total`);
-  console.log(`  ${TIER_LABEL.hot}:      ${tierCounts.hot}`);
-  console.log(`  ${TIER_LABEL.active}:   ${tierCounts.active}`);
-  console.log(`  ${TIER_LABEL.longTail}: ${tierCounts.longTail}`);
+  log.info({ cards_due: cardsToSearch.length, ...tierCounts }, "Cards due today");
 
   if (cardsToSearch.length === 0) {
-    console.log("[eBay Import] Nothing to search today — all cards are up to date.");
+    log.info("Nothing to search today — all cards are up to date");
     return;
   }
 
@@ -274,16 +274,16 @@ export async function runEbayImport(): Promise<void> {
   for (let i = 0; i < cardsToSearch.length; i++) {
     const { cardName, tier } = cardsToSearch[i];
 
-    // Print tier header when tier changes
+    // Log tier transition
     if (tier !== lastTier) {
-      console.log(`\n[eBay Import] ${TIER_LABEL[tier]}`);
+      log.debug({ tier, label: TIER_LABEL[tier] }, "Starting tier");
       lastTier = tier;
     }
 
     if ((i + 1) % 50 === 0 || i === cardsToSearch.length - 1) {
-      console.log(
-        `[eBay Import] ${i + 1}/${cardsToSearch.length} searched | ` +
-        `matched=${stats.matched} unmatched=${stats.unmatched} fetched=${stats.fetched}`,
+      log.debug(
+        { progress: i + 1, total: cardsToSearch.length, matched: stats.matched, unmatched: stats.unmatched, fetched: stats.fetched },
+        "Search progress",
       );
     }
 
@@ -301,7 +301,7 @@ export async function runEbayImport(): Promise<void> {
         }
       }
     } catch (err) {
-      console.error(`[eBay Import] Error searching "${cardName}":`, err);
+      log.error({ err, card_name: cardName }, "Error searching card");
       // Don't update search log on error — retry on next run
       continue;
     }
@@ -321,14 +321,22 @@ export async function runEbayImport(): Promise<void> {
       ? ((stats.matched / (stats.matched + stats.unmatched)) * 100).toFixed(1)
       : "0";
 
-  console.log(`\n[eBay Import] Done.`);
-  console.log(`  Cards searched:     ${stats.cardSearches} (${tierCounts.hot} hot, ${tierCounts.active} active, ${tierCounts.longTail} longTail)`);
-  console.log(`  Zero-result cards:  ${stats.zeroResultCards} (backed off)`);
-  console.log(`  Total fetched:      ${stats.fetched}`);
-  console.log(`  Duplicates:         ${stats.dupes}`);
-  console.log(`  Skipped:            ${stats.skipped} (sealed, bulk, accessories)`);
-  console.log(`  Matched:            ${stats.matched} (${matchPct}%)`);
-  console.log(`  Unmatched:          ${stats.unmatched}`);
+  log.info(
+    {
+      cards_searched: stats.cardSearches,
+      hot: tierCounts.hot,
+      active: tierCounts.active,
+      long_tail: tierCounts.longTail,
+      zero_result_cards: stats.zeroResultCards,
+      fetched: stats.fetched,
+      dupes: stats.dupes,
+      skipped: stats.skipped,
+      matched: stats.matched,
+      unmatched: stats.unmatched,
+      match_rate: parseFloat(matchPct),
+    },
+    "eBay import complete",
+  );
 }
 
 // ── Run directly ──────────────────────────────────────────────────────────────
@@ -336,7 +344,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   runEbayImport()
     .then(() => process.exit(0))
     .catch((err) => {
-      console.error("[eBay Import] Fatal error:", err);
+      log.fatal({ err }, "Fatal error");
       process.exit(1);
     });
 }

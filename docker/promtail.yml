@@ -14,3 +14,20 @@ scrape_configs:
     relabel_configs:
       - source_labels: [__meta_docker_container_name]
         target_label: container
+    pipeline_stages:
+      # Attempt to parse each log line as JSON (pino output).
+      # Non-JSON lines (Next.js framework logs) are silently passed through
+      # without structured labels — they still reach Loki as raw strings.
+      - json:
+          expressions:
+            level: level
+            component: component
+            service: service
+            store: store
+      # Promote extracted fields to Loki labels so they can be used in
+      # LogQL selectors: {service="scraper", component="ebay-import"}
+      - labels:
+          level:
+          component:
+          service:
+          store:

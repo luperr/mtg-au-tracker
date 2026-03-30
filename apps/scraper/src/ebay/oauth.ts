@@ -15,6 +15,10 @@
  * Test: run directly with `tsx src/ebay/oauth.ts` — prints the token.
  */
 
+import { logger } from "../lib/logger.js";
+
+const log = logger.child({ component: "ebay-oauth" });
+
 const TOKEN_URL = {
   production: "https://api.ebay.com/identity/v1/oauth2/token",
   sandbox: "https://api.sandbox.ebay.com/identity/v1/oauth2/token",
@@ -81,7 +85,7 @@ export async function getAccessToken(): Promise<string> {
     expiresAt: Date.now() + data.expires_in * 1000,
   };
 
-  console.log(`[eBay OAuth] New token obtained (expires in ${data.expires_in}s)`);
+  log.info({ expires_in: data.expires_in }, "New eBay OAuth token obtained");
   return cached.token;
 }
 

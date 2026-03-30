@@ -24,6 +24,9 @@ import { SHOPIFY_STORES } from "./shopify-stores.config.js";
 import { seedStores } from "../seed.js";
 import type { BaseScraper } from "./base-scraper.js";
 import type { ScrapedCard } from "@mtg-au/shared";
+import { logger } from "../lib/logger.js";
+
+const log = logger.child({ component: "run-all" });
 
 // ── Scraper registry ──────────────────────────────────────────────────────────
 // To add a new Shopify store, add an entry to shopify-stores.config.ts.
@@ -47,12 +50,12 @@ export async function runStore(
 ): Promise<void> {
   const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
 
-  console.log(`\n[run-all] ── ${storeId} ──`);
+  log.info({ store: storeId }, "Starting store scrape");
 
   // Clear stale data from previous runs
   await db.delete(schema.storePrices).where(eq(schema.storePrices.storeId, storeId));
   await db.delete(schema.unmatchedCards).where(eq(schema.unmatchedCards.storeId, storeId));
-  console.log(`[run-all] Cleared existing prices and unmatched cards for ${storeId}`);
+  log.debug({ store: storeId }, "Cleared existing prices and unmatched cards");
 
   type PriceRow = typeof schema.storePrices.$inferInsert;
   type HistoryRow = typeof schema.priceHistory.$inferInsert;
@@ -107,8 +110,9 @@ export async function runStore(
   }
 
   const matchPct = total > 0 ? ((matched / total) * 100).toFixed(1) : "0";
-  console.log(
-    `[run-all] ${storeId}: ${total} scraped — ${matched} matched (${matchPct}%), ${unmatched} unmatched`,
+  log.info(
+    { store: storeId, total, matched, unmatched, match_rate: parseFloat(matchPct) },
+    "Store scrape complete",
   );
 }
 
@@ -162,7 +166,7 @@ function buildUnmatchedRow(
 
 export async function runAllStores(): Promise<void> {
   await seedStores();
-  console.log("[run-all] Building card matcher index...");
+  log.info("Building card matcher index");
   const matcher = new CardMatcher();
   await matcher.build();
 
@@ -172,16 +176,16 @@ export async function runAllStores(): Promise<void> {
     .where(eq(schema.stores.scraperEnabled, true));
 
   if (enabledStores.length === 0) {
-    console.log("[run-all] No stores with scraperEnabled = true. Done.");
+    log.info("No stores with scraperEnabled = true — done");
     return;
   }
 
-  console.log(`[run-all] Found ${enabledStores.length} enabled store(s): ${enabledStores.map((s) => s.id).join(", ")}`);
+  log.info({ stores: enabledStores.map((s) => s.id) }, "Starting store scrapes");
 
   for (const store of enabledStores) {
     const factory = SCRAPERS[store.id];
     if (!factory) {
-      console.warn(`[run-all] No scraper registered for store "${store.id}" — skipping`);
+      log.warn({ store: store.id }, "No scraper registered for store — skipping");
       continue;
     }
 
@@ -189,19 +193,19 @@ export async function runAllStores(): Promise<void> {
     try {
       await runStore(store.id, scraper, matcher);
     } catch (err) {
-      console.error(`[run-all] Fatal error scraping ${store.id}:`, err);
+      log.error({ err, store: store.id }, "Fatal error scraping store");
     } finally {
       await scraper.close();
     }
   }
 
-  console.log("\n[run-all] All stores done.");
+  log.info("All stores done");
 }
 
 // Only run when invoked directly (pnpm scrape:stores), not when imported by index.ts
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   runAllStores().catch((err) => {
-    console.error(err);
+    log.error({ err }, "Store scrape run failed");
     process.exit(1);
   });
 }

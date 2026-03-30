@@ -38,6 +38,7 @@ services:
       EBAY_PAGES_PER_CARD: ${EBAY_PAGES_PER_CARD:-1}
       EBAY_RECENT_MONTHS: ${EBAY_RECENT_MONTHS:-12}
       EBAY_HIGH_VALUE_USD: ${EBAY_HIGH_VALUE_USD:-10}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - scraper_data:/app/apps/scraper/data   # persists downloaded Scryfall JSON between runs
     depends_on:
@@ -63,6 +64,7 @@ services:
       DATABASE_URL: postgresql://mtg:${DB_PASSWORD}@db:5432/mtg_tracker
       NODE_ENV: production
       GITHUB_TOKEN: ${GITHUB_TOKEN}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       db:
         condition: service_healthy

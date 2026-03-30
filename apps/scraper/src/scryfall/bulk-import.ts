@@ -10,6 +10,9 @@ import { join } from "path";
 import { sql } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
 import { shouldImport, transform, type ScryfallCard } from "./transform.js";
+import { logger } from "../lib/logger.js";
+
+const log = logger.child({ component: "scryfall" });
 
 const BULK_API_URL = "https://api.scryfall.com/bulk-data";
 const OUTPUT_DIR = "/tmp/mtg-scraper";
@@ -28,7 +31,7 @@ interface BulkDataCatalog {
 }
 
 async function fetchData(): Promise<void> {
-  console.log("[Scryfall] Fetching bulk data catalog...");
+  log.info("Fetching Scryfall bulk data catalog");
   const catalogRes = await fetch(BULK_API_URL, { headers: { "User-Agent": USER_AGENT } });
   if (!catalogRes.ok) throw new Error(`Catalog request failed: ${catalogRes.status}`);
 
@@ -36,25 +39,25 @@ async function fetchData(): Promise<void> {
   const entry = catalog.data.find((d) => d.type === "default_cards");
   if (!entry) throw new Error("Could not find 'default_cards' in Scryfall catalog");
 
-  console.log(`[Scryfall] Downloading bulk data (updated ${entry.updated_at})...`);
+  log.info({ updated_at: entry.updated_at }, "Downloading Scryfall bulk data");
   const dataRes = await fetch(entry.download_uri, { headers: { "User-Agent": USER_AGENT } });
   if (!dataRes.ok) throw new Error(`Download failed: ${dataRes.status}`);
 
   const cards = (await dataRes.json()) as ScryfallCard[];
-  console.log(`[Scryfall] Downloaded ${cards.length.toLocaleString()} card objects`);
+  log.info({ card_count: cards.length }, "Downloaded Scryfall card objects");
 
   await mkdir(OUTPUT_DIR, { recursive: true });
   await writeFile(OUTPUT_FILE, JSON.stringify(cards));
-  console.log(`[Scryfall] Saved to ${OUTPUT_FILE}`);
+  log.debug({ path: OUTPUT_FILE }, "Saved bulk data to file");
 }
 
 async function importData(): Promise<void> {
-  console.log("[Scryfall] Reading saved data...");
+  log.info("Reading saved Scryfall data");
   const raw = await readFile(OUTPUT_FILE, "utf-8");
   const allCards = JSON.parse(raw) as ScryfallCard[];
 
   const importable = allCards.filter(shouldImport);
-  console.log(`[Scryfall] ${importable.length.toLocaleString()} cards to import`);
+  log.info({ card_count: importable.length }, "Cards to import");
 
   const cardMap = new Map<string, ReturnType<typeof transform>["cardRow"]>();
   const allPrintings: ReturnType<typeof transform>["printingRows"][number][] = [];
@@ -69,7 +72,7 @@ async function importData(): Promise<void> {
   const printingMap = new Map(allPrintings.map((p) => [p.id, p]));
   const uniquePrintings = [...printingMap.values()];
 
-  console.log(`[Scryfall] ${uniqueCards.length.toLocaleString()} cards, ${uniquePrintings.length.toLocaleString()} printings`);
+  log.info({ cards: uniqueCards.length, printings: uniquePrintings.length }, "Prepared data for upsert");
 
   // Insert cards
   for (let i = 0; i < uniqueCards.length; i += BATCH_SIZE) {
@@ -88,7 +91,7 @@ async function importData(): Promise<void> {
       },
     });
   }
-  console.log("[Scryfall] Cards inserted ✓");
+  log.info("Cards upserted");
 
   // Insert printings
   for (let i = 0; i < uniquePrintings.length; i += BATCH_SIZE) {
@@ -107,20 +110,20 @@ async function importData(): Promise<void> {
       },
     });
   }
-  console.log("[Scryfall] Printings inserted ✓");
+  log.info("Printings upserted");
 }
 
 export async function runScryfallImport(): Promise<void> {
   await fetchData();
   await importData();
-  console.log("[Scryfall] Import complete.");
+  log.info("Scryfall import complete");
 }
 
 // Run directly: tsx src/scryfall/bulk-import.ts
 import { fileURLToPath } from "url";
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   runScryfallImport().catch((err) => {
-    console.error("[Scryfall] Fatal error:", err);
+    log.fatal({ err }, "Fatal error");
     process.exit(1);
   });
 }
