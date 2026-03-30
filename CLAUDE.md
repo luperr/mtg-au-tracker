@@ -260,7 +260,7 @@ Phases are gated — nothing from Phase N+1 starts until Phase N exit criteria a
 
 - [ ] Fix DFC unmatched card bug — strip condition/set/format junk after `//` pattern in card names
 - [x] `price_history` table partitioning by month — monthly RANGE partitions 2025–2028 + DEFAULT catch-all. Add new year's partitions before 2029.
-- [ ] Wire `pino` structured logging to scraper — Loki is live but receiving unstructured `console.log`
+- [x] Wire `pino` structured logging to scraper and web — structured JSON to stdout, Promtail ships to Loki with `service`, `component`, `level`, `store` labels
 - [x] Add DB indexes on FK columns (`printing_id`, `store_id`) on `store_prices` and `price_history`
 - [ ] Add UNIQUE constraints to `price_history` and `store_prices` — deferred; delete-then-insert pattern is sufficient guard for now
 - [ ] Vitest unit tests for `card-matcher` and `normalizeName` — zero coverage on the most critical code path

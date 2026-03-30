@@ -819,7 +819,7 @@
       <tr><td>HTML Scraping</td><td><code>Cheerio</code></td><td style="color:var(--green)">✓ Lightweight, well-suited</td></tr>
       <tr><td>Scheduling</td><td><code>node-cron</code></td><td style="color:var(--orange)">⚠ Fine for now, but in-process scheduling is fragile at scale</td></tr>
       <tr><td>Analytics</td><td><code>Umami (self-hosted)</code></td><td style="color:var(--green)">✓ Live — card-search, card-click, store-click events</td></tr>
-      <tr><td>Logging</td><td><code>pino (planned)</code></td><td style="color:var(--red)">✗ Not wired — currently console.log in scraper</td></tr>
+      <tr><td>Logging</td><td><code>pino</code></td><td style="color:var(--green)">✓ Live — structured JSON to stdout, Promtail ships to Loki with service/component/level/store labels</td></tr>
       <tr><td>Metrics</td><td><code>Prometheus + Grafana (planned)</code></td><td style="color:var(--red)">✗ Not deployed — planned on separate Proxmox LXC</td></tr>
       <tr><td>Infra</td><td><code>Docker Compose + Proxmox + CF Tunnel</code></td><td style="color:var(--green)">✓ Clever zero-port-exposure setup</td></tr>
       <tr><td>Currency</td><td><code>Static AUD_USD_RATE env var</code></td><td style="color:var(--red)">✗ Stale rate risk — should use live FX API</td></tr>
@@ -1301,11 +1301,10 @@
     </div>
 
     <div class="sec-item">
-      <div class="sec-status warn">⚠</div>
+      <div class="sec-status ok">✓</div>
       <div class="sec-body">
-        <div class="sec-title">pino not wired — Promtail shipping sparse logs</div>
-        <div class="sec-desc">Promtail is running and shipping logs to Loki, but the scraper and web are still using <code>console.log</code>. That means Loki is receiving unstructured text rather than structured JSON — no queryable fields, no log levels, no context. Promtail without pino is like having a dashboard with no data.</div>
-        <div class="sec-fix">→ Wire pino to scraper first — it's the most log-dense service. One afternoon of work makes Loki dramatically more useful.</div>
+        <div class="sec-title">pino wired — structured JSON flowing to Loki</div>
+        <div class="sec-desc">Scraper and web both emit structured JSON via a shared <code>createLogger</code> factory in <code>@mtg-au/shared</code>. Promtail extracts <code>service</code>, <code>component</code>, <code>level</code>, and <code>store</code> as Loki labels. LogQL queries like <code>{service="scraper", component="ebay-import"}</code> now work. Done 2026-03-30.</div>
       </div>
     </div>
 
@@ -1427,7 +1426,7 @@
       <tr><td>DFC unmatched card bug</td><td style="color:var(--red)">High — "Delver of Secrets // Insectile Aberration" is a format staple worth real money</td><td>Strip everything after the DFC name pattern before matching — condition/set/format junk is appended by stores</td></tr>
       <tr><td><s>No <code>price_history</code> partitioning</s></td><td style="color:var(--green)">✓ Done — monthly RANGE partitions 2025–2028 + DEFAULT catch-all. 2.7M rows migrated live.</td><td>Add new year partitions before 2029.</td></tr>
       <tr><td>No test coverage</td><td style="color:var(--red)">High — card-matcher is critical, untested</td><td>Vitest unit tests for <code>normalizeName</code>, <code>levenshteinDistance</code>, match levels</td></tr>
-      <tr><td>pino not wired</td><td style="color:var(--orange)">Medium — can't diagnose scrape failures in prod</td><td>Wrap console.log calls — minimal effort, big diagnostic value</td></tr>
+      <tr><td><s>pino not wired</s></td><td style="color:var(--green)">✓ Done — structured JSON to Loki with service/component/level/store labels (2026-03-30)</td><td>Complete</td></tr>
       <tr><td>Prometheus/Grafana not deployed</td><td style="color:var(--orange)">Medium — no visibility into match rates, scrape durations</td><td>Separate monitoring LXC on vmbr2 as planned</td></tr>
       <tr><td>Docker on management VLAN</td><td style="color:var(--orange)">Medium — security risk if any container is compromised</td><td>Move to vmbr1 Services VLAN, SSH hardening, 2FA on Proxmox</td></tr>
       <tr><td>Static AUD/USD rate</td><td style="color:var(--orange)">Medium — USD reference prices silently drift</td><td>RBA API or Open Exchange Rates, cached daily</td></tr>
@@ -1460,7 +1459,7 @@
       <div class="roadmap-items">
         <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Fix DFC unmatched card bug<span class="roadmap-item-label">Strip condition/set/format junk after DFC name (// pattern). Real cards, real money.</span></div></div>
         <div class="roadmap-item" style="opacity:0.45;text-decoration:line-through"><div class="roadmap-item-dot" style="background:var(--green)"></div><div class="roadmap-item-text">price_history table partitioning by month<span class="roadmap-item-label">✓ Done — monthly RANGE partitions 2025–2028, 2.7M rows migrated live on 2026-03-29</span></div></div>
-        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Wire pino structured logging to scraper<span class="roadmap-item-label">Loki is live but receiving unstructured console.log — pino turns it into queryable structured data</span></div></div>
+        <div class="roadmap-item" style="opacity:0.45;text-decoration:line-through"><div class="roadmap-item-dot" style="background:var(--green)"></div><div class="roadmap-item-text">Wire pino structured logging to scraper + web<span class="roadmap-item-label">✓ Done — createLogger factory in shared, Loki labels: service/component/level/store (2026-03-30)</span></div></div>
         <div class="roadmap-item" style="opacity:0.45;text-decoration:line-through"><div class="roadmap-item-dot" style="background:var(--green)"></div><div class="roadmap-item-text">Add DB indexes on FK columns (printing_id, store_id)<span class="roadmap-item-label">✓ Done — btree indexes added to store_prices and price_history via migration 0004</span></div></div>
         <div class="roadmap-item" style="opacity:0.45"><div class="roadmap-item-dot" style="background:var(--muted)"></div><div class="roadmap-item-text">Add UNIQUE constraints to price_history and store_prices<span class="roadmap-item-label">Deferred — price_history has unique index via partitioning; store_prices delete-then-insert is sufficient guard for now</span></div></div>
         <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Vitest unit tests for card-matcher and normalizeName<span class="roadmap-item-label">Zero coverage on the most critical code path</span></div></div>
@@ -1562,7 +1561,7 @@
       <ul style="color: #b0b8d4; font-size: 14px; padding-left: 20px; line-height: 2;">
         <li>Fix DFC unmatched card bug (real cards, real money)</li>
         <li style="text-decoration:line-through;opacity:0.45">price_history partitioning — ✓ done (2026-03-29)</li>
-        <li>Wire pino — Loki is live but receiving unstructured logs</li>
+        <li style="text-decoration:line-through;opacity:0.45">Wire pino — ✓ done (2026-03-30)</li>
         <li style="text-decoration:line-through;opacity:0.45">DB indexes on FK columns — ✓ done</li>
         <li style="opacity:0.45">UNIQUE constraints on price tables — deferred</li>
         <li>Vitest tests for card-matcher</li>
