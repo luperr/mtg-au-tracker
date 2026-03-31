@@ -36,6 +36,13 @@
       "when": 1774800000000,
       "tag": "0004_partition_price_history",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1774886400000,
+      "tag": "0005_dfc_image_uri_back",
+      "breakpoints": true
     }
   ]
 }

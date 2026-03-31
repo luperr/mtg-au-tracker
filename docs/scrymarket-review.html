@@ -1423,7 +1423,7 @@
   <table>
     <thead><tr><th>Gap</th><th>Impact</th><th>Recommendation</th></tr></thead>
     <tbody>
-      <tr><td>DFC unmatched card bug</td><td style="color:var(--red)">High — "Delver of Secrets // Insectile Aberration" is a format staple worth real money</td><td>Strip everything after the DFC name pattern before matching — condition/set/format junk is appended by stores</td></tr>
+      <tr><td><s>DFC unmatched card bug</s></td><td style="color:var(--green)">✓ Done — Shopify scraper now ingests DFCs; front-face fallback matcher; <code>image_uri_back</code> stored; flip button on card detail page (2026-03-31)</td><td>Complete</td></tr>
       <tr><td><s>No <code>price_history</code> partitioning</s></td><td style="color:var(--green)">✓ Done — monthly RANGE partitions 2025–2028 + DEFAULT catch-all. 2.7M rows migrated live.</td><td>Add new year partitions before 2029.</td></tr>
       <tr><td>No test coverage</td><td style="color:var(--red)">High — card-matcher is critical, untested</td><td>Vitest unit tests for <code>normalizeName</code>, <code>levenshteinDistance</code>, match levels</td></tr>
       <tr><td><s>pino not wired</s></td><td style="color:var(--green)">✓ Done — structured JSON to Loki with service/component/level/store labels (2026-03-30)</td><td>Complete</td></tr>
@@ -1457,7 +1457,7 @@
         <div class="roadmap-phase-sub">Before any new features ship</div>
       </div>
       <div class="roadmap-items">
-        <div class="roadmap-item"><div class="roadmap-item-dot"></div><div class="roadmap-item-text">Fix DFC unmatched card bug<span class="roadmap-item-label">Strip condition/set/format junk after DFC name (// pattern). Real cards, real money.</span></div></div>
+        <div class="roadmap-item" style="opacity:0.45;text-decoration:line-through"><div class="roadmap-item-dot" style="background:var(--green)"></div><div class="roadmap-item-text">Fix DFC bug<span class="roadmap-item-label">✓ Done — Shopify scraper ingests DFCs; front-face fallback matcher; image_uri_back stored; flip button on card detail page (2026-03-31)</span></div></div>
         <div class="roadmap-item" style="opacity:0.45;text-decoration:line-through"><div class="roadmap-item-dot" style="background:var(--green)"></div><div class="roadmap-item-text">price_history table partitioning by month<span class="roadmap-item-label">✓ Done — monthly RANGE partitions 2025–2028, 2.7M rows migrated live on 2026-03-29</span></div></div>
         <div class="roadmap-item" style="opacity:0.45;text-decoration:line-through"><div class="roadmap-item-dot" style="background:var(--green)"></div><div class="roadmap-item-text">Wire pino structured logging to scraper + web<span class="roadmap-item-label">✓ Done — createLogger factory in shared, Loki labels: service/component/level/store (2026-03-30)</span></div></div>
         <div class="roadmap-item" style="opacity:0.45;text-decoration:line-through"><div class="roadmap-item-dot" style="background:var(--green)"></div><div class="roadmap-item-text">Add DB indexes on FK columns (printing_id, store_id)<span class="roadmap-item-label">✓ Done — btree indexes added to store_prices and price_history via migration 0004</span></div></div>
@@ -1559,7 +1559,7 @@
     <div>
       <h3 style="color: var(--red); margin-top: 0;">Do these before new features</h3>
       <ul style="color: #b0b8d4; font-size: 14px; padding-left: 20px; line-height: 2;">
-        <li>Fix DFC unmatched card bug (real cards, real money)</li>
+        <li style="text-decoration:line-through;opacity:0.45">Fix DFC bug — ✓ done (2026-03-31)</li>
         <li style="text-decoration:line-through;opacity:0.45">price_history partitioning — ✓ done (2026-03-29)</li>
         <li style="text-decoration:line-through;opacity:0.45">Wire pino — ✓ done (2026-03-30)</li>
         <li style="text-decoration:line-through;opacity:0.45">DB indexes on FK columns — ✓ done</li>

@@ -64,6 +64,7 @@ export interface PrintingRow {
   rarity: string;
   isFoil: boolean;
   imageUri: string | null;
+  imageUriBack: string | null;  // back face for DFCs; null for normal cards
   scryfallUri: string;
   usdPrice: string | null;   // stored as string to avoid float rounding issues
 }
@@ -100,14 +101,16 @@ export function shouldImport(card: ScryfallCard): boolean {
 
 // ─── Transform ────────────────────────────────────────────────────────────────
 
-function getImageUri(card: ScryfallCard): string | null {
-  // Normal cards have image_uris at the top level
-  if (card.image_uris?.normal) return card.image_uris.normal;
-  // Double-faced cards (transform, modal_dfc) store images on each face
-  if (card.card_faces?.[0]?.image_uris?.normal) {
-    return card.card_faces[0].image_uris.normal;
+function getImageUris(card: ScryfallCard): { front: string | null; back: string | null } {
+  // Normal cards have image_uris at the top level; no back face
+  if (card.image_uris?.normal) {
+    return { front: card.image_uris.normal, back: null };
   }
-  return null;
+  // Double-faced cards (transform, modal_dfc) store images on each face
+  return {
+    front: card.card_faces?.[0]?.image_uris?.normal ?? null,
+    back: card.card_faces?.[1]?.image_uris?.normal ?? null,
+  };
 }
 
 export function transform(card: ScryfallCard): {
@@ -125,7 +128,7 @@ export function transform(card: ScryfallCard): {
     legalities: card.legalities ?? {},
   };
 
-  const imageUri = getImageUri(card);
+  const { front: imageUri, back: imageUriBack } = getImageUris(card);
   const printingRows: PrintingRow[] = [];
 
   for (const finish of card.finishes) {
@@ -148,6 +151,7 @@ export function transform(card: ScryfallCard): {
       rarity: card.rarity,
       isFoil,
       imageUri,
+      imageUriBack,
       scryfallUri: card.scryfall_uri,
       usdPrice,
     });

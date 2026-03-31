@@ -99,12 +99,14 @@ async function importData(): Promise<void> {
     await db.insert(schema.printings).values(batch.map((p) => ({
       id: p.id, cardId: p.cardId, setCode: p.setCode, setName: p.setName,
       releasedAt: p.releasedAt, collectorNumber: p.collectorNumber, rarity: p.rarity,
-      isFoil: p.isFoil, imageUri: p.imageUri, scryfallUri: p.scryfallUri,
-      usdPrice: p.usdPrice, updatedAt: new Date(),
+      isFoil: p.isFoil, imageUri: p.imageUri, imageUriBack: p.imageUriBack,
+      scryfallUri: p.scryfallUri, usdPrice: p.usdPrice, updatedAt: new Date(),
     }))).onConflictDoUpdate({
       target: schema.printings.id,
       set: {
         releasedAt: sql`excluded.released_at`,
+        imageUri: sql`excluded.image_uri`,
+        imageUriBack: sql`excluded.image_uri_back`,
         usdPrice: sql`excluded.usd_price`,
         updatedAt: sql`excluded.updated_at`,
       },

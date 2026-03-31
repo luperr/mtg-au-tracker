@@ -316,11 +316,12 @@ function isSkippedVariant(title: string): boolean {
 }
 
 // Tokens, emblems, and double-faced tokens are not in our printings DB.
+// Note: we do NOT reject on "//" — DFC cards (e.g. "Delver of Secrets // Insectile Aberration")
+// legitimately contain "//" in their title. Double-faced tokens are caught by the \btoken\b check.
 function isTokenOrEmblem(product: ShopifyProduct): boolean {
   const lower = product.title.toLowerCase();
   if (/\btoken\b/.test(lower)) return true;
   if (/\bemblem\b/.test(lower)) return true;
-  if (product.title.includes("//")) return true;
   if (product.product_type.toLowerCase() === "token") return true;
   return false;
 }

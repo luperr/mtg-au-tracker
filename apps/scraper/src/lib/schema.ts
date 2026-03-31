@@ -71,6 +71,7 @@ export const printings = pgTable(
     rarity: text("rarity").notNull(),
     isFoil: boolean("is_foil").notNull().default(false),
     imageUri: text("image_uri"),
+    imageUriBack: text("image_uri_back"),                    // back face for DFCs; null for normal cards
     scryfallUri: text("scryfall_uri").notNull(),
     usdPrice: text("usd_price"),                          // stored as text to avoid float rounding
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
