@@ -258,7 +258,7 @@ Phases are gated — nothing from Phase N+1 starts until Phase N exit criteria a
 ### Phase 1 — Stability & Foundations
 *Must be done before any new features ship.*
 
-- [ ] Fix DFC unmatched card bug — strip condition/set/format junk after `//` pattern in card names
+- [x] Fix DFC bug — Shopify scraper now ingests DFC cards (removed `//` rejection); front-face fallback index in card-matcher; `image_uri_back` stored in `printings`; flip button on card detail page (2026-03-31)
 - [x] `price_history` table partitioning by month — monthly RANGE partitions 2025–2028 + DEFAULT catch-all. Add new year's partitions before 2029.
 - [x] Wire `pino` structured logging to scraper and web — structured JSON to stdout, Promtail ships to Loki with `service`, `component`, `level`, `store` labels
 - [x] Add DB indexes on FK columns (`printing_id`, `store_id`) on `store_prices` and `price_history`

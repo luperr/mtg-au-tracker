@@ -43,6 +43,7 @@ export type PrintingRow = {
   rarity: string;
   is_foil: boolean;
   image_uri: string | null;
+  image_uri_back: string | null;
   scryfall_uri: string;
   usd_price: string | null;
   released_at: string | null;
@@ -190,6 +191,7 @@ export type PrintingWithPrices = {
   rarity: string;
   isFoil: boolean;
   imageUri: string | null;
+  imageUriBack: string | null;
   scryfallUri: string;
   usdPrice: string | null;
   releasedAt: string | null;
@@ -216,6 +218,7 @@ export async function getPrintingsWithPrices(
       p.rarity,
       p.is_foil,
       p.image_uri,
+      p.image_uri_back,
       p.scryfall_uri,
       p.usd_price,
       p.released_at::text AS released_at,
@@ -244,6 +247,7 @@ export async function getPrintingsWithPrices(
         rarity: row.rarity,
         isFoil: row.is_foil,
         imageUri: row.image_uri,
+        imageUriBack: row.image_uri_back,
         scryfallUri: row.scryfall_uri,
         usdPrice: row.usd_price,
         releasedAt: row.released_at,

@@ -32,7 +32,22 @@ export function CardDetailView({
     printings.find((p) => p.imageUri)?.imageUri ??
     null;
 
+  const defaultImageBack =
+    printings.find((p) => p.imageUriBack && !p.isFoil)?.imageUriBack ??
+    printings.find((p) => p.imageUriBack)?.imageUriBack ??
+    null;
+
   const [displayImage, setDisplayImage] = useState<string | null>(defaultImage);
+  const [displayImageBack, setDisplayImageBack] = useState<string | null>(defaultImageBack);
+  const [flipped, setFlipped] = useState(false);
+
+  function handleHoverImage(uri: string | null, uriBack?: string | null) {
+    setDisplayImage(uri);
+    setDisplayImageBack(uriBack ?? null);
+    setFlipped(false);
+  }
+
+  const shownImage = flipped ? displayImageBack : displayImage;
 
   const snapshot = useMemo(() => {
     const inStockPrices = printings
@@ -59,23 +74,39 @@ export function CardDetailView({
 
       {/* Left: sticky card image */}
       <div className="lg:sticky lg:top-4 max-w-[200px] mx-auto lg:max-w-none mb-6 lg:mb-0">
-        {displayImage ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            key={displayImage}
-            src={displayImage}
-            alt={card.name}
-            className="w-full rounded-xl shadow-2xl shadow-black/60 transition-opacity duration-150"
-            style={{ aspectRatio: "63/88", objectFit: "cover" }}
-          />
-        ) : (
-          <div
-            className="w-full rounded-xl bg-muted border border-subtle flex items-center justify-center text-cream-dim/50 text-sm"
-            style={{ aspectRatio: "63/88" }}
-          >
-            No image
-          </div>
-        )}
+        <div className="relative">
+          {shownImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={shownImage}
+              src={shownImage}
+              alt={card.name}
+              className="w-full rounded-xl shadow-2xl shadow-black/60 transition-opacity duration-150"
+              style={{ aspectRatio: "63/88", objectFit: "cover" }}
+            />
+          ) : (
+            <div
+              className="w-full rounded-xl bg-muted border border-subtle flex items-center justify-center text-cream-dim/50 text-sm"
+              style={{ aspectRatio: "63/88" }}
+            >
+              No image
+            </div>
+          )}
+          {displayImageBack && (
+            <button
+              onClick={() => setFlipped((f) => !f)}
+              title="Flip card"
+              className="absolute right-3 bg-black/60 hover:bg-black/80 rounded-full p-1.5 text-white transition-colors"
+              style={{ top: "15%" }}
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 4v6h6"/>
+                <path d="M23 20v-6h-6"/>
+                <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/>
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Right: card info + prices */}
@@ -128,7 +159,7 @@ export function CardDetailView({
           <PricesTable
             printings={printings}
             defaultImage={defaultImage}
-            onHoverImage={setDisplayImage}
+            onHoverImage={handleHoverImage}
             cardId={card.id}
             cardName={card.name}
           />

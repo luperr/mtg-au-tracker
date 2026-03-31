@@ -63,7 +63,7 @@ On first boot the scraper imports all Scryfall data (~10 min), then runs store a
 ## Roadmap
 
 ### Phase 1 — Stability (now)
-- [ ] Fix DFC unmatched card bug
+- [x] Fix DFC bug — Shopify scraper now ingests DFC cards; front-face fallback matcher; back face image stored and displayed with flip button
 - [x] `price_history` table partitioning by month (2.7M rows)
 - [x] Wire `pino` structured logging — scraper + web emit structured JSON, Promtail ships to Loki
 - [x] DB indexes on FK columns + UNIQUE constraints on price tables

@@ -93,7 +93,7 @@ export function PricesTable({
 }: {
   printings: PrintingWithPrices[];
   defaultImage: string | null;
-  onHoverImage: (uri: string | null) => void;
+  onHoverImage: (uri: string | null, uriBack?: string | null) => void;
   cardId: string;
   cardName: string;
 }) {
@@ -320,8 +320,8 @@ export function PricesTable({
                 <tr
                   key={`${row.printing.id}-${row.storeName}-${i}`}
                   className="border-b border-subtle/60 last:border-0 hover:bg-muted transition-colors cursor-default"
-                  onMouseEnter={() => onHoverImage(row.printing.imageUri)}
-                  onMouseLeave={() => onHoverImage(defaultImage)}
+                  onMouseEnter={() => onHoverImage(row.printing.imageUri, row.printing.imageUriBack)}
+                  onMouseLeave={() => onHoverImage(defaultImage, null)}
                 >
                   {/* Set symbol + name */}
                   <td className="px-4 py-2.5">
