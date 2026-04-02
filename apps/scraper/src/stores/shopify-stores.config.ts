@@ -125,4 +125,54 @@ export const SHOPIFY_STORES: ShopifyStoreConfig[] = [
     baseUrl: "https://www.crithit.com.au",
     collectionHandle: "magic-the-gathering-singles",
   },
+  {
+    id: "hr_games",
+    baseUrl: "https://hrgames.au",
+    collectionHandle: "magic-the-gathering-singles",
+  },
+  {
+    id: "mega_games",
+    baseUrl: "https://www.megagames.com.au",
+    collectionHandle: "mtg-singles",
+  },
+  {
+    id: "ozzie_collectables",
+    baseUrl: "https://www.ozziecollectables.com",
+    collectionHandle: "mtg-singles",
+  },
+  {
+    id: "playmantis",
+    baseUrl: "https://playmantis.com.au",
+    collectionHandle: "magic-the-gathering-singles",
+  },
+  {
+    id: "raptor_games",
+    baseUrl: "https://raptorgames.com",
+    collectionHandle: "magic-the-gathering-singles",
+  },
+  {
+    id: "kastle_cards_and_games",
+    baseUrl: "https://kastlecardsandgames.com",
+    collectionHandle: "magic-the-gathering",
+  },
+  {
+    id: "shuffled",
+    baseUrl: "https://shuffled.com.au",
+    collectionHandle: "mtg-singles-instock",
+  },
+  {
+    id: "the_card_hub_australia",
+    baseUrl: "https://thecardhubaustralia.com.au",
+    collectionHandle: "mtg-singles",
+  },
+  {
+    id: "that_game_store",
+    baseUrl: "https://thatgamestore.com.au",
+    collectionHandle: "mtg-singles-australia-instock",
+  },
+  {   
+    id: "area52",
+    baseUrl: "https://area52.com.au",
+    collectionHandle: "mtg-singles-instock",
+  },
 ];

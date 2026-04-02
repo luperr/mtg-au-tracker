@@ -27,5 +27,15 @@ export const STORE_FLAT_SHIPPING_AUD: Record<string, number | null> = {
   ronin_games: 6.50,
   from_the_deep: 6.50,
   crit_hit: 6.50,
+  hr_gamer: 6.50,
+  mega_games: 6.50,
+  ozzie_collectables: 6.50,
+  playmantis: 6.50,
+  raptor_games: 6.50,
+  kastle_cards_and_games: 6.50,
+  shuffled: 6.50,
+  the_card_hub_australia: 6.50,
+  that_game_store: 6.50,
+  area52: 6.50,
   ebay_au: null,    // per-seller — handled as per-item shipping, not flat rate
 };
