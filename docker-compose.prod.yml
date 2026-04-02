@@ -90,7 +90,7 @@ services:
       - frontend
 
   promtail:
-    image: grafana/promtail:3.6
+    image: grafana/promtail:3.6.0
     restart: unless-stopped
     # Runs as root — required to read /var/lib/docker/containers (root:root 710)
     # and the Docker socket. No safe non-root UID exists for log shipping.
@@ -106,7 +106,7 @@ services:
     command: -config.file=/etc/promtail/config.yml
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:0.56.2
+    image: gcr.io/cadvisor/cadvisor:v0.56.2
     restart: always
     privileged: true
     volumes:

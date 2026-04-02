@@ -7,6 +7,7 @@
  * 2. Add the store to STORES in apps/scraper/src/seed.ts (scraperEnabled: true).
  * 3. Add flat-rate postage to STORE_FLAT_SHIPPING_AUD in
  *    apps/web/src/lib/store-shipping.ts (use null if postage varies).
+ * 4. Add to package.json for manual testing (e.g. "scrape:newstore": "tsx src/stores/run-store.ts new_store").
  * 4. Run seed:  docker compose run --rm scraper pnpm --filter @mtg-au/scraper seed
  * 5. Test run: docker compose run --rm scraper pnpm --filter @mtg-au/scraper scrape:stores
  *
