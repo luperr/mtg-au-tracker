@@ -263,18 +263,18 @@ Phases are gated — nothing from Phase N+1 starts until Phase N exit criteria a
 - [x] Wire `pino` structured logging to scraper and web — structured JSON to stdout, Promtail ships to Loki with `service`, `component`, `level`, `store` labels
 - [x] Add DB indexes on FK columns (`printing_id`, `store_id`) on `store_prices` and `price_history`
 - [ ] Add UNIQUE constraints to `price_history` and `store_prices` — deferred; delete-then-insert pattern is sufficient guard for now
-- [ ] Vitest unit tests for `card-matcher` and `normalizeName` — zero coverage on the most critical code path
+- [x] Vitest unit tests — 160 tests across card-matcher (all 6 match levels), normalizeName, Scryfall transform, eBay title parser, Shopify parser. Co-located `.test.ts` files, `pnpm test` from repo root (2026-04-02)
 - [ ] Pin `:latest` image tags in docker-compose — `promtail`, `cloudflared`, `cadvisor`
 
 ### Phase 2 — Observability & Data Quality
 *Visibility before growth.*
 
-- [ ] Deploy Prometheus + Grafana + Pushgateway on monitoring LXC (`vmbr2`)
-- [ ] `prom-client` gauges: `cards_scraped`, `match_rate`, `scrape_duration_seconds` — per-store match rate catches silent regressions
+- [x] Deploy Prometheus + Grafana + Pushgateway on monitoring LXC (`vmbr2`) — live on vmbr2, scrapes cAdvisor at `10.10.20.10:8080`
+- [x] `prom-client` gauges: `cards_scraped`, `match_rate`, `scrape_duration_seconds` — per-store match rate catches silent regressions
 - [ ] MTG Mate set code cache — save valid codes to `data/mtgmate-valid-sets.json`, weekly full rescan (~30 min → ~3 min)
 - [ ] Live AUD/USD rate (RBA or Open Exchange Rates API) — replace static `AUD_USD_RATE` env var
 - [ ] eBay atomic swap — staging table → `TRUNCATE + INSERT` in transaction, eliminates zero-price window on interrupted runs
-- [ ] GitHub Actions CI — typecheck + `pnpm audit` on PR
+- [ ] GitHub Actions CI — typecheck + `pnpm audit` + `pnpm test` on PR
 - [ ] Proxmox network hardening — move Docker LXC to vmbr1 (Services VLAN), SSH hardening + fail2ban, 2FA
 
 ### Phase 3 — Analytics & User Features

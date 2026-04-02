@@ -11,5 +11,8 @@
   },
   "devDependencies": {
     "pino-pretty": "^13.0.0"
+  },
+  "scripts": {
+    "test": "vitest run"
   }
 }

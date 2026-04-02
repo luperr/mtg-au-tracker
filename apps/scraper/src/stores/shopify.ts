@@ -108,7 +108,7 @@ function normaliseCondition(raw: string): string {
 //   "Lightning Bolt (M11)"         → { cardName: "Lightning Bolt", setName: "M11" }
 //   "Lightning Bolt"               → { cardName: "Lightning Bolt", setName: null }
 
-function parseProductTitle(title: string): { cardName: string; setName: string | null } {
+export function parseProductTitle(title: string): { cardName: string; setName: string | null } {
   // Pattern: "Name - Set Name" (dash separator)
   const dashMatch = title.match(/^(.+?)\s+[-–—]\s+(.+)$/);
   if (dashMatch) {
@@ -168,7 +168,7 @@ interface SkuData {
 
 const NON_FOIL_FINISHES = new Set(["NF", "NONFOIL", "NON-FOIL"]);
 
-function parseSkuData(sku: string | null | undefined): SkuData {
+export function parseSkuData(sku: string | null | undefined): SkuData {
   if (!sku) return { setCode: null, collectorNumber: null, isFoil: null };
 
   // Format A: SET-COLLECTOR-LANG-FINISH-CONDITION  e.g. "MOC-381-EN-NF-1"
@@ -310,7 +310,7 @@ const BORDERLESS_WORD = /\bborderless\b/i;
 // "Spider-Man 2099 (0216)" or "Kaalia of the Vast () (0343)".
 const COLLECTOR_NUM_RE = /\((\d{4})\)/;
 
-function isSkippedVariant(title: string): boolean {
+export function isSkippedVariant(title: string): boolean {
   const lower = title.toLowerCase();
   return SKIP_VARIANT_KEYWORDS.some((kw) => lower.includes(kw));
 }
@@ -318,7 +318,7 @@ function isSkippedVariant(title: string): boolean {
 // Tokens, emblems, and double-faced tokens are not in our printings DB.
 // Note: we do NOT reject on "//" — DFC cards (e.g. "Delver of Secrets // Insectile Aberration")
 // legitimately contain "//" in their title. Double-faced tokens are caught by the \btoken\b check.
-function isTokenOrEmblem(product: ShopifyProduct): boolean {
+export function isTokenOrEmblem(product: ShopifyProduct): boolean {
   const lower = product.title.toLowerCase();
   if (/\btoken\b/.test(lower)) return true;
   if (/\bemblem\b/.test(lower)) return true;
