@@ -67,16 +67,16 @@ On first boot the scraper imports all Scryfall data (~10 min), then runs store a
 - [x] `price_history` table partitioning by month (2.7M rows)
 - [x] Wire `pino` structured logging — scraper + web emit structured JSON, Promtail ships to Loki
 - [x] DB indexes on FK columns + UNIQUE constraints on price tables
-- [ ] Vitest unit tests for card-matcher and normalizeName
+- [x] Vitest unit tests — 160 tests across card-matcher, normalizeName, Scryfall transform, eBay title parser, Shopify parser (co-located, `pnpm test`)
 - [ ] Pin `:latest` image tags in docker-compose
 
 ### Phase 2 — Observability
-- [ ] Prometheus + Grafana + Pushgateway on dedicated monitoring LXC
-- [ ] `prom-client` gauges per store (match rate, scrape duration)
+- [x] Prometheus + Grafana + Pushgateway on dedicated monitoring LXC (vmbr2)
+- [x] `prom-client` gauges per store (match rate, scrape duration)
 - [ ] MTG Mate set code cache (~30 min scrape → ~3 min)
 - [ ] Live AUD/USD rate feed
 - [ ] eBay atomic swap to eliminate zero-price window
-- [ ] GitHub Actions CI — typecheck + audit on PR
+- [ ] GitHub Actions CI — typecheck + `pnpm audit` + automated `pnpm test` on PR
 
 ### Phase 3 — Analytics & Monetisation
 - [ ] Demand-gap dashboard — cards searched but not in stock anywhere

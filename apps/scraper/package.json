@@ -39,7 +39,8 @@
     "scrape:elementalarcade": "tsx src/stores/run-store.ts elemental_arcade",
     "scrape:ronin": "tsx src/stores/run-store.ts ronin_games",
     "scrape:fromthedeep": "tsx src/stores/run-store.ts from_the_deep",
-    "scrape:crithit": "tsx src/stores/run-store.ts crit_hit"
+    "scrape:crithit": "tsx src/stores/run-store.ts crit_hit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@mtg-au/shared": "workspace:*",

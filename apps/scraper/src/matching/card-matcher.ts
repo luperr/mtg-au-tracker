@@ -129,6 +129,52 @@ export class CardMatcher {
   }
 
   /**
+   * Populate indexes from a plain array — no DB required.
+   * Used only in unit tests.
+   */
+  buildForTesting(entries: {
+    id: string;
+    setCode: string;
+    setName: string;
+    collectorNumber: string;
+    isFoil: boolean;
+    cardName: string;
+  }[]): void {
+    for (const row of entries) {
+      const setKey = `${row.setCode}:${row.collectorNumber}:${row.isFoil}`;
+      this.setCollectorIndex.set(setKey, row.id);
+
+      this.setNameIndex.set(normalizeSetName(row.setName), row.setCode);
+
+      const nameKey = normalizeName(row.cardName);
+      const entry: IndexEntry = {
+        printingId: row.id,
+        setCode: row.setCode,
+        collectorNumber: row.collectorNumber,
+        isFoil: row.isFoil,
+      };
+      const existing = this.nameIndex.get(nameKey) ?? [];
+      existing.push(entry);
+      existing.sort((a, b) => {
+        const an = parseInt(a.collectorNumber, 10);
+        const bn = parseInt(b.collectorNumber, 10);
+        if (isNaN(an) && isNaN(bn)) return 0;
+        if (isNaN(an)) return 1;
+        if (isNaN(bn)) return -1;
+        return an - bn;
+      });
+      this.nameIndex.set(nameKey, existing);
+
+      if (row.cardName.includes(" // ")) {
+        const frontKey = normalizeName(row.cardName.split(" // ")[0]);
+        const frontExisting = this.frontFaceIndex.get(frontKey) ?? [];
+        frontExisting.push(entry);
+        this.frontFaceIndex.set(frontKey, frontExisting);
+      }
+    }
+  }
+
+  /**
    * Match a scraped card to a printing in the index.
    * Returns the best match found, or { printingId: null, matchType: "unmatched" }.
    */
