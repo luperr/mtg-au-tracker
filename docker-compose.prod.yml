@@ -73,7 +73,7 @@ services:
       - frontend
 
   tunnel:
-    image: cloudflare/cloudflared:2026.3.0
+    image: cloudflare/cloudflared:latest
     restart: always
     read_only: true
     tmpfs:
@@ -90,7 +90,7 @@ services:
       - frontend
 
   promtail:
-    image: grafana/promtail:3.6.0
+    image: grafana/promtail:latest
     restart: unless-stopped
     # Runs as root — required to read /var/lib/docker/containers (root:root 710)
     # and the Docker socket. No safe non-root UID exists for log shipping.
@@ -106,7 +106,7 @@ services:
     command: -config.file=/etc/promtail/config.yml
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.56.2
+    image: gcr.io/cadvisor/cadvisor:latest
     restart: always
     privileged: true
     volumes:
