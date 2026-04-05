@@ -11,7 +11,7 @@ import { HeaderSearch } from "./HeaderSearch";
 const bitcount = Bitcount_Prop_Double({ subsets: ["latin"], weight: ["400"] });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://test.scrymarket.au"),
+  metadataBase: new URL("https://scrymarket.au"),
   title: "Scrymarket",
   description: "Compare Australian MTG card prices across stores and eBay",
   icons: {
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Scrymarket",
     description: "Compare Australian MTG card prices across stores and eBay",
-    url: "https://test.scrymarket.au",
+    url: "https://scrymarket.au",
     siteName: "Scrymarket",
     type: "website",
   },

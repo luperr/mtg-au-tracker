@@ -68,7 +68,7 @@ export default function OgImage() {
             color: "#257180",
           }}
         >
-          test.scrymarket.au
+          scrymarket.au
         </div>
       </div>
     ),

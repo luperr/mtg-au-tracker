@@ -21,7 +21,7 @@ function CardRow({ card }: { card: CardSearchResult }) {
   const thumb = toSmallImage(card.image_uri);
   return (
     <a
-      href={`/cards/${card.id}`}
+      href={`/cards/${card.slug ?? card.id}`}
       onClick={() => window.umami?.track("card-click", { card: card.name })}
       className="flex items-center gap-3 rounded-lg border border-subtle bg-surface hover:border-accent hover:bg-muted transition-colors overflow-hidden"
     >
