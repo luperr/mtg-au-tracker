@@ -1,4 +1,6 @@
 import type { MetadataRoute } from "next";
+
+export const dynamic = "force-dynamic";
 import { getCardSlugsForSitemap } from "@/lib/db";
 
 const BASE_URL = "https://scrymarket.au";
