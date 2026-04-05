@@ -15,6 +15,19 @@ import { logger } from "../lib/logger.js";
 const log = logger.child({ component: "scryfall" });
 
 const BULK_API_URL = "https://api.scryfall.com/bulk-data";
+
+function cardNameToSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")  // strip diacritics: ü→u, é→e
+    .replace(/\/\//g, " ")             // split/DFC "A // B" → "A B"
+    .replace(/[^a-z0-9\s]/g, " ")      // non-alphanumeric → space
+    .trim()
+    .replace(/\s+/g, "-")              // spaces → hyphens
+    .replace(/-{2,}/g, "-")            // collapse multiple hyphens
+    .replace(/^-|-$/g, "");            // trim leading/trailing hyphens
+}
 const OUTPUT_DIR = "/tmp/mtg-scraper";
 const OUTPUT_FILE = join(OUTPUT_DIR, "default_cards.json");
 const USER_AGENT = "Scrymarket/1.0 (learning project)";
@@ -74,17 +87,31 @@ async function importData(): Promise<void> {
 
   log.info({ cards: uniqueCards.length, printings: uniquePrintings.length }, "Prepared data for upsert");
 
+  // Build slug map with collision handling (rare in MTG but handle gracefully)
+  const slugsSeen = new Set<string>();
+  const cardSlugs = new Map<string, string>(); // oracle_id → slug
+  for (const c of uniqueCards) {
+    let slug = cardNameToSlug(c.name);
+    if (slugsSeen.has(slug)) {
+      // Append a suffix using the first 8 chars of the oracle_id
+      slug = `${slug}-${c.id.slice(0, 8)}`;
+    }
+    slugsSeen.add(slug);
+    cardSlugs.set(c.id, slug);
+  }
+
   // Insert cards
   for (let i = 0; i < uniqueCards.length; i += BATCH_SIZE) {
     const batch = uniqueCards.slice(i, i + BATCH_SIZE);
     await db.insert(schema.cards).values(batch.map((c) => ({
-      id: c.id, name: c.name, manaCost: c.manaCost, typeLine: c.typeLine,
-      oracleText: c.oracleText, colors: c.colors, colorIdentity: c.colorIdentity,
-      legalities: c.legalities, updatedAt: new Date(),
+      id: c.id, name: c.name, slug: cardSlugs.get(c.id)!, manaCost: c.manaCost,
+      typeLine: c.typeLine, oracleText: c.oracleText, colors: c.colors,
+      colorIdentity: c.colorIdentity, legalities: c.legalities, updatedAt: new Date(),
     }))).onConflictDoUpdate({
       target: schema.cards.id,
       set: {
-        name: sql`excluded.name`, manaCost: sql`excluded.mana_cost`,
+        name: sql`excluded.name`, slug: sql`excluded.slug`,
+        manaCost: sql`excluded.mana_cost`,
         typeLine: sql`excluded.type_line`, oracleText: sql`excluded.oracle_text`,
         colors: sql`excluded.colors`, colorIdentity: sql`excluded.color_identity`,
         legalities: sql`excluded.legalities`, updatedAt: sql`excluded.updated_at`,

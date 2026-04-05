@@ -14,22 +14,26 @@
  *   Set codes are processed in parallel batches of CONCURRENCY (default 3). This
  *   gives ~3× throughput vs sequential without hammering the server.
  *
+ * Set code cache (Option E):
+ *   After the first successful run, ProbeCache persists which set codes returned data.
+ *   Daily runs probe only those ~100 codes instead of all ~697 (~2–4 min vs ~30 min).
+ *   A full rescan runs every MTGMATE_FULL_SCAN_DAYS (default: 7) to pick up new sets.
+ *   Cache file: SCRAPER_CACHE_DIR/mtgmate-valid-sets.json
+ *
  * Data notes:
  *   - price is in cents (integer): 800 = $8.00 AUD
  *   - set_code is already Scryfall lowercase format: "dmu", "m11", etc.
  *   - finish: "Foil" | "Nonfoil"
  *   - condition: "Regular" = NM
  *   - quantity: 0 = out of stock
- *
- * Option E (planned — not yet implemented):
- *   After the first successful run, cache which set codes returned data to avoid
- *   probing all 697 codes on every subsequent run. New sets detected on weekly
- *   full re-scan. See MEMORY.md for details.
  */
 
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import type { ScrapedCard } from "@mtg-au/shared";
 import { BaseScraper } from "./base-scraper.js";
 import { logger } from "../lib/logger.js";
+import { ProbeCache } from "../lib/probe-cache.js";
 
 const log = logger.child({ component: "mtgmate" });
 
@@ -38,6 +42,12 @@ const BASE_URL = "https://www.mtgmate.com.au";
 // Number of set data URLs fetched in parallel.
 // Each slot opens its own browser page; 3 is a safe balance vs server load.
 const CONCURRENCY = 3;
+
+// Cache for known-good set codes. Avoids probing ~697 codes daily when only ~100 have data.
+const _dir = dirname(fileURLToPath(import.meta.url));
+const DEFAULT_CACHE_DIR = join(_dir, "../../data");
+const CACHE_FILE = join(process.env.SCRAPER_CACHE_DIR ?? DEFAULT_CACHE_DIR, "mtgmate-valid-sets.json");
+const FULL_SCAN_DAYS = Number(process.env.MTGMATE_FULL_SCAN_DAYS ?? 7);
 
 interface MtgMateCardEntry {
   uuid: string;
@@ -134,17 +144,27 @@ export class MtgMateScraper extends BaseScraper {
   async *scrapeAll(): AsyncGenerator<ScrapedCard> {
     log.info("Fetching MTG Mate set list");
     const setsHtml = await this.fetchPage(`${BASE_URL}/magic_sets`);
-    const codes = parseSetCodes(setsHtml);
+    const allCodes = parseSetCodes(setsHtml);
 
-    if (codes.length === 0) {
+    if (allCodes.length === 0) {
       log.warn("No set codes found on /magic_sets");
       return;
     }
 
-    log.info({ set_count: codes.length, concurrency: CONCURRENCY }, "Fetching set data in parallel");
+    const cache = new ProbeCache({ filePath: CACHE_FILE, fullScanIntervalDays: FULL_SCAN_DAYS });
+    await cache.load();
+
+    const isFullScan = cache.needsFullScan();
+    const codes = isFullScan ? allCodes : cache.getValidKeys();
+
+    log.info(
+      { total: allCodes.length, probing: codes.length, concurrency: CONCURRENCY, isFullScan },
+      "MTG Mate probe plan"
+    );
 
     let scraped = 0;
     let withData = 0;
+    const validCodes: string[] = [];
 
     // Process set codes in parallel batches
     for (let i = 0; i < codes.length; i += CONCURRENCY) {
@@ -157,6 +177,7 @@ export class MtgMateScraper extends BaseScraper {
         scraped++;
         if (entries.length > 0) {
           withData++;
+          validCodes.push(batch[j]);
           log.debug({ set_code: batch[j], card_count: entries.length, scraped, total: codes.length }, "Set data fetched");
           for (const entry of entries) {
             yield mapEntry(entry);
@@ -165,6 +186,11 @@ export class MtgMateScraper extends BaseScraper {
       }
     }
 
-    log.info({ sets_with_data: withData, sets_probed: codes.length }, "MTG Mate scrape complete");
+    if (isFullScan) {
+      await cache.save(validCodes);
+      log.info({ valid_codes_cached: validCodes.length }, "MTG Mate set code cache updated");
+    }
+
+    log.info({ sets_with_data: withData, sets_probed: codes.length, isFullScan }, "MTG Mate scrape complete");
   }
 }
