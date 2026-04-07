@@ -73,8 +73,8 @@ On first boot the scraper imports all Scryfall data (~10 min), then runs store a
 ### Phase 2 — Observability
 - [x] Prometheus + Grafana + Pushgateway on dedicated monitoring LXC (vmbr2)
 - [x] `prom-client` gauges per store (match rate, scrape duration)
-- [ ] MTG Mate set code cache (~30 min scrape → ~3 min)
-- [ ] Live AUD/USD rate feed
+- [x] MTG Mate set code cache (~30 min scrape → ~3 min)
+- [x] Live AUD/USD rate feed
 - [ ] eBay atomic swap to eliminate zero-price window
 - [ ] GitHub Actions CI — typecheck + `pnpm audit` + automated `pnpm test` on PR
 
