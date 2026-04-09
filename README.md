@@ -1,89 +1,63 @@
 # Scrymarket
 
-AUD price tracker for Magic: The Gathering singles in Australia. Pulls card data from Scryfall, scrapes 21+ AU store prices, and tracks eBay AU market prices — served through a Next.js web UI for price comparison, history charts, and want list optimisation.
+Self-hosted AUD price tracker for Magic: The Gathering singles — scrapes 24+ Australian stores and eBay AU daily, served through a Next.js web UI.
 
-## Requirements
+## What it does
 
-- Docker & Docker Compose (nothing else needed locally)
+- **Price comparison** — every in-stock printing across all stores, filterable by set, condition, and foil
+- **eBay AU market prices** — daily Browse API import gives a live secondary market reference alongside store prices
+- **Price history** — daily snapshots per printing per store, charted as area and per-printing line charts
+- **Want List optimiser** — Branch-and-Bound over store subsets finds the cheapest combination accounting for flat-rate postage (added once per store, not per card)
+
+## Design decisions
+
+- **Card vs Printing split** — "Lightning Bolt" appears in 20+ sets; one `Card` row per game object, one `Printing` per physical version. Store prices attach to Printings. Avoids duplicating card metadata and makes cross-printing price comparison natural.
+- **Async generator scraper contract** — `scrapeAll()` returns `AsyncGenerator<ScrapedCard>` so the orchestrator processes results incrementally. No waiting for a full scrape to buffer in memory before matching begins.
+- **Branch-and-Bound for the want list optimiser** — the cheapest-store problem is an Uncapacitated Facility Location Problem (2^N subsets). B&B prunes subtrees using an optimistic lower bound (all undecided stores at $0 flat fee), stores sorted cheapest-first to produce tight upper bounds early. Fast in practice for the N stores a user realistically has.
+- **Cloudflare Tunnel over open ports** — zero inbound ports exposed on the host. All public traffic goes Cloudflare edge → encrypted tunnel → Docker container. Free TLS, DDoS protection, no firewall rules.
 
 ## Stack
 
-TypeScript · Next.js 15 · PostgreSQL 16 · Drizzle ORM · Node.js · Docker Compose · Cloudflare Tunnel · Umami
+| | |
+|---|---|
+| Language | TypeScript (strict), pnpm monorepo |
+| Database | PostgreSQL 16 · Drizzle ORM |
+| Web | Next.js 15 |
+| Scraping | Cheerio · Shopify `products.json` API · eBay Browse API |
+| Infra | Proxmox · Docker Compose · Cloudflare Tunnel · Umami analytics |
 
 ```
-apps/scraper/    — Scryfall importer, eBay API client, store scrapers
+apps/scraper/    — Scryfall importer, store scrapers, eBay pipeline
 apps/web/        — Next.js front-end
 packages/shared/ — shared types and utilities
-docker/          — Dockerfiles
-docs/            — Ops reference
 ```
 
-## Quick start
+## Self-hosting
+
+**Requirements:** Docker + Docker Compose, eBay developer credentials.
 
 ```bash
-cp .env.example .env          # fill in eBay API credentials + DB password
-docker compose up             # starts postgres + scraper + web
+cp .env.example .env   # set DATABASE_URL, EBAY_CLIENT_ID, EBAY_CLIENT_SECRET
+docker compose up -d
 ```
 
-On first boot the scraper imports all Scryfall data (~10 min), then runs store and eBay scrapers on a daily cron schedule. The web UI is available at http://localhost:3000.
+On first boot the scraper imports all Scryfall data (~141k printings, ~10–15 min). After that, three cron jobs run daily (Australia/Sydney):
 
-## Progress
+| Time | Job |
+|------|-----|
+| 3 AM | Scryfall bulk refresh |
+| 5 AM | Store scrapers (21 Shopify stores + MTG Mate) |
+| 6 AM | eBay AU import |
 
-### Data pipeline
+Web UI at **http://localhost:3000**.
 
-- [x] Scryfall bulk import — 32k cards, 141k printings, daily refresh at 3 AM
-- [x] Generic Shopify scraper — 21 AU stores, config-driven (no code changes to add a new store)
-- [x] MTG Mate HTML scraper
-- [x] eBay AU API client — OAuth, Browse API, rate limiting + retry
-- [x] eBay title parser — extracts card name, set, foil, condition from listing titles
-- [x] Card matcher — links scraped listings to Scryfall printings (exact → fuzzy fallback)
-- [x] eBay tiered scheduler — quota-filling approach, targets stalest cards first
-- [x] Price history — append-only daily snapshots per printing/store
-- [x] Demand analytics — `card_searches` table logs queries + matched card ID
+## Adding a store
 
-### Web UI
+Any AU MTG store on Shopify is config-only — no new scraper code:
 
-- [x] Card search with infinite scroll and drag-to-search
-- [x] Price comparison table (all printings × all stores, filterable)
-- [x] Price history charts (overall + per printing)
-- [x] Card magnifier, color identity pips, set symbols
-- [x] Want List — add cards, compare stores, edit per-store postage
-- [x] Want List optimiser — Branch-and-Bound finds cheapest store combination
-- [x] Buy links — centralised tracking and affiliate-ready via `BuyLink` component
-- [x] Umami analytics — card-search, card-click, store-click events
+1. Add entry to `apps/scraper/src/stores/shopify-stores.config.ts` (id, baseUrl, collectionHandle)
+2. Add store to `apps/scraper/src/seed.ts` with `scraperEnabled: true`
+3. Add flat-rate postage to `apps/web/src/lib/store-shipping.ts`
+4. `docker compose run --rm scraper pnpm --filter @mtg-au/scraper seed`
 
-### Infrastructure
-
-- [x] Docker Compose dev + prod environments
-- [x] PostgreSQL schema with Drizzle ORM migrations
-- [x] Self-hosted on Proxmox via Cloudflare tunnel (no open ports)
-- [x] Security headers (CSP, X-Frame-Options, etc.)
-- [x] Cron jobs pinned to Australia/Sydney timezone
-
-## Roadmap
-
-### Phase 1 — Stability (now)
-- [x] Fix DFC bug — Shopify scraper now ingests DFC cards; front-face fallback matcher; back face image stored and displayed with flip button
-- [x] `price_history` table partitioning by month (2.7M rows)
-- [x] Wire `pino` structured logging — scraper + web emit structured JSON, Promtail ships to Loki
-- [x] DB indexes on FK columns + UNIQUE constraints on price tables
-- [x] Vitest unit tests — 160 tests across card-matcher, normalizeName, Scryfall transform, eBay title parser, Shopify parser (co-located, `pnpm test`)
-- [ ] Pin `:latest` image tags in docker-compose
-
-### Phase 2 — Observability
-- [x] Prometheus + Grafana + Pushgateway on dedicated monitoring LXC (vmbr2)
-- [x] `prom-client` gauges per store (match rate, scrape duration)
-- [x] MTG Mate set code cache (~30 min scrape → ~3 min)
-- [x] Live AUD/USD rate feed
-- [ ] eBay atomic swap to eliminate zero-price window
-- [ ] GitHub Actions CI — typecheck + `pnpm audit` + automated `pnpm test` on PR
-
-### Phase 3 — Analytics & Monetisation
-- [ ] Demand-gap dashboard — cards searched but not in stock anywhere
-- [ ] B2B store dashboards — search trends, buy-link CTR, inventory gaps
-- [ ] Sealed product integration
-- [ ] Auth layer (NextAuth) + price alerts
-
-### Phase 4 — Scale
-- [ ] AWS ECS + RDS deployment
-- [ ] BullMQ job queue, public API, additional stores
+Find the collection handle at `/collections.json` on the store's domain.
