@@ -112,19 +112,6 @@ async function getCardsToSearch(): Promise<CardToSearch[]> {
   }));
 }
 
-/** Delete all eBay store_prices for every printing of the given card name. */
-async function clearPricesForCard(cardName: string): Promise<void> {
-  await db.execute(sql`
-    DELETE FROM store_prices
-    WHERE store_id = ${STORE_ID}
-      AND printing_id IN (
-        SELECT p.id FROM printings p
-        JOIN cards c ON p.card_id = c.id
-        WHERE c.name = ${cardName}
-      )
-  `);
-}
-
 /** Upsert the search log entry for a card (insert or update on conflict). */
 async function upsertSearchLog(cardName: string, resultCount: number): Promise<void> {
   const today = new Date().toISOString().slice(0, 10);
@@ -144,16 +131,11 @@ type HistoryRow = typeof schema.priceHistory.$inferInsert;
 type UnmatchedRow = typeof schema.unmatchedCards.$inferInsert;
 
 interface Batches {
-  prices: PriceRow[];
   history: HistoryRow[];
   unmatched: UnmatchedRow[];
 }
 
 async function flushAll(batches: Batches): Promise<void> {
-  if (batches.prices.length > 0) {
-    await db.insert(schema.storePrices).values(batches.prices);
-    batches.prices.length = 0;
-  }
   if (batches.history.length > 0) {
     await db.insert(schema.priceHistory).values(batches.history).onConflictDoNothing();
     batches.history.length = 0;
@@ -162,6 +144,27 @@ async function flushAll(batches: Batches): Promise<void> {
     await db.insert(schema.unmatchedCards).values(batches.unmatched);
     batches.unmatched.length = 0;
   }
+}
+
+/**
+ * Atomically replace all eBay store_prices for a card with fresh data.
+ * DELETE + INSERT run in a single transaction so readers never see a zero-price window.
+ */
+async function atomicSwapCardPrices(cardName: string, prices: PriceRow[]): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`
+      DELETE FROM store_prices
+      WHERE store_id = ${STORE_ID}
+        AND printing_id IN (
+          SELECT p.id FROM printings p
+          JOIN cards c ON p.card_id = c.id
+          WHERE c.name = ${cardName}
+        )
+    `);
+    if (prices.length > 0) {
+      await tx.insert(schema.storePrices).values(prices);
+    }
+  });
 }
 
 // ── Per-item processor ────────────────────────────────────────────────────────
@@ -180,6 +183,7 @@ function processItem(
   item: EbayItemSummary,
   seenIds: Set<string>,
   matcher: CardMatcher,
+  cardPrices: PriceRow[],
   batches: Batches,
   stats: Stats,
   today: string,
@@ -201,7 +205,7 @@ function processItem(
   const result = matcher.match(card);
 
   if (result.printingId) {
-    batches.prices.push({
+    cardPrices.push({
       printingId: result.printingId,
       storeId: STORE_ID,
       priceAud: card.price,
@@ -258,7 +262,7 @@ export async function runEbayImport(): Promise<void> {
   }
 
   const seenIds = new Set<string>();
-  const batches: Batches = { prices: [], history: [], unmatched: [] };
+  const batches: Batches = { history: [], unmatched: [] };
   const stats: Stats = {
     fetched: 0,
     dupes: 0,
@@ -288,18 +292,18 @@ export async function runEbayImport(): Promise<void> {
     }
 
     let rawCount = 0;
+    const cardPrices: PriceRow[] = [];
     try {
-      // Clear stale prices for this card before inserting fresh ones
-      await clearPricesForCard(cardName);
-
-      // Fetch and process eBay results
+      // Fetch and process eBay results into per-card buffer
       for await (const item of searchEbayByCardName(cardName)) {
         rawCount++;
-        processItem(item, seenIds, matcher, batches, stats, today);
-        if (batches.prices.length >= BATCH_SIZE || batches.unmatched.length >= BATCH_SIZE) {
+        processItem(item, seenIds, matcher, cardPrices, batches, stats, today);
+        if (batches.unmatched.length >= BATCH_SIZE) {
           await flushAll(batches);
         }
       }
+      // Atomically replace stale prices with fresh ones — no zero-price window
+      await atomicSwapCardPrices(cardName, cardPrices);
     } catch (err) {
       log.error({ err, card_name: cardName }, "Error searching card");
       // Don't update search log on error — retry on next run
