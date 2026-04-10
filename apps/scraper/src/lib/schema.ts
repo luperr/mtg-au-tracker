@@ -92,6 +92,7 @@ export const stores = pgTable("stores", {
   name: text("name").notNull(),
   baseUrl: text("base_url").notNull(),
   scraperEnabled: boolean("scraper_enabled").notNull().default(false),
+  logoUrl: text("logo_url"),                               // custom logo URL; null falls back to favicon service
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

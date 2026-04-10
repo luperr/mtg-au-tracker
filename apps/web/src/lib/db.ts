@@ -233,6 +233,24 @@ export async function getCardMetadata(slug: string): Promise<CardMetadata | null
   return rows[0] ?? null;
 }
 
+export type StoreRow = {
+  id: string;
+  name: string;
+  base_url: string;
+  logo_url: string | null;
+};
+
+export async function getStores(): Promise<StoreRow[]> {
+  return sql<StoreRow[]>`
+    SELECT id, name, base_url, logo_url
+    FROM stores
+    WHERE scraper_enabled = true
+    ORDER BY
+      CASE WHEN id = 'ebay_au' THEN 1 ELSE 0 END,
+      name
+  `;
+}
+
 export async function getCardSlugsForSitemap(): Promise<{ slug: string; updated_at: Date }[]> {
   return sql<{ slug: string; updated_at: Date }[]>`
     SELECT slug, updated_at
