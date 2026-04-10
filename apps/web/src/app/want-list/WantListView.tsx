@@ -709,13 +709,24 @@ export function WantListView() {
         </div>
         {totalCount > 0 && (
           <div className="flex items-center gap-3">
-            <button
-              onClick={handleOptimise}
-              title="Finds the cheapest available printing of each card across all stores. Lock cards in the review screen to keep their current printing."
-              className="rounded-lg border border-accent-border bg-accent-muted/40 px-3 py-1.5 text-xs font-semibold text-accent-light hover:bg-accent-muted transition-colors"
-            >
-              ✦ Optimise
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handleOptimise}
+                title="Finds the cheapest available printing of each card across all stores. Lock cards in the review screen to keep their current printing."
+                className="rounded-lg border border-accent-border bg-accent-muted/40 px-3 py-1.5 text-xs font-semibold text-accent-light hover:bg-accent-muted transition-colors"
+              >
+                ✦ Optimise
+              </button>
+              <a
+                href="/faq#how-do-i-use-the-want-list-optimiser"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="How does the optimiser work?"
+                className="w-4 h-4 rounded-full border border-accent-border text-cream-dim hover:text-cream hover:border-accent transition-colors flex items-center justify-center text-[10px] leading-none"
+              >
+                ?
+              </a>
+            </div>
             <button
               onClick={clearAll}
               className="text-xs text-cream-dim/40 hover:text-red-400 transition-colors"
