@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: "What Scrymarket is, how it works, and who built it.",
 };
 
-export const revalidate = 86400;
+export const dynamic = "force-dynamic";
 
 export default async function AboutPage() {
   const stores = await getStores();
