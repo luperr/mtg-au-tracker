@@ -6,8 +6,7 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema.js";
-
-const DATABASE_URL = process.env.DATABASE_URL;
+import { DATABASE_URL } from "./config.js";
 
 if (!DATABASE_URL) {
   throw new Error("DATABASE_URL environment variable is not set");

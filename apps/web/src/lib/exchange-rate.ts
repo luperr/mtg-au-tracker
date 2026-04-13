@@ -1,4 +1,5 @@
 import { getAudPerUsd as _getAudPerUsd } from "@mtg-au/shared";
+import { CACHE_REVALIDATE_HOUR } from "./config.js";
 
 /**
  * Web wrapper around the shared getAudPerUsd utility.
@@ -6,5 +7,5 @@ import { getAudPerUsd as _getAudPerUsd } from "@mtg-au/shared";
  * avoiding a round-trip to Frankfurter on every card detail page render.
  */
 export function getAudPerUsd(): Promise<number> {
-  return _getAudPerUsd({ next: { revalidate: 3600 } } as RequestInit);
+  return _getAudPerUsd({ next: { revalidate: CACHE_REVALIDATE_HOUR } } as RequestInit);
 }

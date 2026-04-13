@@ -1,4 +1,5 @@
-export const revalidate = 3600; // revalidate at most once per hour; prices update at 5 AM daily
+import { CACHE_REVALIDATE_HOUR } from "@/lib/config";
+export const revalidate = CACHE_REVALIDATE_HOUR;
 
 import { searchCards, countCards, PAGE_SIZE } from "@/lib/db";
 import { SearchResults } from "./SearchResults";

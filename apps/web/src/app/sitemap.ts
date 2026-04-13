@@ -2,8 +2,9 @@ import type { MetadataRoute } from "next";
 
 export const dynamic = "force-dynamic";
 import { getCardSlugsForSitemap } from "@/lib/db";
+import { SITE_URL } from "@/lib/config";
 
-const BASE_URL = "https://scrymarket.au";
+const BASE_URL = SITE_URL;
 
 const staticRoutes: MetadataRoute.Sitemap = [
   { url: BASE_URL, lastModified: new Date(), changeFrequency: "daily", priority: 1 },

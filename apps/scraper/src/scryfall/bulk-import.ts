@@ -9,12 +9,11 @@ import { writeFile, readFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { sql } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
+import { SCRYFALL_BULK_API_URL, SCRYFALL_OUTPUT_DIR, SCRYFALL_USER_AGENT, BATCH_SIZE } from "../lib/config.js";
 import { shouldImport, transform, type ScryfallCard } from "./transform.js";
 import { logger } from "../lib/logger.js";
 
 const log = logger.child({ component: "scryfall" });
-
-const BULK_API_URL = "https://api.scryfall.com/bulk-data";
 
 function cardNameToSlug(name: string): string {
   return name
@@ -28,10 +27,7 @@ function cardNameToSlug(name: string): string {
     .replace(/-{2,}/g, "-")            // collapse multiple hyphens
     .replace(/^-|-$/g, "");            // trim leading/trailing hyphens
 }
-const OUTPUT_DIR = "/tmp/mtg-scraper";
-const OUTPUT_FILE = join(OUTPUT_DIR, "default_cards.json");
-const USER_AGENT = "Scrymarket/1.0 (learning project)";
-const BATCH_SIZE = 500;
+const OUTPUT_FILE = join(SCRYFALL_OUTPUT_DIR, "default_cards.json");
 
 interface BulkDataEntry {
   type: string;
@@ -45,7 +41,7 @@ interface BulkDataCatalog {
 
 async function fetchData(): Promise<void> {
   log.info("Fetching Scryfall bulk data catalog");
-  const catalogRes = await fetch(BULK_API_URL, { headers: { "User-Agent": USER_AGENT } });
+  const catalogRes = await fetch(SCRYFALL_BULK_API_URL, { headers: { "User-Agent": SCRYFALL_USER_AGENT } });
   if (!catalogRes.ok) throw new Error(`Catalog request failed: ${catalogRes.status}`);
 
   const catalog = (await catalogRes.json()) as BulkDataCatalog;
@@ -53,13 +49,13 @@ async function fetchData(): Promise<void> {
   if (!entry) throw new Error("Could not find 'default_cards' in Scryfall catalog");
 
   log.info({ updated_at: entry.updated_at }, "Downloading Scryfall bulk data");
-  const dataRes = await fetch(entry.download_uri, { headers: { "User-Agent": USER_AGENT } });
+  const dataRes = await fetch(entry.download_uri, { headers: { "User-Agent": SCRYFALL_USER_AGENT } });
   if (!dataRes.ok) throw new Error(`Download failed: ${dataRes.status}`);
 
   const cards = (await dataRes.json()) as ScryfallCard[];
   log.info({ card_count: cards.length }, "Downloaded Scryfall card objects");
 
-  await mkdir(OUTPUT_DIR, { recursive: true });
+  await mkdir(SCRYFALL_OUTPUT_DIR, { recursive: true });
   await writeFile(OUTPUT_FILE, JSON.stringify(cards));
   log.debug({ path: OUTPUT_FILE }, "Saved bulk data to file");
 }

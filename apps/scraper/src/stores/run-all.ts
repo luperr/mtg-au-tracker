@@ -17,6 +17,8 @@
 import { fileURLToPath } from "url";
 import { eq } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
+import { BATCH_SIZE } from "../lib/config.js";
+import { todayISO, matchRate } from "../lib/utils.js";
 import { CardMatcher } from "../matching/card-matcher.js";
 import { MtgMateScraper } from "./mtgmate.js";
 import { ShopifyScraper } from "./shopify.js";
@@ -38,9 +40,6 @@ export const SCRAPERS: Record<string, () => BaseScraper> = {
   ),
 };
 
-// Batch size for DB inserts — keeps memory bounded and avoids huge single queries
-const BATCH_SIZE = 500;
-
 // ── Per-store run ─────────────────────────────────────────────────────────────
 
 export async function runStore(
@@ -48,7 +47,7 @@ export async function runStore(
   scraper: BaseScraper,
   matcher: CardMatcher,
 ): Promise<void> {
-  const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+  const today = todayISO();
 
   log.info({ store: storeId }, "Starting store scrape");
 
@@ -109,9 +108,8 @@ export async function runStore(
     await db.insert(schema.unmatchedCards).values(unmatchedBatch);
   }
 
-  const matchPct = total > 0 ? ((matched / total) * 100).toFixed(1) : "0";
   log.info(
-    { store: storeId, total, matched, unmatched, match_rate: parseFloat(matchPct) },
+    { store: storeId, total, matched, unmatched, match_rate: matchRate(matched, total) },
     "Store scrape complete",
   );
 }

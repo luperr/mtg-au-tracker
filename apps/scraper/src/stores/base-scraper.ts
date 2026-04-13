@@ -21,12 +21,9 @@
 import { chromium, type Browser, type BrowserContext } from "playwright";
 import type { ScrapedCard, StoreScraper } from "@mtg-au/shared";
 import { logger } from "../lib/logger.js";
+import { USER_AGENT } from "../lib/config.js";
 
 const log = logger.child({ component: "base-scraper" });
-
-const USER_AGENT =
-  process.env.USER_AGENT ??
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:120.0) Gecko/20100101 Firefox/120.0";
 
 export abstract class BaseScraper implements StoreScraper {
   private browser: Browser | null = null;

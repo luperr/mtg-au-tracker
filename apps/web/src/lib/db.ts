@@ -1,4 +1,5 @@
 import postgres from "postgres";
+import { SEARCH_PAGE_SIZE, TREND_UP_THRESHOLD, TREND_DOWN_THRESHOLD } from "./config.js";
 
 // Connection is cached at module scope — Next.js may hot-reload in dev,
 // so we attach to globalThis to avoid exhausting the connection pool.
@@ -59,7 +60,7 @@ export type PrintingRow = {
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
-export const PAGE_SIZE = 20;
+export const PAGE_SIZE = SEARCH_PAGE_SIZE;
 
 export async function searchCards(query: string, offset = 0): Promise<CardSearchResult[]> {
   if (!query.trim()) return [];
@@ -122,8 +123,8 @@ export async function searchCards(query: string, offset = 0): Promise<CardSearch
         )
         SELECT CASE
           WHEN hist.price IS NULL THEN NULL
-          WHEN curr.price > hist.price * 1.01 THEN 'up'
-          WHEN curr.price < hist.price * 0.99 THEN 'down'
+          WHEN curr.price > hist.price * ${TREND_UP_THRESHOLD} THEN 'up'
+          WHEN curr.price < hist.price * ${TREND_DOWN_THRESHOLD} THEN 'down'
           ELSE 'neutral'
         END FROM curr, hist
       ) AS trend

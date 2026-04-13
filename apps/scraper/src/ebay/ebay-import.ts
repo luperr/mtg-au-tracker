@@ -27,6 +27,8 @@
 import { fileURLToPath } from "url";
 import { sql } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
+import { EBAY_STORE_ID, EBAY_DAILY_TARGET, BATCH_SIZE } from "../lib/config.js";
+import { todayISO, matchRate } from "../lib/utils.js";
 import { CardMatcher } from "../matching/card-matcher.js";
 import { searchEbayByCardName } from "./browse-client.js";
 import { transformEbayItem } from "./transform.js";
@@ -34,9 +36,6 @@ import type { EbayItemSummary } from "./browse-client.js";
 import { logger } from "../lib/logger.js";
 
 const log = logger.child({ component: "ebay-import" });
-
-const STORE_ID = "ebay_au";
-const BATCH_SIZE = 500;
 
 // ── Tier config ───────────────────────────────────────────────────────────────
 
@@ -66,7 +65,7 @@ interface CardToSearch {
  * This guarantees the daily API quota is fully used every day.
  */
 async function getCardsToSearch(): Promise<CardToSearch[]> {
-  const dailyTarget = parseInt(process.env.EBAY_DAILY_TARGET ?? "4500", 10);
+  const dailyTarget = EBAY_DAILY_TARGET;
 
   const rows = await db.execute(sql`
     WITH card_max_usd AS (
@@ -114,7 +113,7 @@ async function getCardsToSearch(): Promise<CardToSearch[]> {
 
 /** Upsert the search log entry for a card (insert or update on conflict). */
 async function upsertSearchLog(cardName: string, resultCount: number): Promise<void> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayISO();
   await db
     .insert(schema.ebaySearchLog)
     .values({ cardName, lastSearchedAt: today, lastResultCount: resultCount })
@@ -154,7 +153,7 @@ async function atomicSwapCardPrices(cardName: string, prices: PriceRow[]): Promi
   await db.transaction(async (tx) => {
     await tx.execute(sql`
       DELETE FROM store_prices
-      WHERE store_id = ${STORE_ID}
+      WHERE store_id = ${EBAY_STORE_ID}
         AND printing_id IN (
           SELECT p.id FROM printings p
           JOIN cards c ON p.card_id = c.id
@@ -207,7 +206,7 @@ function processItem(
   if (result.printingId) {
     cardPrices.push({
       printingId: result.printingId,
-      storeId: STORE_ID,
+      storeId: EBAY_STORE_ID,
       priceAud: card.price,
       shippingAud: card.shippingCost ?? null,
       priceType: card.priceType,
@@ -217,7 +216,7 @@ function processItem(
     });
     batches.history.push({
       printingId: result.printingId,
-      storeId: STORE_ID,
+      storeId: EBAY_STORE_ID,
       priceAud: card.price,
       priceType: card.priceType,
       recordedAt: today,
@@ -225,7 +224,7 @@ function processItem(
     stats.matched++;
   } else {
     batches.unmatched.push({
-      storeId: STORE_ID,
+      storeId: EBAY_STORE_ID,
       rawName: card.rawName,
       rawSetName: card.setName,
       rawPrice: card.price,
@@ -240,7 +239,7 @@ function processItem(
 export async function runEbayImport(): Promise<void> {
   log.info("Starting tiered eBay AU price import");
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayISO();
 
   // Build card matcher index once
   log.info("Building card matcher index");
@@ -320,11 +319,6 @@ export async function runEbayImport(): Promise<void> {
   await flushAll(batches);
 
   // ── Summary ───────────────────────────────────────────────────────────────
-  const matchPct =
-    stats.matched + stats.unmatched > 0
-      ? ((stats.matched / (stats.matched + stats.unmatched)) * 100).toFixed(1)
-      : "0";
-
   log.info(
     {
       cards_searched: stats.cardSearches,
@@ -337,7 +331,7 @@ export async function runEbayImport(): Promise<void> {
       skipped: stats.skipped,
       matched: stats.matched,
       unmatched: stats.unmatched,
-      match_rate: parseFloat(matchPct),
+      match_rate: matchRate(stats.matched, stats.matched + stats.unmatched),
     },
     "eBay import complete",
   );

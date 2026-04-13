@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import sql from "@/lib/db";
+import { MAX_BULK_CARDS, MAX_CARD_QTY } from "@/lib/config";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -173,11 +174,11 @@ export async function POST(request: Request) {
 
   let cards: BulkLookupInput[];
   if (Array.isArray(b.cards)) {
-    cards = (b.cards as BulkLookupInput[]).slice(0, 200);
+    cards = (b.cards as BulkLookupInput[]).slice(0, MAX_BULK_CARDS);
   } else if (Array.isArray(b.names)) {
     cards = (b.names as string[])
       .filter((n): n is string => typeof n === "string" && n.trim().length > 0)
-      .slice(0, 200)
+      .slice(0, MAX_BULK_CARDS)
       .map((name) => ({ name }));
   } else {
     return NextResponse.json({ error: "Expected { cards: BulkLookupInput[] }" }, { status: 400 });
@@ -189,7 +190,7 @@ export async function POST(request: Request) {
 
   const results: BulkLookupResult[] = await Promise.all(
     cards.map((card) => {
-      const qty = Math.max(1, Math.min(card.qty ?? 1, 99));
+      const qty = Math.max(1, Math.min(card.qty ?? 1, MAX_CARD_QTY));
       if (card.setCode && card.collectorNumber) {
         return lookupBySetCollector(card.name, qty, card.setCode, card.collectorNumber);
       }
