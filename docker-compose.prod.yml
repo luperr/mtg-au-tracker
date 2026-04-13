@@ -71,7 +71,7 @@ services:
         max-file: "5"
     tmpfs:
       - /tmp
-      - /app/apps/web/.next/cache   # Next.js image optimisation + ISR cache
+      - /app/apps/web/.next/cache:uid=1001,gid=1001   # Next.js image optimisation + ISR cache
     restart: always
     security_opt:
       - no-new-privileges:true

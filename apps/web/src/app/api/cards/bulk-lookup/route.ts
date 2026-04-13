@@ -15,6 +15,7 @@ export type BulkLookupResult = {
   inputName: string;
   qty: number;
   cardId: string | null;
+  cardSlug: string | null;
   cardName: string | null;
   imageUri: string | null;
   cheapest: {
@@ -36,6 +37,7 @@ export type BulkLookupResult = {
 
 type ResultRow = {
   card_id: string;
+  card_slug: string | null;
   card_name: string;
   image_uri: string | null;
   printing_id: string;
@@ -56,6 +58,7 @@ function rowToResult(inputName: string, qty: number, row: ResultRow): BulkLookup
     inputName,
     qty,
     cardId: row.card_id,
+    cardSlug: row.card_slug,
     cardName: row.card_name,
     imageUri: row.image_uri,
     cheapest: {
@@ -86,6 +89,7 @@ async function lookupBySetCollector(
   const rows = await sql<ResultRow[]>`
     SELECT
       c.id AS card_id,
+      c.slug AS card_slug,
       c.name AS card_name,
       (
         SELECT p2.image_uri FROM printings p2
@@ -126,6 +130,7 @@ async function lookupByName(inputName: string, qty: number): Promise<BulkLookupR
   const rows = await sql<ResultRow[]>`
     SELECT
       c.id AS card_id,
+      c.slug AS card_slug,
       c.name AS card_name,
       (
         SELECT p2.image_uri FROM printings p2
@@ -155,7 +160,7 @@ async function lookupByName(inputName: string, qty: number): Promise<BulkLookupR
   `;
 
   if (rows.length > 0) return rowToResult(inputName, qty, rows[0]);
-  return { inputName, qty, cardId: null, cardName: null, imageUri: null, cheapest: null };
+  return { inputName, qty, cardId: null, cardSlug: null, cardName: null, imageUri: null, cheapest: null };
 }
 
 // ── Route handler ─────────────────────────────────────────────────────────────

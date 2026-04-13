@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { CardMagnifier } from "./CardMagnifier";
 import { ColorSymbols } from "./ColorSymbols";
 import { TrendBadge } from "./TrendBadge";
-import { fmtAUD } from "@/lib/format";
+import { fmtAUD, cardHref } from "@/lib/utils";
 import { useWantList } from "@/app/WantListContext";
 import type { CardSearchResult } from "@/lib/db";
 
@@ -40,6 +40,7 @@ function AddToWantListButton({ card }: { card: CardSearchResult }) {
       addItem({
         id: `${printing.id}-${printing.storeId}-${printing.url ?? ""}`,
         cardId: card.id,
+        cardSlug: card.slug,
         cardName: card.name,
         printingId: printing.id,
         setName: printing.setName,
@@ -93,7 +94,7 @@ function CardRow({ card }: { card: CardSearchResult }) {
   return (
     <div className="relative flex items-center rounded-lg border border-subtle bg-surface hover:border-accent hover:bg-muted transition-colors overflow-hidden">
       <a
-        href={`/cards/${card.slug ?? card.id}`}
+        href={cardHref(card.slug, card.id)}
         onClick={() => window.umami?.track("card-click", { card: card.name })}
         className="flex flex-1 items-center gap-3 min-w-0 pr-14"
       >

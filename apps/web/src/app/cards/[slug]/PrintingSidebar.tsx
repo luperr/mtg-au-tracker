@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { PrintingWithPrices } from "@/lib/db";
-import { fmtAUD } from "@/lib/format";
+import { fmtAUD } from "@/lib/utils";
 
 type FoilFilter = "all" | "nonfoil" | "foil";
 

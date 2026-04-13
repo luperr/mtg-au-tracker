@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { useWantList } from "@/app/WantListContext";
 import type { BulkLookupResult, BulkLookupInput } from "@/app/api/cards/bulk-lookup/route";
+import { cardHref } from "@/lib/utils";
 
 /**
  * Parse a card list in any of these formats:
@@ -124,6 +125,7 @@ export function ImportCards() {
       addItem({
         id: itemId,
         cardId: r.cardId,
+        cardSlug: r.cardSlug,
         cardName: r.cardName,
         printingId: r.cheapest.printingId,
         setName: r.cheapest.setName,
@@ -149,6 +151,7 @@ export function ImportCards() {
     addItem({
       id: itemId,
       cardId: r.cardId,
+      cardSlug: r.cardSlug,
       cardName: r.cardName,
       printingId: r.cheapest.printingId,
       setName: r.cheapest.setName,
@@ -303,7 +306,7 @@ export function ImportCards() {
                           {r.qty > 1 && (
                             <span className="text-xs text-cream-dim/50 font-medium shrink-0">{r.qty}×</span>
                           )}
-                          <a href={`/cards/${r.cardId}`} className="font-medium text-cream hover:text-accent transition-colors">
+                          <a href={cardHref(r.cardSlug, r.cardId!)} className="font-medium text-cream hover:text-accent transition-colors">
                             {r.cardName}
                           </a>
                         </div>

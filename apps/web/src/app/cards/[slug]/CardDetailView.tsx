@@ -6,7 +6,7 @@ import { PricesTable } from "./PricesTable";
 import { PriceChart } from "./PriceChart";
 import { ColorSymbols } from "@/app/ColorSymbols";
 import { TrendBadge } from "@/app/TrendBadge";
-import { fmtAUD } from "@/lib/format";
+import { fmtAUD } from "@/lib/utils";
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -16,12 +16,14 @@ function median(values: number[]): number {
 
 export function CardDetailView({
   card,
+  cardSlug,
   printings,
   trend,
   history,
   audPerUsd,
 }: {
   card: CardRow;
+  cardSlug: string;
   printings: PrintingWithPrices[];
   trend: "up" | "down" | "neutral" | null;
   history: CardPriceHistory;
@@ -161,6 +163,7 @@ export function CardDetailView({
             defaultImage={defaultImage}
             onHoverImage={handleHoverImage}
             cardId={card.id}
+            cardSlug={cardSlug}
             cardName={card.name}
           />
         )}

@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import type { PrintingWithPrices } from "@/lib/db";
 import { useWantList } from "@/app/WantListContext";
-import { fmtAUD } from "@/lib/format";
+import { fmtAUD } from "@/lib/utils";
 import { Dropdown, OptionItem } from "@/app/Dropdown";
 import { SetSymbol } from "@/app/SetSymbol";
 import { BuyLink } from "@/app/BuyLink";
@@ -40,7 +40,7 @@ const toggleBtnCls = (active: boolean) =>
 
 // ── Want list button ───────────────────────────────────────────────────────────
 
-function WantListButton({ row, cardId, cardName }: { row: Row; cardId: string; cardName: string }) {
+function WantListButton({ row, cardId, cardSlug, cardName }: { row: Row; cardId: string; cardSlug: string; cardName: string }) {
   const { addItem, removeItem, hasItem } = useWantList();
   const itemId = `${row.printing.id}-${row.storeId}-${row.url ?? ""}`;
   const inList = hasItem(itemId);
@@ -53,6 +53,7 @@ function WantListButton({ row, cardId, cardName }: { row: Row; cardId: string; c
           addItem({
             id: itemId,
             cardId,
+            cardSlug,
             cardName,
             printingId: row.printing.id,
             setName: row.printing.setName,
@@ -88,12 +89,14 @@ export function PricesTable({
   defaultImage,
   onHoverImage,
   cardId,
+  cardSlug,
   cardName,
 }: {
   printings: PrintingWithPrices[];
   defaultImage: string | null;
   onHoverImage: (uri: string | null, uriBack?: string | null) => void;
   cardId: string;
+  cardSlug: string;
   cardName: string;
 }) {
   const [inStockOnly, setInStockOnly] = useState(true);
@@ -423,7 +426,7 @@ export function PricesTable({
 
                   <td className="px-2 py-2.5 text-right">
                     {row.inStock && (
-                      <WantListButton row={row} cardId={cardId} cardName={cardName} />
+                      <WantListButton row={row} cardId={cardId} cardSlug={cardSlug} cardName={cardName} />
                     )}
                   </td>
                 </tr>

@@ -3,12 +3,13 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useClickOutside } from "@/lib/hooks/useClickOutside";
 import { useWantList, type WantListItem } from "@/app/WantListContext";
-import { fmtAUD } from "@/lib/format";
+import { fmtAUD } from "@/lib/utils";
 import { STORE_FLAT_SHIPPING_AUD } from "@/lib/store-shipping";
 import { SetSymbol } from "@/app/SetSymbol";
 import { BuyLink } from "@/app/BuyLink";
 import { ImportCards } from "./ImportCards";
 import type { OptimizeResult } from "@/app/api/optimize/route";
+import { cardHref } from "@/lib/utils";
 
 // ── Printing selector ─────────────────────────────────────────────────────────
 
@@ -795,7 +796,7 @@ export function WantListView() {
                         {/* Card name */}
                         <td className="px-3 py-1.5">
                           <a
-                            href={`/cards/${item.cardId}`}
+                            href={cardHref(item.cardSlug, item.cardId)}
                             className="font-medium text-cream hover:text-accent transition-colors"
                             onMouseEnter={item.imageUri ? (e) => showCardPreview(item.imageUri!, e) : undefined}
                             onMouseLeave={() => setCardPreview(null)}
