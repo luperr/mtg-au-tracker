@@ -29,9 +29,14 @@ function AddToWantListButton({ card }: { card: CardSearchResult }) {
     if (alreadyAdded || adding || !card.scrymarket_price) return;
     setAdding(true);
     try {
-      const res = await fetch(`/api/cards/cheapest-printing?cardId=${card.id}`);
-      const printing = await res.json();
-      if (!printing) return;
+      const res = await fetch(`/api/cards/store-printings?cardId=${card.id}`);
+      const printings: {
+        id: string; setName: string; setCode: string; rarity: string; isFoil: boolean;
+        imageUri: string | null; priceAud: number; shippingAud: number | null;
+        condition: string | null; url: string | null; storeId: string; storeName: string;
+      }[] = await res.json();
+      if (!printings?.length) return;
+      const printing = [...printings].sort((a, b) => a.priceAud - b.priceAud)[0];
       addItem({
         id: `${printing.id}-${printing.storeId}-${printing.url ?? ""}`,
         cardId: card.id,
