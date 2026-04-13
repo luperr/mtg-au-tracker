@@ -34,3 +34,20 @@ scrape_configs:
           component:
           service:
           store:
+      - labeldrop:
+        - active
+        - dupes
+        - fetched
+        - hot
+        - long_tail
+        - matched
+        - unmatched
+        - zero_result_cards
+        - skipped
+        - cards_searched
+        - detected_level
+        - level_extracted
+        - service_extracted
+        - component_extracted
+        - service_name
+        - time
