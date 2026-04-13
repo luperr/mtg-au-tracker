@@ -109,43 +109,6 @@ services:
     networks:
       - frontend
 
-  promtail:
-    image: grafana/promtail:latest
-    restart: unless-stopped
-    # Runs as root — required to read /var/lib/docker/containers (root:root 710)
-    # and the Docker socket. No safe non-root UID exists for log shipping.
-    read_only: true
-    logging:
-      driver: json-file
-      options:
-        max-size: "5m"
-        max-file: "3"
-    security_opt:
-      - no-new-privileges:true
-    volumes:
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./docker/promtail.yml:/etc/promtail/config.yml:ro
-      - promtail_positions:/var/lib/promtail
-    command: -config.file=/etc/promtail/config.yml
-
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
-    restart: always
-    privileged: true
-    logging:
-      driver: json-file
-      options:
-        max-size: "5m"
-        max-file: "3"
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-    ports:
-      - "10.10.20.10:8080:8080"   # only reachable from services VLAN — Prometheus at 10.10.30.10 scrapes via inter-VLAN routing
-
 networks:
   frontend:   # tunnel ↔ web
   backend:    # web + scraper ↔ db
@@ -153,4 +116,3 @@ networks:
 volumes:
   pgdata:
   scraper_data:
-  promtail_positions:
