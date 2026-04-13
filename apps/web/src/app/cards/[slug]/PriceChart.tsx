@@ -12,7 +12,7 @@ import {
   Tooltip,
 } from "recharts";
 import type { CardPriceHistory } from "@/lib/db";
-import { fmtAUD } from "@/lib/format";
+import { fmtAUD } from "@/lib/utils";
 
 const LINE_COLORS = [
   "#7eb8d4", // blue

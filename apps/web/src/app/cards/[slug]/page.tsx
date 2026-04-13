@@ -117,7 +117,7 @@ export default async function CardPage({
       >
         ← Back to search
       </a>
-      <CardDetailView card={card!} printings={printings} trend={trend} history={history} audPerUsd={audPerUsd} />
+      <CardDetailView card={card!} cardSlug={slug} printings={printings} trend={trend} history={history} audPerUsd={audPerUsd} />
     </div>
   );
 }
