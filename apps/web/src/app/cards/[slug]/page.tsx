@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { getCard, getCardMetadata, getPrintingsWithPrices, getCardTrend, getCardPriceHistory, type PrintingWithPrices } from "@/lib/db";
 import { getAudPerUsd } from "@/lib/exchange-rate";
 import { CardDetailView } from "./CardDetailView";
+import { BackButton } from "./BackButton";
 
 function sortPrintings(printings: PrintingWithPrices[]): PrintingWithPrices[] {
   return [...printings].sort((a, b) => {
@@ -111,12 +112,7 @@ export default async function CardPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <a
-        href="/"
-        className="mb-5 inline-flex items-center gap-1 text-sm text-accent hover:text-accent-light transition-colors"
-      >
-        ← Back to search
-      </a>
+      <BackButton />
       <CardDetailView card={card!} cardSlug={slug} printings={printings} trend={trend} history={history} audPerUsd={audPerUsd} />
     </div>
   );
