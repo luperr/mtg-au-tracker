@@ -2,16 +2,16 @@
 
 import { useEffect, useState } from "react";
 
-export type ViewMode = "card" | "text";
+export type ViewMode = "grid" | "card" | "text";
 
 const STORAGE_KEY = "scrymarket-view";
 
 export function useViewPreference(): [ViewMode, (v: ViewMode) => void] {
-  const [view, setViewState] = useState<ViewMode>("card");
+  const [view, setViewState] = useState<ViewMode>("grid");
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "card" || stored === "text") setViewState(stored);
+    if (stored === "grid" || stored === "card" || stored === "text") setViewState(stored);
   }, []);
 
   function setView(v: ViewMode) {

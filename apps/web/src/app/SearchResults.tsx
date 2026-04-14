@@ -20,6 +20,8 @@ function toSmallImage(uri: string | null): string | null {
   return uri ? uri.replace("/normal/", "/small/") : null;
 }
 
+// ── Shared want-list button ───────────────────────────────────────────────────
+
 function AddToWantListButton({ card }: { card: CardSearchResult }) {
   const { items, addItem } = useWantList();
   const [adding, setAdding] = useState(false);
@@ -65,33 +67,79 @@ function AddToWantListButton({ card }: { card: CardSearchResult }) {
   if (!card.scrymarket_price) return null;
 
   return (
-    <div className="group relative">
-      <button
-        onClick={handleClick}
-        disabled={adding}
-        aria-label={alreadyAdded ? "In want list" : "Add cheapest printing to want list"}
-        className={`w-7 h-7 rounded flex items-center justify-center text-sm transition-colors ${
-          alreadyAdded
-            ? "bg-price/20 text-price"
-            : adding
-            ? "bg-muted text-cream-dim/30"
-            : "bg-muted text-cream-dim/40 hover:bg-price/20 hover:text-price"
-        }`}
+    <button
+      onClick={handleClick}
+      disabled={adding}
+      aria-label={alreadyAdded ? "In want list" : "Add cheapest printing to want list"}
+      className={`w-7 h-7 rounded flex items-center justify-center text-sm transition-colors ${
+        alreadyAdded
+          ? "bg-price/20 text-price"
+          : adding
+          ? "bg-muted text-cream-dim/30"
+          : "bg-muted text-cream-dim/40 hover:bg-price/20 hover:text-price"
+      }`}
+    >
+      {alreadyAdded ? "✓" : adding ? "…" : "+"}
+    </button>
+  );
+}
+
+// ── View 1: Image grid ────────────────────────────────────────────────────────
+// Card art dominant, dynamic responsive grid, name + price + want-list below.
+
+function GridCard({ card }: { card: CardSearchResult }) {
+  const smallSrc = toSmallImage(card.image_uri);
+  return (
+    <div className="flex flex-col rounded-lg overflow-hidden border border-subtle bg-surface hover:border-accent transition-colors group">
+      {/* Card image — MTG aspect ratio 1 : 1.396 */}
+      <a
+        href={cardHref(card.slug, card.id)}
+        onClick={() => window.umami?.track("card-click", { card: card.name })}
+        className="block relative w-full"
+        style={{ paddingBottom: "139.6%" }}
       >
-        {alreadyAdded ? "✓" : adding ? "…" : "+"}
-      </button>
-      {!alreadyAdded && (
-        <div className="pointer-events-none absolute bottom-full right-0 mb-1.5 hidden group-hover:block z-20">
-          <div className="whitespace-nowrap rounded bg-surface border border-subtle px-2 py-1 text-[11px] text-cream-dim shadow-lg">
-            Add cheapest printing to want list
+        {smallSrc && card.image_uri ? (
+          <img
+            src={smallSrc}
+            alt={card.name}
+            className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-200"
+            loading="lazy"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center bg-muted text-cream-dim/30 text-xs">
+            No image
           </div>
+        )}
+      </a>
+
+      {/* Footer: name · price · want-list */}
+      <div className="px-2 pt-1.5 pb-2 flex flex-col gap-1 bg-surface">
+        <a
+          href={cardHref(card.slug, card.id)}
+          onClick={() => window.umami?.track("card-click", { card: card.name })}
+          className="text-xs font-medium text-cream truncate hover:text-accent-light transition-colors"
+        >
+          {card.name}
+        </a>
+        <div className="flex items-center justify-between gap-1">
+          <div className="flex items-center gap-1.5">
+            {card.scrymarket_price && <TrendBadge trend={card.trend} size="sm" />}
+            {card.scrymarket_price ? (
+              <span className="text-sm font-semibold text-price tabular-nums">
+                {fmtAUD(parseFloat(card.scrymarket_price))}
+              </span>
+            ) : (
+              <span className="text-xs text-cream-dim/40">no prices</span>
+            )}
+          </div>
+          <AddToWantListButton card={card} />
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-// ── Card view row (thumbnail + info) ─────────────────────────────────────────
+// ── View 2: Card rows (thumbnail + info) ──────────────────────────────────────
 
 function CardRow({ card }: { card: CardSearchResult }) {
   const thumb = toSmallImage(card.image_uri);
@@ -146,7 +194,7 @@ function CardRow({ card }: { card: CardSearchResult }) {
   );
 }
 
-// ── Text view row (compact, no image) ────────────────────────────────────────
+// ── View 3: Text rows (minimal, no images) ────────────────────────────────────
 
 function TextRow({ card }: { card: CardSearchResult }) {
   return (
@@ -161,7 +209,7 @@ function TextRow({ card }: { card: CardSearchResult }) {
         </div>
         <div className="flex-1 min-w-0">
           <span className="font-medium text-cream">{card.name}</span>
-          <span className="ml-2 text-xs text-cream-dim/60 hidden sm:inline truncate">{card.type_line}</span>
+          <span className="ml-2 text-xs text-cream-dim/60 hidden sm:inline">{card.type_line}</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {card.scrymarket_price && <TrendBadge trend={card.trend} size="sm" />}
@@ -233,7 +281,7 @@ export function SearchResults({ initialResults, query, initialHasMore, totalCoun
 
   return (
     <div>
-      {/* Header row: count + view toggle */}
+      {/* Header: result count + view toggle */}
       <div className="flex items-center justify-between mb-3">
         <p className="text-sm text-cream-dim/70">
           {totalCount} result{totalCount !== 1 ? "s" : ""}
@@ -241,15 +289,32 @@ export function SearchResults({ initialResults, query, initialHasMore, totalCoun
         <ViewToggle view={view} onChange={setView} />
       </div>
 
-      <div className="space-y-1.5">
-        {cards.map((card) =>
-          view === "card" ? (
+      {/* Grid view */}
+      {view === "grid" && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          {cards.map((card) => (
+            <GridCard key={card.id} card={card} />
+          ))}
+        </div>
+      )}
+
+      {/* Card row view */}
+      {view === "card" && (
+        <div className="space-y-1.5">
+          {cards.map((card) => (
             <CardRow key={card.id} card={card} />
-          ) : (
+          ))}
+        </div>
+      )}
+
+      {/* Text view */}
+      {view === "text" && (
+        <div className="space-y-1">
+          {cards.map((card) => (
             <TextRow key={card.id} card={card} />
-          )
-        )}
-      </div>
+          ))}
+        </div>
+      )}
 
       <div ref={sentinelRef} />
       {loading && (
