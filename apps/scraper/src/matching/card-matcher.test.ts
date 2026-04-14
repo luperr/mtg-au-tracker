@@ -1,4 +1,7 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+
+vi.mock("../lib/db.js");
+
 import { CardMatcher } from "./card-matcher.js";
 
 // ─── Fixture data ─────────────────────────────────────────────────────────────
