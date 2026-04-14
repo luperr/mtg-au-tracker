@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { CardMagnifier } from "./CardMagnifier";
 import { ColorSymbols } from "./ColorSymbols";
 import { TrendBadge } from "./TrendBadge";
+import { ViewToggle } from "./ViewToggle";
+import { useViewPreference } from "@/lib/hooks/useViewPreference";
 import { fmtAUD, cardHref } from "@/lib/utils";
 import { useWantList } from "@/app/WantListContext";
 import type { CardSearchResult } from "@/lib/db";
@@ -89,6 +91,8 @@ function AddToWantListButton({ card }: { card: CardSearchResult }) {
   );
 }
 
+// ── Card view row (thumbnail + info) ─────────────────────────────────────────
+
 function CardRow({ card }: { card: CardSearchResult }) {
   const thumb = toSmallImage(card.image_uri);
   return (
@@ -118,9 +122,7 @@ function CardRow({ card }: { card: CardSearchResult }) {
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
-            {/* Trend badge */}
             {card.scrymarket_price && <TrendBadge trend={card.trend} size="lg" />}
-            {/* Price */}
             <div className="text-right">
               {card.scrymarket_price ? (
                 <div className="text-price font-medium">
@@ -137,13 +139,50 @@ function CardRow({ card }: { card: CardSearchResult }) {
         </div>
       </a>
 
-      {/* Want list button — outside the <a> to avoid nested interactive elements */}
       <div className="absolute right-3 top-1/2 -translate-y-1/2">
         <AddToWantListButton card={card} />
       </div>
     </div>
   );
 }
+
+// ── Text view row (compact, no image) ────────────────────────────────────────
+
+function TextRow({ card }: { card: CardSearchResult }) {
+  return (
+    <div className="relative flex items-center rounded-lg border border-subtle bg-surface hover:border-accent hover:bg-muted transition-colors">
+      <a
+        href={cardHref(card.slug, card.id)}
+        onClick={() => window.umami?.track("card-click", { card: card.name })}
+        className="flex flex-1 items-center gap-3 px-3 py-2 min-w-0 pr-12"
+      >
+        <div className="flex items-center gap-1 shrink-0">
+          <ColorSymbols colors={card.colors} size={11} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <span className="font-medium text-cream">{card.name}</span>
+          <span className="ml-2 text-xs text-cream-dim/60 hidden sm:inline truncate">{card.type_line}</span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {card.scrymarket_price && <TrendBadge trend={card.trend} size="sm" />}
+          <span className="text-xs text-cream-dim/40">{card.printing_count}p</span>
+          {card.scrymarket_price ? (
+            <span className="text-sm text-price font-medium w-16 text-right tabular-nums">
+              {fmtAUD(parseFloat(card.scrymarket_price))}
+            </span>
+          ) : (
+            <span className="text-sm text-cream-dim/40 w-16 text-right">—</span>
+          )}
+        </div>
+      </a>
+      <div className="absolute right-2 top-1/2 -translate-y-1/2">
+        <AddToWantListButton card={card} />
+      </div>
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 interface Props {
   initialResults: CardSearchResult[];
@@ -156,12 +195,12 @@ export function SearchResults({ initialResults, query, initialHasMore, totalCoun
   const [cards, setCards] = useState(initialResults);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loading, setLoading] = useState(false);
+  const [view, setView] = useViewPreference();
   const sentinelRef = useRef<HTMLDivElement>(null);
   const offsetRef = useRef(initialResults.length);
   const loadingRef = useRef(false);
 
   useEffect(() => {
-    // Reset when query changes
     setCards(initialResults);
     setHasMore(initialHasMore);
     offsetRef.current = initialResults.length;
@@ -193,16 +232,25 @@ export function SearchResults({ initialResults, query, initialHasMore, totalCoun
   }, [query, hasMore]);
 
   return (
-    <div className="space-y-2">
-      <p className="text-sm text-cream-dim/70 mb-3">
-        {totalCount} result{totalCount !== 1 ? "s" : ""}
-      </p>
+    <div>
+      {/* Header row: count + view toggle */}
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm text-cream-dim/70">
+          {totalCount} result{totalCount !== 1 ? "s" : ""}
+        </p>
+        <ViewToggle view={view} onChange={setView} />
+      </div>
 
-      {cards.map((card) => (
-        <CardRow key={card.id} card={card} />
-      ))}
+      <div className="space-y-1.5">
+        {cards.map((card) =>
+          view === "card" ? (
+            <CardRow key={card.id} card={card} />
+          ) : (
+            <TextRow key={card.id} card={card} />
+          )
+        )}
+      </div>
 
-      {/* Sentinel + loading indicator */}
       <div ref={sentinelRef} />
       {loading && (
         <div className="py-4 text-center text-cream-dim/50 text-sm">Loading more…</div>
