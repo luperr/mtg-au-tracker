@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { CardMagnifier } from "./CardMagnifier";
 import { ColorSymbols } from "./ColorSymbols";
 import { TrendBadge } from "./TrendBadge";
-import { fmtAUD } from "@/lib/format";
+import { fmtAUD, cardHref } from "@/lib/utils";
+import { useWantList } from "@/app/WantListContext";
 import type { CardSearchResult } from "@/lib/db";
 
 declare global {
@@ -17,52 +18,130 @@ function toSmallImage(uri: string | null): string | null {
   return uri ? uri.replace("/normal/", "/small/") : null;
 }
 
+function AddToWantListButton({ card }: { card: CardSearchResult }) {
+  const { items, addItem } = useWantList();
+  const [adding, setAdding] = useState(false);
+  const alreadyAdded = items.some((i) => i.cardId === card.id);
+
+  async function handleClick(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (alreadyAdded || adding || !card.scrymarket_price) return;
+    setAdding(true);
+    try {
+      const res = await fetch(`/api/cards/store-printings?cardId=${card.id}`);
+      const printings: {
+        id: string; setName: string; setCode: string; rarity: string; isFoil: boolean;
+        imageUri: string | null; priceAud: number; shippingAud: number | null;
+        condition: string | null; url: string | null; storeId: string; storeName: string;
+      }[] = await res.json();
+      if (!printings?.length) return;
+      const printing = [...printings].sort((a, b) => a.priceAud - b.priceAud)[0];
+      addItem({
+        id: `${printing.id}-${printing.storeId}-${printing.url ?? ""}`,
+        cardId: card.id,
+        cardSlug: card.slug,
+        cardName: card.name,
+        printingId: printing.id,
+        setName: printing.setName,
+        setCode: printing.setCode,
+        rarity: printing.rarity,
+        isFoil: printing.isFoil,
+        storeId: printing.storeId,
+        storeName: printing.storeName,
+        priceAud: printing.priceAud,
+        shippingAud: printing.shippingAud,
+        condition: printing.condition,
+        url: printing.url,
+        imageUri: printing.imageUri,
+      });
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  if (!card.scrymarket_price) return null;
+
+  return (
+    <div className="group relative">
+      <button
+        onClick={handleClick}
+        disabled={adding}
+        aria-label={alreadyAdded ? "In want list" : "Add cheapest printing to want list"}
+        className={`w-7 h-7 rounded flex items-center justify-center text-sm transition-colors ${
+          alreadyAdded
+            ? "bg-price/20 text-price"
+            : adding
+            ? "bg-muted text-cream-dim/30"
+            : "bg-muted text-cream-dim/40 hover:bg-price/20 hover:text-price"
+        }`}
+      >
+        {alreadyAdded ? "✓" : adding ? "…" : "+"}
+      </button>
+      {!alreadyAdded && (
+        <div className="pointer-events-none absolute bottom-full right-0 mb-1.5 hidden group-hover:block z-20">
+          <div className="whitespace-nowrap rounded bg-surface border border-subtle px-2 py-1 text-[11px] text-cream-dim shadow-lg">
+            Add cheapest printing to want list
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CardRow({ card }: { card: CardSearchResult }) {
   const thumb = toSmallImage(card.image_uri);
   return (
-    <a
-      href={`/cards/${card.id}`}
-      onClick={() => window.umami?.track("card-click", { card: card.name })}
-      className="flex items-center gap-3 rounded-lg border border-subtle bg-surface hover:border-accent hover:bg-muted transition-colors overflow-hidden"
-    >
-      {/* Thumbnail */}
-      <div className="shrink-0 w-[44px] h-[61px] sm:w-[63px] sm:h-[88px] bg-muted overflow-hidden">
-        {thumb && card.image_uri ? (
-          <CardMagnifier smallSrc={thumb} largeSrc={card.image_uri} alt={card.name} />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-cream-dim/40 text-xs">?</div>
-        )}
-      </div>
-
-      {/* Info */}
-      <div className="flex flex-1 items-center justify-between gap-2 pr-4 min-w-0">
-        <div className="min-w-0">
-          <div className="flex gap-1 mb-1">
-            <ColorSymbols colors={card.colors} size={12} />
-          </div>
-          <div className="font-medium text-cream truncate">{card.name}</div>
-          <div className="text-sm text-cream-dim truncate">{card.type_line}</div>
+    <div className="relative flex items-center rounded-lg border border-subtle bg-surface hover:border-accent hover:bg-muted transition-colors overflow-hidden">
+      <a
+        href={cardHref(card.slug, card.id)}
+        onClick={() => window.umami?.track("card-click", { card: card.name })}
+        className="flex flex-1 items-center gap-3 min-w-0 pr-14"
+      >
+        {/* Thumbnail */}
+        <div className="shrink-0 w-[44px] h-[61px] sm:w-[63px] sm:h-[88px] bg-muted overflow-hidden">
+          {thumb && card.image_uri ? (
+            <CardMagnifier smallSrc={thumb} largeSrc={card.image_uri} alt={card.name} />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-cream-dim/40 text-xs">?</div>
+          )}
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
-          {/* Trend badge */}
-          {card.scrymarket_price && <TrendBadge trend={card.trend} size="lg" />}
-          {/* Price */}
-          <div className="text-right">
-            {card.scrymarket_price ? (
-              <div className="text-price font-medium">
-                {fmtAUD(parseFloat(card.scrymarket_price))}
+        {/* Info */}
+        <div className="flex flex-1 items-center justify-between gap-2 min-w-0">
+          <div className="min-w-0">
+            <div className="flex gap-1 mb-1">
+              <ColorSymbols colors={card.colors} size={12} />
+            </div>
+            <div className="font-medium text-cream truncate">{card.name}</div>
+            <div className="text-sm text-cream-dim truncate">{card.type_line}</div>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
+            {/* Trend badge */}
+            {card.scrymarket_price && <TrendBadge trend={card.trend} size="lg" />}
+            {/* Price */}
+            <div className="text-right">
+              {card.scrymarket_price ? (
+                <div className="text-price font-medium">
+                  {fmtAUD(parseFloat(card.scrymarket_price))}
+                </div>
+              ) : (
+                <div className="text-cream-dim/50 text-sm">no prices</div>
+              )}
+              <div className="text-xs text-cream-dim/70">
+                {card.printing_count} printing{card.printing_count !== 1 ? "s" : ""}
               </div>
-            ) : (
-              <div className="text-cream-dim/50 text-sm">no prices</div>
-            )}
-            <div className="text-xs text-cream-dim/70">
-              {card.printing_count} printing{card.printing_count !== 1 ? "s" : ""}
             </div>
           </div>
         </div>
+      </a>
+
+      {/* Want list button — outside the <a> to avoid nested interactive elements */}
+      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+        <AddToWantListButton card={card} />
       </div>
-    </a>
+    </div>
   );
 }
 

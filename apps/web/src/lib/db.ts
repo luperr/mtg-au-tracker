@@ -1,4 +1,5 @@
 import postgres from "postgres";
+import { SEARCH_PAGE_SIZE, TREND_UP_THRESHOLD, TREND_DOWN_THRESHOLD } from "./config.js";
 
 // Connection is cached at module scope — Next.js may hot-reload in dev,
 // so we attach to globalThis to avoid exhausting the connection pool.
@@ -17,6 +18,7 @@ export default sql;
 
 export type CardSearchResult = {
   id: string;
+  slug: string | null;
   name: string;
   type_line: string;
   colors: string[];
@@ -58,13 +60,14 @@ export type PrintingRow = {
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
-export const PAGE_SIZE = 20;
+export const PAGE_SIZE = SEARCH_PAGE_SIZE;
 
 export async function searchCards(query: string, offset = 0): Promise<CardSearchResult[]> {
   if (!query.trim()) return [];
   return sql<CardSearchResult[]>`
     SELECT
       c.id,
+      c.slug,
       c.name,
       c.type_line,
       c.colors,
@@ -120,8 +123,8 @@ export async function searchCards(query: string, offset = 0): Promise<CardSearch
         )
         SELECT CASE
           WHEN hist.price IS NULL THEN NULL
-          WHEN curr.price > hist.price * 1.01 THEN 'up'
-          WHEN curr.price < hist.price * 0.99 THEN 'down'
+          WHEN curr.price > hist.price * ${TREND_UP_THRESHOLD} THEN 'up'
+          WHEN curr.price < hist.price * ${TREND_DOWN_THRESHOLD} THEN 'down'
           ELSE 'neutral'
         END FROM curr, hist
       ) AS trend
@@ -174,13 +177,88 @@ export async function getCardTrend(cardId: string): Promise<"up" | "down" | "neu
   return (rows[0]?.trend ?? null) as "up" | "down" | "neutral" | null;
 }
 
-export async function getCard(id: string): Promise<CardRow | null> {
+export async function getCard(slug: string): Promise<CardRow | null> {
   const rows = await sql<CardRow[]>`
     SELECT id, name, mana_cost, type_line, oracle_text, colors
     FROM cards
-    WHERE id = ${id}
+    WHERE slug = ${slug} OR id = ${slug}
   `;
   return rows[0] ?? null;
+}
+
+export type CardMetadata = {
+  name: string;
+  type_line: string;
+  cheapest_price: string | null;
+  store_count: number;
+  cheapest_store: string | null;
+  image_uri: string | null;
+};
+
+export async function getCardMetadata(slug: string): Promise<CardMetadata | null> {
+  const rows = await sql<CardMetadata[]>`
+    SELECT
+      c.name,
+      c.type_line,
+      (
+        SELECT MIN(sp.price_aud::numeric)::text
+        FROM store_prices sp
+        JOIN printings p ON p.id = sp.printing_id
+        WHERE p.card_id = c.id AND sp.in_stock = true AND sp.price_type = 'sell'
+      ) AS cheapest_price,
+      (
+        SELECT COUNT(DISTINCT sp.store_id)::int
+        FROM store_prices sp
+        JOIN printings p ON p.id = sp.printing_id
+        WHERE p.card_id = c.id AND sp.in_stock = true AND sp.price_type = 'sell'
+      ) AS store_count,
+      (
+        SELECT s.name
+        FROM store_prices sp
+        JOIN printings p ON p.id = sp.printing_id
+        JOIN stores s ON s.id = sp.store_id
+        WHERE p.card_id = c.id AND sp.in_stock = true AND sp.price_type = 'sell'
+        ORDER BY sp.price_aud::numeric ASC
+        LIMIT 1
+      ) AS cheapest_store,
+      (
+        SELECT p.image_uri
+        FROM printings p
+        WHERE p.card_id = c.id AND p.is_foil = false AND p.image_uri IS NOT NULL
+        ORDER BY p.released_at DESC
+        LIMIT 1
+      ) AS image_uri
+    FROM cards c
+    WHERE c.slug = ${slug} OR c.id = ${slug}
+  `;
+  return rows[0] ?? null;
+}
+
+export type StoreRow = {
+  id: string;
+  name: string;
+  base_url: string;
+  logo_url: string | null;
+};
+
+export async function getStores(): Promise<StoreRow[]> {
+  return sql<StoreRow[]>`
+    SELECT id, name, base_url, logo_url
+    FROM stores
+    WHERE scraper_enabled = true
+    ORDER BY
+      CASE WHEN id = 'ebay_au' THEN 1 ELSE 0 END,
+      name
+  `;
+}
+
+export async function getCardSlugsForSitemap(): Promise<{ slug: string; updated_at: Date }[]> {
+  return sql<{ slug: string; updated_at: Date }[]>`
+    SELECT slug, updated_at
+    FROM cards
+    WHERE slug IS NOT NULL
+    ORDER BY name
+  `;
 }
 
 export type PrintingWithPrices = {

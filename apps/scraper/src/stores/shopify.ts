@@ -26,7 +26,7 @@
  *   - Only NM variants are emitted (same behaviour as original Good Games scraper).
  */
 
-import type { ScrapedCard } from "@mtg-au/shared";
+import { type ScrapedCard, normaliseCondition } from "@mtg-au/shared";
 import { BaseScraper } from "./base-scraper.js";
 import type { ShopifyStoreConfig } from "./shopify-stores.config.js";
 import { logger } from "../lib/logger.js";
@@ -64,41 +64,6 @@ interface ShopifyProduct {
 
 interface ProductsResponse {
   products: ShopifyProduct[];
-}
-
-// ── Condition normalisation ───────────────────────────────────────────────────
-
-function normaliseCondition(raw: string): string {
-  switch (raw.toLowerCase().trim()) {
-    case "near mint":
-    case "nm":
-    case "mint":
-    case "m":
-      return "NM";
-    case "lightly played":
-    case "light played":
-    case "lp":
-    case "excellent":
-    case "ex":
-      return "LP";
-    case "moderately played":
-    case "moderate played":
-    case "mp":
-    case "good":
-    case "gd":
-      return "MP";
-    case "heavily played":
-    case "heavy played":
-    case "hp":
-    case "played":
-      return "HP";
-    case "damaged":
-    case "dmg":
-    case "poor":
-      return "DMG";
-    default:
-      return raw.trim();
-  }
 }
 
 // ── Product title parsing ─────────────────────────────────────────────────────

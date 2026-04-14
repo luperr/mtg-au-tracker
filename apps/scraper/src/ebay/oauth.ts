@@ -16,13 +16,9 @@
  */
 
 import { logger } from "../lib/logger.js";
+import { EBAY_TOKEN_URL, EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, EBAY_ENV } from "../lib/config.js";
 
 const log = logger.child({ component: "ebay-oauth" });
-
-const TOKEN_URL = {
-  production: "https://api.ebay.com/identity/v1/oauth2/token",
-  sandbox: "https://api.sandbox.ebay.com/identity/v1/oauth2/token",
-};
 
 // eBay AU marketplace ID — scopes all Browse API calls to eBay Australia
 export const MARKETPLACE_ID = "EBAY_AU";
@@ -50,20 +46,16 @@ export async function getAccessToken(): Promise<string> {
     return cached.token;
   }
 
-  const clientId = process.env.EBAY_CLIENT_ID;
-  const clientSecret = process.env.EBAY_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
+  if (!EBAY_CLIENT_ID || !EBAY_CLIENT_SECRET) {
     throw new Error(
       "Missing eBay credentials. Set EBAY_CLIENT_ID and EBAY_CLIENT_SECRET in .env",
     );
   }
 
-  const env = (process.env.EBAY_ENV ?? "production") as "production" | "sandbox";
-  const url = TOKEN_URL[env];
+  const url = EBAY_TOKEN_URL[EBAY_ENV];
 
   // Basic auth: base64(clientId:clientSecret)
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+  const credentials = Buffer.from(`${EBAY_CLIENT_ID}:${EBAY_CLIENT_SECRET}`).toString("base64");
 
   const res = await fetch(url, {
     method: "POST",

@@ -27,6 +27,8 @@
 import { fileURLToPath } from "url";
 import { sql } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
+import { EBAY_STORE_ID, EBAY_DAILY_TARGET, BATCH_SIZE } from "../lib/config.js";
+import { todayISO, matchRate } from "../lib/utils.js";
 import { CardMatcher } from "../matching/card-matcher.js";
 import { searchEbayByCardName } from "./browse-client.js";
 import { transformEbayItem } from "./transform.js";
@@ -34,9 +36,6 @@ import type { EbayItemSummary } from "./browse-client.js";
 import { logger } from "../lib/logger.js";
 
 const log = logger.child({ component: "ebay-import" });
-
-const STORE_ID = "ebay_au";
-const BATCH_SIZE = 500;
 
 // ── Tier config ───────────────────────────────────────────────────────────────
 
@@ -66,7 +65,7 @@ interface CardToSearch {
  * This guarantees the daily API quota is fully used every day.
  */
 async function getCardsToSearch(): Promise<CardToSearch[]> {
-  const dailyTarget = parseInt(process.env.EBAY_DAILY_TARGET ?? "4500", 10);
+  const dailyTarget = EBAY_DAILY_TARGET;
 
   const rows = await db.execute(sql`
     WITH card_max_usd AS (
@@ -112,22 +111,9 @@ async function getCardsToSearch(): Promise<CardToSearch[]> {
   }));
 }
 
-/** Delete all eBay store_prices for every printing of the given card name. */
-async function clearPricesForCard(cardName: string): Promise<void> {
-  await db.execute(sql`
-    DELETE FROM store_prices
-    WHERE store_id = ${STORE_ID}
-      AND printing_id IN (
-        SELECT p.id FROM printings p
-        JOIN cards c ON p.card_id = c.id
-        WHERE c.name = ${cardName}
-      )
-  `);
-}
-
 /** Upsert the search log entry for a card (insert or update on conflict). */
 async function upsertSearchLog(cardName: string, resultCount: number): Promise<void> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayISO();
   await db
     .insert(schema.ebaySearchLog)
     .values({ cardName, lastSearchedAt: today, lastResultCount: resultCount })
@@ -144,16 +130,11 @@ type HistoryRow = typeof schema.priceHistory.$inferInsert;
 type UnmatchedRow = typeof schema.unmatchedCards.$inferInsert;
 
 interface Batches {
-  prices: PriceRow[];
   history: HistoryRow[];
   unmatched: UnmatchedRow[];
 }
 
 async function flushAll(batches: Batches): Promise<void> {
-  if (batches.prices.length > 0) {
-    await db.insert(schema.storePrices).values(batches.prices);
-    batches.prices.length = 0;
-  }
   if (batches.history.length > 0) {
     await db.insert(schema.priceHistory).values(batches.history).onConflictDoNothing();
     batches.history.length = 0;
@@ -162,6 +143,27 @@ async function flushAll(batches: Batches): Promise<void> {
     await db.insert(schema.unmatchedCards).values(batches.unmatched);
     batches.unmatched.length = 0;
   }
+}
+
+/**
+ * Atomically replace all eBay store_prices for a card with fresh data.
+ * DELETE + INSERT run in a single transaction so readers never see a zero-price window.
+ */
+async function atomicSwapCardPrices(cardName: string, prices: PriceRow[]): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`
+      DELETE FROM store_prices
+      WHERE store_id = ${EBAY_STORE_ID}
+        AND printing_id IN (
+          SELECT p.id FROM printings p
+          JOIN cards c ON p.card_id = c.id
+          WHERE c.name = ${cardName}
+        )
+    `);
+    if (prices.length > 0) {
+      await tx.insert(schema.storePrices).values(prices);
+    }
+  });
 }
 
 // ── Per-item processor ────────────────────────────────────────────────────────
@@ -180,6 +182,7 @@ function processItem(
   item: EbayItemSummary,
   seenIds: Set<string>,
   matcher: CardMatcher,
+  cardPrices: PriceRow[],
   batches: Batches,
   stats: Stats,
   today: string,
@@ -201,9 +204,9 @@ function processItem(
   const result = matcher.match(card);
 
   if (result.printingId) {
-    batches.prices.push({
+    cardPrices.push({
       printingId: result.printingId,
-      storeId: STORE_ID,
+      storeId: EBAY_STORE_ID,
       priceAud: card.price,
       shippingAud: card.shippingCost ?? null,
       priceType: card.priceType,
@@ -213,7 +216,7 @@ function processItem(
     });
     batches.history.push({
       printingId: result.printingId,
-      storeId: STORE_ID,
+      storeId: EBAY_STORE_ID,
       priceAud: card.price,
       priceType: card.priceType,
       recordedAt: today,
@@ -221,7 +224,7 @@ function processItem(
     stats.matched++;
   } else {
     batches.unmatched.push({
-      storeId: STORE_ID,
+      storeId: EBAY_STORE_ID,
       rawName: card.rawName,
       rawSetName: card.setName,
       rawPrice: card.price,
@@ -236,7 +239,7 @@ function processItem(
 export async function runEbayImport(): Promise<void> {
   log.info("Starting tiered eBay AU price import");
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayISO();
 
   // Build card matcher index once
   log.info("Building card matcher index");
@@ -258,7 +261,7 @@ export async function runEbayImport(): Promise<void> {
   }
 
   const seenIds = new Set<string>();
-  const batches: Batches = { prices: [], history: [], unmatched: [] };
+  const batches: Batches = { history: [], unmatched: [] };
   const stats: Stats = {
     fetched: 0,
     dupes: 0,
@@ -288,18 +291,18 @@ export async function runEbayImport(): Promise<void> {
     }
 
     let rawCount = 0;
+    const cardPrices: PriceRow[] = [];
     try {
-      // Clear stale prices for this card before inserting fresh ones
-      await clearPricesForCard(cardName);
-
-      // Fetch and process eBay results
+      // Fetch and process eBay results into per-card buffer
       for await (const item of searchEbayByCardName(cardName)) {
         rawCount++;
-        processItem(item, seenIds, matcher, batches, stats, today);
-        if (batches.prices.length >= BATCH_SIZE || batches.unmatched.length >= BATCH_SIZE) {
+        processItem(item, seenIds, matcher, cardPrices, batches, stats, today);
+        if (batches.unmatched.length >= BATCH_SIZE) {
           await flushAll(batches);
         }
       }
+      // Atomically replace stale prices with fresh ones — no zero-price window
+      await atomicSwapCardPrices(cardName, cardPrices);
     } catch (err) {
       log.error({ err, card_name: cardName }, "Error searching card");
       // Don't update search log on error — retry on next run
@@ -316,11 +319,6 @@ export async function runEbayImport(): Promise<void> {
   await flushAll(batches);
 
   // ── Summary ───────────────────────────────────────────────────────────────
-  const matchPct =
-    stats.matched + stats.unmatched > 0
-      ? ((stats.matched / (stats.matched + stats.unmatched)) * 100).toFixed(1)
-      : "0";
-
   log.info(
     {
       cards_searched: stats.cardSearches,
@@ -333,7 +331,7 @@ export async function runEbayImport(): Promise<void> {
       skipped: stats.skipped,
       matched: stats.matched,
       unmatched: stats.unmatched,
-      match_rate: parseFloat(matchPct),
+      match_rate: matchRate(stats.matched, stats.matched + stats.unmatched),
     },
     "eBay import complete",
   );

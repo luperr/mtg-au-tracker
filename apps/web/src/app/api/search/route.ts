@@ -1,33 +1,20 @@
 import sql, { searchCards, PAGE_SIZE } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
+import { createRateLimiter } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/request";
+import { RATE_LIMIT_SEARCH_PER_MINUTE, MAX_SEARCH_OFFSET, CACHE_SEARCH_MAX_AGE, CACHE_SEARCH_SWR } from "@/lib/config";
 
-// Rate limit: 60 requests per IP per minute
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + 60 * 1000 });
-    return true;
-  }
-  if (entry.count >= 60) return false;
-  entry.count++;
-  return true;
-}
+const checkRateLimit = createRateLimiter(RATE_LIMIT_SEARCH_PER_MINUTE, 60 * 1000);
 
 export async function GET(req: NextRequest) {
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    req.headers.get("x-real-ip") ??
-    "unknown";
+  const ip = getClientIp(req);
 
   if (process.env.NODE_ENV !== "development" && !checkRateLimit(ip)) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 
   const q = req.nextUrl.searchParams.get("q")?.trim() ?? "";
-  const offset = Math.max(0, Math.min(parseInt(req.nextUrl.searchParams.get("offset") ?? "0", 10), 10000));
+  const offset = Math.max(0, Math.min(parseInt(req.nextUrl.searchParams.get("offset") ?? "0", 10), MAX_SEARCH_OFFSET));
 
   if (!q) return NextResponse.json({ results: [], hasMore: false });
 
@@ -43,7 +30,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(
       { results, hasMore: results.length === PAGE_SIZE },
-      { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" } }
+      { headers: { "Cache-Control": `public, s-maxage=${CACHE_SEARCH_MAX_AGE}, stale-while-revalidate=${CACHE_SEARCH_SWR}` } }
     );
   } catch (err) {
     console.error("Search error:", err);

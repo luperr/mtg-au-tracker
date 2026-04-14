@@ -40,6 +40,7 @@ export const cards = pgTable(
   {
     id: text("id").primaryKey(),                           // Scryfall oracle_id
     name: text("name").notNull(),
+    slug: text("slug"),                                    // URL-safe slug, e.g. "lightning-bolt"
     manaCost: text("mana_cost"),
     typeLine: text("type_line").notNull(),
     oracleText: text("oracle_text"),
@@ -50,6 +51,7 @@ export const cards = pgTable(
   },
   (table) => [
     index("cards_name_idx").on(table.name),                // fast name lookups
+    uniqueIndex("cards_slug_idx").on(table.slug),          // slug lookups for SEO routes
   ]
 );
 
@@ -90,6 +92,7 @@ export const stores = pgTable("stores", {
   name: text("name").notNull(),
   baseUrl: text("base_url").notNull(),
   scraperEnabled: boolean("scraper_enabled").notNull().default(false),
+  logoUrl: text("logo_url"),                               // custom logo URL; null falls back to favicon service
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

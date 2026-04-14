@@ -2,7 +2,7 @@ server:
   http_listen_port: 9080
 
 positions:
-  filename: /tmp/positions.yaml
+  filename: /var/lib/promtail/positions.yaml
 
 clients:
   - url: http://10.10.30.13:3100/loki/api/v1/push
@@ -11,6 +11,9 @@ scrape_configs:
   - job_name: docker
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
+        filters:
+          - name: label
+            values: ["com.docker.compose.project=mtg-au-tracker"]
     relabel_configs:
       - source_labels: [__meta_docker_container_name]
         target_label: container
@@ -31,3 +34,20 @@ scrape_configs:
           component:
           service:
           store:
+      - labeldrop:
+        - active
+        - dupes
+        - fetched
+        - hot
+        - long_tail
+        - matched
+        - unmatched
+        - zero_result_cards
+        - skipped
+        - cards_searched
+        - detected_level
+        - level_extracted
+        - service_extracted
+        - component_extracted
+        - service_name
+        - time

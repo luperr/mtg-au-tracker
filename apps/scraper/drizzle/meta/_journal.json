@@ -43,6 +43,20 @@
       "when": 1774886400000,
       "tag": "0005_dfc_image_uri_back",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1775394599452,
+      "tag": "0006_known_zaladane",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1775784773113,
+      "tag": "0007_wide_next_avengers",
+      "breakpoints": true
     }
   ]
 }

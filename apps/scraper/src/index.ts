@@ -12,6 +12,7 @@
 import cron from "node-cron";
 import { count } from "drizzle-orm";
 import { db, schema } from "./lib/db.js";
+import { CRON_TIMEZONE, CRON_SCRYFALL, CRON_STORES, CRON_EBAY } from "./lib/config.js";
 import { runScryfallImport } from "./scryfall/bulk-import.js";
 import { runAllStores } from "./stores/run-all.js";
 import { runEbayImport } from "./ebay/ebay-import.js";
@@ -34,11 +35,10 @@ async function main(): Promise<void> {
     log.info({ card_count: Number(cardCount) }, "Database has cards — skipping bootstrap");
   }
 
-  const cronOptions = { timezone: "Australia/Sydney" };
+  const cronOptions = { timezone: CRON_TIMEZONE };
 
-  // 3 AM daily AEDT/AEST — refresh Scryfall card data + USD prices
-  cron.schedule("0 3 * * *", async () => {
-    log.info("3 AM cron — running Scryfall import");
+  cron.schedule(CRON_SCRYFALL, async () => {
+    log.info("Scryfall cron — running Scryfall import");
     try {
       await runScryfallImport();
     } catch (err) {
@@ -46,9 +46,8 @@ async function main(): Promise<void> {
     }
   }, cronOptions);
 
-  // 5 AM daily AEDT/AEST — scrape store prices
-  cron.schedule("0 5 * * *", async () => {
-    log.info("5 AM cron — running store scrapers");
+  cron.schedule(CRON_STORES, async () => {
+    log.info("Stores cron — running store scrapers");
     try {
       await runAllStores();
     } catch (err) {
@@ -56,9 +55,8 @@ async function main(): Promise<void> {
     }
   }, cronOptions);
 
-  // 6 AM daily AEDT/AEST — import eBay AU market prices
-  cron.schedule("0 6 * * *", async () => {
-    log.info("6 AM cron — running eBay AU import");
+  cron.schedule(CRON_EBAY, async () => {
+    log.info("eBay cron — running eBay AU import");
     try {
       await runEbayImport();
     } catch (err) {
@@ -66,7 +64,10 @@ async function main(): Promise<void> {
     }
   }, cronOptions);
 
-  log.info("Cron jobs scheduled (Scryfall @ 3 AM, stores @ 5 AM, eBay @ 6 AM). Service running.");
+  log.info(
+    { scryfall: CRON_SCRYFALL, stores: CRON_STORES, ebay: CRON_EBAY, tz: CRON_TIMEZONE },
+    "Cron jobs scheduled. Service running.",
+  );
 }
 
 main().catch((err) => {

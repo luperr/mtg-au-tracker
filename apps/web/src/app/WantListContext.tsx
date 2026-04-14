@@ -5,6 +5,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 export interface WantListItem {
   id: string;         // `${printingId}-${storeId}-${url ?? ""}` — unique per distinct listing
   cardId: string;
+  cardSlug: string | null;
   cardName: string;
   printingId: string;
   setName: string;
@@ -58,6 +59,7 @@ export function WantListProvider({ children }: { children: React.ReactNode }) {
             ...item,
             id,
             storeId,
+            cardSlug: item.cardSlug ?? null,
             shippingAud: item.shippingAud ?? null,
           };
         }));

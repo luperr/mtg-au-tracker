@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import sql from "@/lib/db";
 import { STORE_FLAT_SHIPPING_AUD } from "@/lib/store-shipping";
-import { logger } from "@/lib/logger";
+import { logger } from "@/lib/utils";
 
 const log = logger.child({ component: "api-optimize" });
 

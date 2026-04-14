@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useState, useMemo, useRef } from "react";
-import { useClickOutside } from "@/lib/hooks/useClickOutside";
+import React, { useState, useMemo } from "react";
 import type { PrintingWithPrices } from "@/lib/db";
 import { useWantList } from "@/app/WantListContext";
-import { fmtAUD } from "@/lib/format";
+import { fmtAUD } from "@/lib/utils";
 import { Dropdown, OptionItem } from "@/app/Dropdown";
 import { SetSymbol } from "@/app/SetSymbol";
 import { BuyLink } from "@/app/BuyLink";
@@ -32,8 +31,8 @@ interface Row {
   url: string | null;
 }
 
-const filterBtnCls = (active: boolean) =>
-  `flex-1 rounded border px-2 py-1 text-xs font-medium transition-colors ${
+const toggleBtnCls = (active: boolean) =>
+  `rounded border px-2.5 py-1 text-xs font-medium transition-colors ${
     active
       ? "border-accent-border bg-accent-muted text-accent-light"
       : "border-subtle bg-muted text-cream-dim hover:text-cream"
@@ -41,7 +40,7 @@ const filterBtnCls = (active: boolean) =>
 
 // ── Want list button ───────────────────────────────────────────────────────────
 
-function WantListButton({ row, cardId, cardName }: { row: Row; cardId: string; cardName: string }) {
+function WantListButton({ row, cardId, cardSlug, cardName }: { row: Row; cardId: string; cardSlug: string; cardName: string }) {
   const { addItem, removeItem, hasItem } = useWantList();
   const itemId = `${row.printing.id}-${row.storeId}-${row.url ?? ""}`;
   const inList = hasItem(itemId);
@@ -54,6 +53,7 @@ function WantListButton({ row, cardId, cardName }: { row: Row; cardId: string; c
           addItem({
             id: itemId,
             cardId,
+            cardSlug,
             cardName,
             printingId: row.printing.id,
             setName: row.printing.setName,
@@ -89,25 +89,24 @@ export function PricesTable({
   defaultImage,
   onHoverImage,
   cardId,
+  cardSlug,
   cardName,
 }: {
   printings: PrintingWithPrices[];
   defaultImage: string | null;
   onHoverImage: (uri: string | null, uriBack?: string | null) => void;
   cardId: string;
+  cardSlug: string;
   cardName: string;
 }) {
-  const [inStockOnly, setInStockOnly] = useState(false);
+  const [inStockOnly, setInStockOnly] = useState(true);
   const [foilFilter, setFoilFilter] = useState<FoilFilter>("all");
   const [selectedStores, setSelectedStores] = useState<Set<string>>(new Set());
   const [selectedSets, setSelectedSets] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<SortBy>("price_asc");
   const [page, setPage] = useState(0);
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const filtersRef = useRef<HTMLDivElement>(null);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const PAGE_SIZE = 10;
-
-  useClickOutside(filtersRef, filtersOpen, () => setFiltersOpen(false));
 
   const allStores = useMemo(() => {
     const s = new Set<string>();
@@ -119,7 +118,7 @@ export function PricesTable({
     const s = new Map<string, string>(); // setName → releasedAt
     for (const p of printings) s.set(p.setName, p.releasedAt ? String(p.releasedAt) : "");
     return Array.from(s.entries())
-      .sort((a, b) => b[1].localeCompare(a[1])) // newest first in dropdown
+      .sort((a, b) => b[1].localeCompare(a[1]))
       .map(([name]) => name);
   }, [printings]);
 
@@ -167,130 +166,180 @@ export function PricesTable({
     });
   }, [printings, inStockOnly, foilFilter, selectedStores, selectedSets, sortBy]);
 
-  const filtersActive =
-    inStockOnly || foilFilter !== "all" || selectedStores.size > 0 || selectedSets.size > 0;
-
-  const activeFilterCount =
-    (inStockOnly ? 1 : 0) + (foilFilter !== "all" ? 1 : 0) + selectedStores.size + selectedSets.size;
+  // Non-default = anything diverging from initial state (inStockOnly=true, foilFilter="all", no selections)
+  const filtersNonDefault =
+    !inStockOnly || foilFilter !== "all" || selectedStores.size > 0 || selectedSets.size > 0;
 
   const clearFilters = () => {
-    setInStockOnly(false);
+    setInStockOnly(true);
     setFoilFilter("all");
     setSelectedStores(new Set());
     setSelectedSets(new Set());
     setPage(0);
+    setMobileFiltersOpen(false);
   };
 
-  // Reset to page 0 whenever filters/sort change
   const totalPages = Math.ceil(rows.length / PAGE_SIZE);
   const pageRows = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   return (
     <div>
-      {/* Toolbar above table */}
-      <div className="flex items-center justify-between mb-2 gap-2">
-        {/* Left: unified Filters button */}
-        <div className="flex items-center gap-2" ref={filtersRef}>
-          <div className="relative">
+      {/* Toolbar */}
+      <div className="mb-3">
+        {/* Always-visible row: mobile toggle + sort */}
+        <div className="flex items-center gap-2">
+          {/* Mobile: Filters toggle button */}
+          <button
+            onClick={() => setMobileFiltersOpen((o) => !o)}
+            className={`sm:hidden flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+              filtersNonDefault
+                ? "border-accent-border bg-accent-muted text-accent-light"
+                : "border-subtle bg-muted text-cream-dim"
+            }`}
+          >
+            Filters
+            {filtersNonDefault && (
+              <span className="flex items-center justify-center w-4 h-4 rounded-full bg-accent text-bg text-[10px] font-bold">
+                {(!inStockOnly ? 1 : 0) + (foilFilter !== "all" ? 1 : 0) + selectedStores.size + selectedSets.size}
+              </span>
+            )}
+            <span className="text-[9px] opacity-50">{mobileFiltersOpen ? "▲" : "▼"}</span>
+          </button>
+
+          {/* Desktop: inline filter controls */}
+          <div className="hidden sm:flex flex-wrap items-center gap-2">
+            {/* Foil toggle group */}
+            <div className="flex gap-1">
+              {(["all", "nonfoil", "foil"] as FoilFilter[]).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => { setFoilFilter(f); setPage(0); }}
+                  className={toggleBtnCls(foilFilter === f)}
+                >
+                  {f === "all" ? "All" : f === "nonfoil" ? "Non-foil" : "✦ Foil"}
+                </button>
+              ))}
+            </div>
+
+            {/* Stock toggle */}
             <button
-              onClick={() => setFiltersOpen((o) => !o)}
-              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 min-h-[36px] text-xs font-medium transition-colors whitespace-nowrap ${
-                filtersActive
-                  ? "border-accent-border bg-accent-muted text-accent-light"
-                  : "border-subtle bg-muted text-cream-dim hover:text-cream hover:border-accent-border"
-              }`}
+              onClick={() => { setInStockOnly(!inStockOnly); setPage(0); }}
+              className={toggleBtnCls(inStockOnly)}
             >
-              Filters
-              {activeFilterCount > 0 && (
-                <span className="flex items-center justify-center w-4 h-4 rounded-full bg-accent text-bg text-[10px] font-bold">
-                  {activeFilterCount}
-                </span>
-              )}
-              <span className="text-[9px] opacity-50">{filtersOpen ? "▲" : "▼"}</span>
+              In stock
             </button>
 
-            {filtersOpen && (
-              <div className="absolute top-full left-0 mt-1 z-30 w-64 rounded-lg border border-subtle bg-surface shadow-xl shadow-black/50">
-                {/* Foil */}
-                <div className="p-3 border-b border-subtle/60">
-                  <p className="text-[10px] text-cream-dim/50 uppercase tracking-wide mb-2">Foil</p>
-                  <div className="flex gap-1.5">
-                    {(["all", "nonfoil", "foil"] as FoilFilter[]).map((f) => (
-                      <button
-                        key={f}
-                        onClick={() => { setFoilFilter(f); setPage(0); }}
-                        className={filterBtnCls(foilFilter === f)}
-                      >
-                        {f === "all" ? "All" : f === "nonfoil" ? "Non-foil" : "✦ Foil"}
-                      </button>
-                    ))}
-                  </div>
+            {/* Store dropdown */}
+            {allStores.length > 1 && (
+              <Dropdown label="Store" active={selectedStores.size > 0} align="left">
+                <div className="py-1">
+                  {allStores.map((store) => (
+                    <OptionItem key={store} type="check" label={store} checked={selectedStores.has(store)} onClick={() => toggleInSet(setSelectedStores, store)} />
+                  ))}
                 </div>
+              </Dropdown>
+            )}
 
-                {/* Stock */}
-                <div className="p-3 border-b border-subtle/60">
-                  <p className="text-[10px] text-cream-dim/50 uppercase tracking-wide mb-2">Stock</p>
-                  <div className="flex gap-1.5">
-                    {([false, true] as const).map((val) => (
-                      <button
-                        key={String(val)}
-                        onClick={() => { setInStockOnly(val); setPage(0); }}
-                        className={filterBtnCls(inStockOnly === val)}
-                      >
-                        {val ? "In stock" : "All"}
-                      </button>
-                    ))}
-                  </div>
+            {/* Set dropdown */}
+            {allSets.length > 1 && (
+              <Dropdown label="Set" active={selectedSets.size > 0} align="left">
+                <div className="py-1 max-h-48 overflow-y-auto">
+                  {allSets.map((set) => (
+                    <OptionItem key={set} type="check" label={set} checked={selectedSets.has(set)} onClick={() => toggleInSet(setSelectedSets, set)} />
+                  ))}
                 </div>
+              </Dropdown>
+            )}
 
-                {/* Store */}
-                {allStores.length > 1 && (
-                  <div className="p-3 border-b border-subtle/60">
-                    <p className="text-[10px] text-cream-dim/50 uppercase tracking-wide mb-1">Store</p>
-                    {allStores.map((store) => (
-                      <OptionItem key={store} type="check" label={store} checked={selectedStores.has(store)} onClick={() => toggleInSet(setSelectedStores, store)} />
-                    ))}
-                  </div>
-                )}
-
-                {/* Set */}
-                {allSets.length > 1 && (
-                  <div className="p-3">
-                    <p className="text-[10px] text-cream-dim/50 uppercase tracking-wide mb-1">Set</p>
-                    <div className="max-h-48 overflow-y-auto">
-                      {allSets.map((set) => (
-                        <OptionItem key={set} type="check" label={set} checked={selectedSets.has(set)} onClick={() => toggleInSet(setSelectedSets, set)} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+            {filtersNonDefault && (
+              <button onClick={clearFilters} className="px-2 text-[10px] text-cream-dim/40 hover:text-cream-dim transition-colors">
+                Reset
+              </button>
             )}
           </div>
 
-          {filtersActive && (
-            <button onClick={clearFilters} className="min-h-[36px] px-2 text-[10px] text-cream-dim/40 hover:text-cream-dim transition-colors">
-              Clear
-            </button>
-          )}
+          {/* Right: count + sort */}
+          <div className="flex items-center gap-2 ml-auto shrink-0">
+            <span className="text-[10px] text-cream-dim/30">{rows.length}</span>
+            <Dropdown label="Sort" active={sortBy !== "price_asc"} align="right">
+              <div className="py-1">
+                {(Object.entries(SORT_LABELS) as [SortBy, string][]).map(([key, label]) => (
+                  <OptionItem key={key} label={label} checked={sortBy === key} onClick={() => { setSortBy(key); setPage(0); }} />
+                ))}
+              </div>
+            </Dropdown>
+          </div>
         </div>
 
-        {/* Right: sort + count */}
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[10px] text-cream-dim/30">{rows.length}</span>
-          <Dropdown label="Sort" active={sortBy !== "price_asc"} align="right">
-            <div className="py-1">
-              {(Object.entries(SORT_LABELS) as [SortBy, string][]).map(([key, label]) => (
-                <OptionItem key={key} label={label} checked={sortBy === key} onClick={() => { setSortBy(key); setPage(0); }} />
-              ))}
+        {/* Mobile: collapsible filter panel */}
+        {mobileFiltersOpen && (
+          <div className="sm:hidden mt-2 flex flex-wrap gap-2 p-3 rounded-lg border border-subtle bg-surface">
+            {/* Foil */}
+            <div className="w-full">
+              <p className="text-[10px] text-cream-dim/50 uppercase tracking-wide mb-1.5">Foil</p>
+              <div className="flex gap-1">
+                {(["all", "nonfoil", "foil"] as FoilFilter[]).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => { setFoilFilter(f); setPage(0); }}
+                    className={toggleBtnCls(foilFilter === f)}
+                  >
+                    {f === "all" ? "All" : f === "nonfoil" ? "Non-foil" : "✦ Foil"}
+                  </button>
+                ))}
+              </div>
             </div>
-          </Dropdown>
-        </div>
+
+            {/* Stock */}
+            <div className="w-full">
+              <p className="text-[10px] text-cream-dim/50 uppercase tracking-wide mb-1.5">Stock</p>
+              <div className="flex gap-1">
+                {([true, false] as const).map((val) => (
+                  <button
+                    key={String(val)}
+                    onClick={() => { setInStockOnly(val); setPage(0); }}
+                    className={toggleBtnCls(inStockOnly === val)}
+                  >
+                    {val ? "In stock" : "All"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Store */}
+            {allStores.length > 1 && (
+              <div className="w-full">
+                <p className="text-[10px] text-cream-dim/50 uppercase tracking-wide mb-1">Store</p>
+                {allStores.map((store) => (
+                  <OptionItem key={store} type="check" label={store} checked={selectedStores.has(store)} onClick={() => toggleInSet(setSelectedStores, store)} />
+                ))}
+              </div>
+            )}
+
+            {/* Set */}
+            {allSets.length > 1 && (
+              <div className="w-full">
+                <p className="text-[10px] text-cream-dim/50 uppercase tracking-wide mb-1">Set</p>
+                <div className="max-h-48 overflow-y-auto">
+                  {allSets.map((set) => (
+                    <OptionItem key={set} type="check" label={set} checked={selectedSets.has(set)} onClick={() => toggleInSet(setSelectedSets, set)} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {filtersNonDefault && (
+              <button onClick={clearFilters} className="text-[10px] text-cream-dim/40 hover:text-cream-dim transition-colors">
+                Reset filters
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Table */}
       <div className="rounded-lg border border-subtle bg-surface overflow-hidden">
-        {rows.length === 0 && !filtersActive ? (
+        {rows.length === 0 && !filtersNonDefault ? (
           <div className="px-4 py-8 text-center text-cream-dim/50">
             No prices available
           </div>
@@ -377,7 +426,7 @@ export function PricesTable({
 
                   <td className="px-2 py-2.5 text-right">
                     {row.inStock && (
-                      <WantListButton row={row} cardId={cardId} cardName={cardName} />
+                      <WantListButton row={row} cardId={cardId} cardSlug={cardSlug} cardName={cardName} />
                     )}
                   </td>
                 </tr>

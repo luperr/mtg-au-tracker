@@ -13,6 +13,16 @@ export default defineWorkspace([
       name: "scraper",
       environment: "node",
       include: ["apps/scraper/src/**/*.test.ts"],
+      env: {
+        DATABASE_URL: "postgresql://test:test@localhost/test",
+      },
+    },
+  },
+  {
+    test: {
+      name: "web",
+      environment: "node",
+      include: ["apps/web/src/lib/**/*.test.ts"],
     },
   },
 ]);
