@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createRateLimiter } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/request";
+import { RATE_LIMIT_CONTACT_PER_HOUR, GITHUB_REPO_OWNER, GITHUB_REPO_NAME, GITHUB_API_URL } from "@/lib/config";
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const REPO_OWNER = "luperr";
-const REPO_NAME = "mtg-au-tracker";
 
 const LABEL_MAP: Record<string, string> = {
   bug: "bug",
@@ -20,20 +21,7 @@ const TYPE_LABELS: Record<string, string> = {
   feedback: "General feedback",
 };
 
-// Simple in-memory rate limiter — max 3 submissions per IP per hour
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + 60 * 60 * 1000 });
-    return true;
-  }
-  if (entry.count >= 3) return false;
-  entry.count++;
-  return true;
-}
+const checkRateLimit = createRateLimiter(RATE_LIMIT_CONTACT_PER_HOUR, 60 * 60 * 1000);
 
 function buildTitle(type: string, cardName?: string, storeName?: string): string {
   const prefix = TYPE_LABELS[type] ?? "Feedback";
@@ -81,10 +69,7 @@ ${fields.email || "Not provided"}
 }
 
 export async function POST(req: NextRequest) {
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    req.headers.get("x-real-ip") ??
-    "unknown";
+  const ip = getClientIp(req);
 
   let body: Record<string, string>;
   try {
@@ -134,7 +119,7 @@ export async function POST(req: NextRequest) {
   });
 
   const ghRes = await fetch(
-    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/issues`,
+    `${GITHUB_API_URL}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/issues`,
     {
       method: "POST",
       headers: {

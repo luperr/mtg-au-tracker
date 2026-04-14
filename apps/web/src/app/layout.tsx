@@ -7,11 +7,12 @@ import { DragDropSearch } from "./DragDropSearch";
 import { WantListProvider } from "./WantListContext";
 import { WantListBadge } from "./WantListBadge";
 import { HeaderSearch } from "./HeaderSearch";
+import { SITE_URL, ANALYTICS_SCRIPT_URL } from "@/lib/config";
 
 const bitcount = Bitcount_Prop_Double({ subsets: ["latin"], weight: ["400"] });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://scrymarket.au"),
+  metadataBase: new URL(SITE_URL),
   title: "Scrymarket",
   description: "Compare Australian MTG card prices across stores and eBay",
   icons: {
@@ -20,7 +21,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Scrymarket",
     description: "Compare Australian MTG card prices across stores and eBay",
-    url: "https://scrymarket.au",
+    url: SITE_URL,
     siteName: "Scrymarket",
     type: "website",
   },
@@ -42,7 +43,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: `(function(){var t=localStorage.getItem('theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')})()` }} />
       </head>
       <Script
-        src="https://umami.scrymarket.au/script.js"
+        src={ANALYTICS_SCRIPT_URL}
         data-website-id="ba5a4121-875c-4ad2-a05e-dbab6b207c03"
         strategy="afterInteractive"
       />

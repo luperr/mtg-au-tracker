@@ -9,12 +9,11 @@ import { writeFile, readFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { sql } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
+import { SCRYFALL_BULK_API_URL, SCRYFALL_OUTPUT_DIR, SCRYFALL_USER_AGENT, BATCH_SIZE } from "../lib/config.js";
 import { shouldImport, transform, type ScryfallCard } from "./transform.js";
 import { logger } from "../lib/logger.js";
 
 const log = logger.child({ component: "scryfall" });
-
-const BULK_API_URL = "https://api.scryfall.com/bulk-data";
 
 function cardNameToSlug(name: string): string {
   return name
@@ -28,10 +27,7 @@ function cardNameToSlug(name: string): string {
     .replace(/-{2,}/g, "-")            // collapse multiple hyphens
     .replace(/^-|-$/g, "");            // trim leading/trailing hyphens
 }
-const OUTPUT_DIR = "/tmp/mtg-scraper";
-const OUTPUT_FILE = join(OUTPUT_DIR, "default_cards.json");
-const USER_AGENT = "Scrymarket/1.0 (learning project)";
-const BATCH_SIZE = 500;
+const OUTPUT_FILE = join(SCRYFALL_OUTPUT_DIR, "default_cards.json");
 
 interface BulkDataEntry {
   type: string;
@@ -45,7 +41,7 @@ interface BulkDataCatalog {
 
 async function fetchData(): Promise<void> {
   log.info("Fetching Scryfall bulk data catalog");
-  const catalogRes = await fetch(BULK_API_URL, { headers: { "User-Agent": USER_AGENT } });
+  const catalogRes = await fetch(SCRYFALL_BULK_API_URL, { headers: { "User-Agent": SCRYFALL_USER_AGENT } });
   if (!catalogRes.ok) throw new Error(`Catalog request failed: ${catalogRes.status}`);
 
   const catalog = (await catalogRes.json()) as BulkDataCatalog;
@@ -53,13 +49,13 @@ async function fetchData(): Promise<void> {
   if (!entry) throw new Error("Could not find 'default_cards' in Scryfall catalog");
 
   log.info({ updated_at: entry.updated_at }, "Downloading Scryfall bulk data");
-  const dataRes = await fetch(entry.download_uri, { headers: { "User-Agent": USER_AGENT } });
+  const dataRes = await fetch(entry.download_uri, { headers: { "User-Agent": SCRYFALL_USER_AGENT } });
   if (!dataRes.ok) throw new Error(`Download failed: ${dataRes.status}`);
 
   const cards = (await dataRes.json()) as ScryfallCard[];
   log.info({ card_count: cards.length }, "Downloaded Scryfall card objects");
 
-  await mkdir(OUTPUT_DIR, { recursive: true });
+  await mkdir(SCRYFALL_OUTPUT_DIR, { recursive: true });
   await writeFile(OUTPUT_FILE, JSON.stringify(cards));
   log.debug({ path: OUTPUT_FILE }, "Saved bulk data to file");
 }
@@ -87,17 +83,46 @@ async function importData(): Promise<void> {
 
   log.info({ cards: uniqueCards.length, printings: uniquePrintings.length }, "Prepared data for upsert");
 
-  // Build slug map with collision handling (rare in MTG but handle gracefully)
+  // Slugs are immutable once set — stable URLs are better for SEO.
+  // Load all existing slugs from the DB before generating new ones.
+  //
+  // Two cases this prevents:
+  //   1. A new oracle_id tries to claim a slug held by a stale DB row (Scryfall
+  //      occasionally reassigns oracle_ids, leaving an old row behind).
+  //   2. A cross-batch ordering race where one row in a batch updates its slug
+  //      *away from* a value, and another row in the same batch tries to claim it —
+  //      PostgreSQL checks the unique constraint per-row, not after the full batch.
+  const existingRows = await db.select({ id: schema.cards.id, slug: schema.cards.slug }).from(schema.cards);
+  const existingSlugByOracleId = new Map<string, string>(
+    existingRows
+      .filter((r: { id: string; slug: string | null }) => r.slug !== null)
+      .map((r: { id: string; slug: string | null }) => [r.id, r.slug as string] as [string, string])
+  );
+
+  // slugsSeen prevents duplicate assignment within this run.
+  // Seed it with slugs held by oracle_ids NOT in this batch (truly immovable).
+  const currentOracleIds = new Set(uniqueCards.map((c) => c.id));
   const slugsSeen = new Set<string>();
+  for (const [id, slug] of existingSlugByOracleId) {
+    if (!currentOracleIds.has(id)) slugsSeen.add(slug);
+  }
+
   const cardSlugs = new Map<string, string>(); // oracle_id → slug
   for (const c of uniqueCards) {
-    let slug = cardNameToSlug(c.name);
-    if (slugsSeen.has(slug)) {
-      // Append a suffix using the first 8 chars of the oracle_id
-      slug = `${slug}-${c.id.slice(0, 8)}`;
+    if (existingSlugByOracleId.has(c.id)) {
+      // Card already has a slug — preserve it and mark it taken.
+      const existing = existingSlugByOracleId.get(c.id)!;
+      cardSlugs.set(c.id, existing);
+      slugsSeen.add(existing);
+    } else {
+      // New card — generate slug with collision detection.
+      let slug = cardNameToSlug(c.name);
+      if (slugsSeen.has(slug)) {
+        slug = `${slug}-${c.id.slice(0, 8)}`;
+      }
+      slugsSeen.add(slug);
+      cardSlugs.set(c.id, slug);
     }
-    slugsSeen.add(slug);
-    cardSlugs.set(c.id, slug);
   }
 
   // Insert cards
@@ -110,7 +135,7 @@ async function importData(): Promise<void> {
     }))).onConflictDoUpdate({
       target: schema.cards.id,
       set: {
-        name: sql`excluded.name`, slug: sql`excluded.slug`,
+        name: sql`excluded.name`,
         manaCost: sql`excluded.mana_cost`,
         typeLine: sql`excluded.type_line`, oracleText: sql`excluded.oracle_text`,
         colors: sql`excluded.colors`, colorIdentity: sql`excluded.color_identity`,

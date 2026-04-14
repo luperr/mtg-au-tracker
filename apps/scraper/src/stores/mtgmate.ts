@@ -11,7 +11,7 @@
  *   3. Parse card entries from uuid_data and yield as ScrapedCard.
  *
  * Concurrency (Option B):
- *   Set codes are processed in parallel batches of CONCURRENCY (default 3). This
+ *   Set codes are processed in parallel batches (default 3). This
  *   gives ~3× throughput vs sequential without hammering the server.
  *
  * Set code cache (Option E):
@@ -30,18 +30,13 @@
 
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import type { ScrapedCard } from "@mtg-au/shared";
+import { type ScrapedCard, normaliseCondition } from "@mtg-au/shared";
 import { BaseScraper } from "./base-scraper.js";
 import { logger } from "../lib/logger.js";
+import { MTGMATE_BASE_URL, MTGMATE_CONCURRENCY } from "../lib/config.js";
 import { ProbeCache } from "../lib/probe-cache.js";
 
 const log = logger.child({ component: "mtgmate" });
-
-const BASE_URL = "https://www.mtgmate.com.au";
-
-// Number of set data URLs fetched in parallel.
-// Each slot opens its own browser page; 3 is a safe balance vs server load.
-const CONCURRENCY = 3;
 
 // Cache for known-good set codes. Avoids probing ~697 codes daily when only ~100 have data.
 const _dir = dirname(fileURLToPath(import.meta.url));
@@ -64,17 +59,6 @@ interface MtgMateCardEntry {
 
 interface CardDataResponse {
   uuid_data: Record<string, MtgMateCardEntry>;
-}
-
-function normaliseCondition(raw: string): string {
-  switch (raw.toLowerCase()) {
-    case "regular":           return "NM";
-    case "lightly played":    return "LP";
-    case "moderately played": return "MP";
-    case "heavily played":    return "HP";
-    case "damaged":           return "DMG";
-    default:                  return raw;
-  }
 }
 
 // Extract unique set codes from the /magic_sets listing page.
@@ -113,20 +97,20 @@ function mapEntry(entry: MtgMateCardEntry): ScrapedCard {
     condition: normaliseCondition(entry.condition),
     isFoil: entry.finish === "Foil",
     inStock: entry.quantity > 0,
-    sourceUrl: `${BASE_URL}${entry.link_path}`,
+    sourceUrl: `${MTGMATE_BASE_URL}${entry.link_path}`,
   };
 }
 
 export class MtgMateScraper extends BaseScraper {
   getBaseUrl(): string {
-    return BASE_URL;
+    return MTGMATE_BASE_URL;
   }
 
   // Fetch card data for one set code. Returns entries (may be empty).
   // Silently returns [] on 404 (set doesn't exist on MTG Mate).
   // Logs a warning on unexpected errors.
   private async fetchSetData(code: string): Promise<MtgMateCardEntry[]> {
-    const url = `${BASE_URL}/magic_sets/${code}/data`;
+    const url = `${MTGMATE_BASE_URL}/magic_sets/${code}/data`;
     try {
       const data = await this.fetchJson<CardDataResponse>(url);
       if (!data.uuid_data) return [];
@@ -143,7 +127,7 @@ export class MtgMateScraper extends BaseScraper {
 
   async *scrapeAll(): AsyncGenerator<ScrapedCard> {
     log.info("Fetching MTG Mate set list");
-    const setsHtml = await this.fetchPage(`${BASE_URL}/magic_sets`);
+    const setsHtml = await this.fetchPage(`${MTGMATE_BASE_URL}/magic_sets`);
     const allCodes = parseSetCodes(setsHtml);
 
     if (allCodes.length === 0) {
@@ -158,7 +142,7 @@ export class MtgMateScraper extends BaseScraper {
     const codes = isFullScan ? allCodes : cache.getValidKeys();
 
     log.info(
-      { total: allCodes.length, probing: codes.length, concurrency: CONCURRENCY, isFullScan },
+      { total: allCodes.length, probing: codes.length, concurrency: MTGMATE_CONCURRENCY, isFullScan },
       "MTG Mate probe plan"
     );
 
@@ -167,8 +151,8 @@ export class MtgMateScraper extends BaseScraper {
     const validCodes: string[] = [];
 
     // Process set codes in parallel batches
-    for (let i = 0; i < codes.length; i += CONCURRENCY) {
-      const batch = codes.slice(i, i + CONCURRENCY);
+    for (let i = 0; i < codes.length; i += MTGMATE_CONCURRENCY) {
+      const batch = codes.slice(i, i + MTGMATE_CONCURRENCY);
 
       const results = await Promise.all(batch.map((code) => this.fetchSetData(code)));
 
