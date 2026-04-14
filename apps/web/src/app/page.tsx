@@ -1,5 +1,4 @@
-import { CACHE_REVALIDATE_HOUR } from "@/lib/config";
-export const revalidate = CACHE_REVALIDATE_HOUR;
+export const revalidate = 3600;
 
 import { searchCards, countCards, PAGE_SIZE } from "@/lib/db";
 import { SearchResults } from "./SearchResults";

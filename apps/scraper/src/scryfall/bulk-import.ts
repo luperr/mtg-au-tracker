@@ -83,17 +83,46 @@ async function importData(): Promise<void> {
 
   log.info({ cards: uniqueCards.length, printings: uniquePrintings.length }, "Prepared data for upsert");
 
-  // Build slug map with collision handling (rare in MTG but handle gracefully)
+  // Slugs are immutable once set — stable URLs are better for SEO.
+  // Load all existing slugs from the DB before generating new ones.
+  //
+  // Two cases this prevents:
+  //   1. A new oracle_id tries to claim a slug held by a stale DB row (Scryfall
+  //      occasionally reassigns oracle_ids, leaving an old row behind).
+  //   2. A cross-batch ordering race where one row in a batch updates its slug
+  //      *away from* a value, and another row in the same batch tries to claim it —
+  //      PostgreSQL checks the unique constraint per-row, not after the full batch.
+  const existingRows = await db.select({ id: schema.cards.id, slug: schema.cards.slug }).from(schema.cards);
+  const existingSlugByOracleId = new Map<string, string>(
+    existingRows
+      .filter((r: { id: string; slug: string | null }) => r.slug !== null)
+      .map((r: { id: string; slug: string | null }) => [r.id, r.slug as string] as [string, string])
+  );
+
+  // slugsSeen prevents duplicate assignment within this run.
+  // Seed it with slugs held by oracle_ids NOT in this batch (truly immovable).
+  const currentOracleIds = new Set(uniqueCards.map((c) => c.id));
   const slugsSeen = new Set<string>();
+  for (const [id, slug] of existingSlugByOracleId) {
+    if (!currentOracleIds.has(id)) slugsSeen.add(slug);
+  }
+
   const cardSlugs = new Map<string, string>(); // oracle_id → slug
   for (const c of uniqueCards) {
-    let slug = cardNameToSlug(c.name);
-    if (slugsSeen.has(slug)) {
-      // Append a suffix using the first 8 chars of the oracle_id
-      slug = `${slug}-${c.id.slice(0, 8)}`;
+    if (existingSlugByOracleId.has(c.id)) {
+      // Card already has a slug — preserve it and mark it taken.
+      const existing = existingSlugByOracleId.get(c.id)!;
+      cardSlugs.set(c.id, existing);
+      slugsSeen.add(existing);
+    } else {
+      // New card — generate slug with collision detection.
+      let slug = cardNameToSlug(c.name);
+      if (slugsSeen.has(slug)) {
+        slug = `${slug}-${c.id.slice(0, 8)}`;
+      }
+      slugsSeen.add(slug);
+      cardSlugs.set(c.id, slug);
     }
-    slugsSeen.add(slug);
-    cardSlugs.set(c.id, slug);
   }
 
   // Insert cards
@@ -106,7 +135,7 @@ async function importData(): Promise<void> {
     }))).onConflictDoUpdate({
       target: schema.cards.id,
       set: {
-        name: sql`excluded.name`, slug: sql`excluded.slug`,
+        name: sql`excluded.name`,
         manaCost: sql`excluded.mana_cost`,
         typeLine: sql`excluded.type_line`, oracleText: sql`excluded.oracle_text`,
         colors: sql`excluded.colors`, colorIdentity: sql`excluded.color_identity`,

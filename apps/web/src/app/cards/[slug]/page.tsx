@@ -1,5 +1,4 @@
-import { CACHE_REVALIDATE_HOUR } from "@/lib/config";
-export const revalidate = CACHE_REVALIDATE_HOUR;
+export const revalidate = 3600;
 
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
