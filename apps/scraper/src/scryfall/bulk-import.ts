@@ -9,13 +9,25 @@ import { writeFile, readFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { sql } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
+import { SCRYFALL_BULK_API_URL, SCRYFALL_OUTPUT_DIR, SCRYFALL_USER_AGENT, BATCH_SIZE } from "../lib/config.js";
 import { shouldImport, transform, type ScryfallCard } from "./transform.js";
+import { logger } from "../lib/logger.js";
 
-const BULK_API_URL = "https://api.scryfall.com/bulk-data";
-const OUTPUT_DIR = "/tmp/mtg-scraper";
-const OUTPUT_FILE = join(OUTPUT_DIR, "default_cards.json");
-const USER_AGENT = "Scrymarket/1.0 (learning project)";
-const BATCH_SIZE = 500;
+const log = logger.child({ component: "scryfall" });
+
+function cardNameToSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")  // strip diacritics: ü→u, é→e
+    .replace(/\/\//g, " ")             // split/DFC "A // B" → "A B"
+    .replace(/[^a-z0-9\s]/g, " ")      // non-alphanumeric → space
+    .trim()
+    .replace(/\s+/g, "-")              // spaces → hyphens
+    .replace(/-{2,}/g, "-")            // collapse multiple hyphens
+    .replace(/^-|-$/g, "");            // trim leading/trailing hyphens
+}
+const OUTPUT_FILE = join(SCRYFALL_OUTPUT_DIR, "default_cards.json");
 
 interface BulkDataEntry {
   type: string;
@@ -28,33 +40,33 @@ interface BulkDataCatalog {
 }
 
 async function fetchData(): Promise<void> {
-  console.log("[Scryfall] Fetching bulk data catalog...");
-  const catalogRes = await fetch(BULK_API_URL, { headers: { "User-Agent": USER_AGENT } });
+  log.info("Fetching Scryfall bulk data catalog");
+  const catalogRes = await fetch(SCRYFALL_BULK_API_URL, { headers: { "User-Agent": SCRYFALL_USER_AGENT } });
   if (!catalogRes.ok) throw new Error(`Catalog request failed: ${catalogRes.status}`);
 
   const catalog = (await catalogRes.json()) as BulkDataCatalog;
   const entry = catalog.data.find((d) => d.type === "default_cards");
   if (!entry) throw new Error("Could not find 'default_cards' in Scryfall catalog");
 
-  console.log(`[Scryfall] Downloading bulk data (updated ${entry.updated_at})...`);
-  const dataRes = await fetch(entry.download_uri, { headers: { "User-Agent": USER_AGENT } });
+  log.info({ updated_at: entry.updated_at }, "Downloading Scryfall bulk data");
+  const dataRes = await fetch(entry.download_uri, { headers: { "User-Agent": SCRYFALL_USER_AGENT } });
   if (!dataRes.ok) throw new Error(`Download failed: ${dataRes.status}`);
 
   const cards = (await dataRes.json()) as ScryfallCard[];
-  console.log(`[Scryfall] Downloaded ${cards.length.toLocaleString()} card objects`);
+  log.info({ card_count: cards.length }, "Downloaded Scryfall card objects");
 
-  await mkdir(OUTPUT_DIR, { recursive: true });
+  await mkdir(SCRYFALL_OUTPUT_DIR, { recursive: true });
   await writeFile(OUTPUT_FILE, JSON.stringify(cards));
-  console.log(`[Scryfall] Saved to ${OUTPUT_FILE}`);
+  log.debug({ path: OUTPUT_FILE }, "Saved bulk data to file");
 }
 
 async function importData(): Promise<void> {
-  console.log("[Scryfall] Reading saved data...");
+  log.info("Reading saved Scryfall data");
   const raw = await readFile(OUTPUT_FILE, "utf-8");
   const allCards = JSON.parse(raw) as ScryfallCard[];
 
   const importable = allCards.filter(shouldImport);
-  console.log(`[Scryfall] ${importable.length.toLocaleString()} cards to import`);
+  log.info({ card_count: importable.length }, "Cards to import");
 
   const cardMap = new Map<string, ReturnType<typeof transform>["cardRow"]>();
   const allPrintings: ReturnType<typeof transform>["printingRows"][number][] = [];
@@ -69,26 +81,69 @@ async function importData(): Promise<void> {
   const printingMap = new Map(allPrintings.map((p) => [p.id, p]));
   const uniquePrintings = [...printingMap.values()];
 
-  console.log(`[Scryfall] ${uniqueCards.length.toLocaleString()} cards, ${uniquePrintings.length.toLocaleString()} printings`);
+  log.info({ cards: uniqueCards.length, printings: uniquePrintings.length }, "Prepared data for upsert");
+
+  // Slugs are immutable once set — stable URLs are better for SEO.
+  // Load all existing slugs from the DB before generating new ones.
+  //
+  // Two cases this prevents:
+  //   1. A new oracle_id tries to claim a slug held by a stale DB row (Scryfall
+  //      occasionally reassigns oracle_ids, leaving an old row behind).
+  //   2. A cross-batch ordering race where one row in a batch updates its slug
+  //      *away from* a value, and another row in the same batch tries to claim it —
+  //      PostgreSQL checks the unique constraint per-row, not after the full batch.
+  const existingRows = await db.select({ id: schema.cards.id, slug: schema.cards.slug }).from(schema.cards);
+  const existingSlugByOracleId = new Map<string, string>(
+    existingRows
+      .filter((r: { id: string; slug: string | null }) => r.slug !== null)
+      .map((r: { id: string; slug: string | null }) => [r.id, r.slug as string] as [string, string])
+  );
+
+  // slugsSeen prevents duplicate assignment within this run.
+  // Seed it with slugs held by oracle_ids NOT in this batch (truly immovable).
+  const currentOracleIds = new Set(uniqueCards.map((c) => c.id));
+  const slugsSeen = new Set<string>();
+  for (const [id, slug] of existingSlugByOracleId) {
+    if (!currentOracleIds.has(id)) slugsSeen.add(slug);
+  }
+
+  const cardSlugs = new Map<string, string>(); // oracle_id → slug
+  for (const c of uniqueCards) {
+    if (existingSlugByOracleId.has(c.id)) {
+      // Card already has a slug — preserve it and mark it taken.
+      const existing = existingSlugByOracleId.get(c.id)!;
+      cardSlugs.set(c.id, existing);
+      slugsSeen.add(existing);
+    } else {
+      // New card — generate slug with collision detection.
+      let slug = cardNameToSlug(c.name);
+      if (slugsSeen.has(slug)) {
+        slug = `${slug}-${c.id.slice(0, 8)}`;
+      }
+      slugsSeen.add(slug);
+      cardSlugs.set(c.id, slug);
+    }
+  }
 
   // Insert cards
   for (let i = 0; i < uniqueCards.length; i += BATCH_SIZE) {
     const batch = uniqueCards.slice(i, i + BATCH_SIZE);
     await db.insert(schema.cards).values(batch.map((c) => ({
-      id: c.id, name: c.name, manaCost: c.manaCost, typeLine: c.typeLine,
-      oracleText: c.oracleText, colors: c.colors, colorIdentity: c.colorIdentity,
-      legalities: c.legalities, updatedAt: new Date(),
+      id: c.id, name: c.name, slug: cardSlugs.get(c.id)!, manaCost: c.manaCost,
+      typeLine: c.typeLine, oracleText: c.oracleText, colors: c.colors,
+      colorIdentity: c.colorIdentity, legalities: c.legalities, updatedAt: new Date(),
     }))).onConflictDoUpdate({
       target: schema.cards.id,
       set: {
-        name: sql`excluded.name`, manaCost: sql`excluded.mana_cost`,
+        name: sql`excluded.name`,
+        manaCost: sql`excluded.mana_cost`,
         typeLine: sql`excluded.type_line`, oracleText: sql`excluded.oracle_text`,
         colors: sql`excluded.colors`, colorIdentity: sql`excluded.color_identity`,
         legalities: sql`excluded.legalities`, updatedAt: sql`excluded.updated_at`,
       },
     });
   }
-  console.log("[Scryfall] Cards inserted ✓");
+  log.info("Cards upserted");
 
   // Insert printings
   for (let i = 0; i < uniquePrintings.length; i += BATCH_SIZE) {
@@ -96,31 +151,33 @@ async function importData(): Promise<void> {
     await db.insert(schema.printings).values(batch.map((p) => ({
       id: p.id, cardId: p.cardId, setCode: p.setCode, setName: p.setName,
       releasedAt: p.releasedAt, collectorNumber: p.collectorNumber, rarity: p.rarity,
-      isFoil: p.isFoil, imageUri: p.imageUri, scryfallUri: p.scryfallUri,
-      usdPrice: p.usdPrice, updatedAt: new Date(),
+      isFoil: p.isFoil, imageUri: p.imageUri, imageUriBack: p.imageUriBack,
+      scryfallUri: p.scryfallUri, usdPrice: p.usdPrice, updatedAt: new Date(),
     }))).onConflictDoUpdate({
       target: schema.printings.id,
       set: {
         releasedAt: sql`excluded.released_at`,
+        imageUri: sql`excluded.image_uri`,
+        imageUriBack: sql`excluded.image_uri_back`,
         usdPrice: sql`excluded.usd_price`,
         updatedAt: sql`excluded.updated_at`,
       },
     });
   }
-  console.log("[Scryfall] Printings inserted ✓");
+  log.info("Printings upserted");
 }
 
 export async function runScryfallImport(): Promise<void> {
   await fetchData();
   await importData();
-  console.log("[Scryfall] Import complete.");
+  log.info("Scryfall import complete");
 }
 
 // Run directly: tsx src/scryfall/bulk-import.ts
 import { fileURLToPath } from "url";
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   runScryfallImport().catch((err) => {
-    console.error("[Scryfall] Fatal error:", err);
+    log.fatal({ err }, "Fatal error");
     process.exit(1);
   });
 }

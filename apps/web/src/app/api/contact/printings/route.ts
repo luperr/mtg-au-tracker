@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import sql from "@/lib/db";
+import { CACHE_REVALIDATE_HOUR, CACHE_STALE_WHILE_REVALIDATE_DAY } from "@/lib/config";
 
 export async function GET(req: NextRequest) {
   const cardId = req.nextUrl.searchParams.get("cardId")?.trim();
@@ -18,6 +19,6 @@ export async function GET(req: NextRequest) {
   }));
 
   return NextResponse.json([...printings], {
-    headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400" },
+    headers: { "Cache-Control": `public, s-maxage=${CACHE_REVALIDATE_HOUR}, stale-while-revalidate=${CACHE_STALE_WHILE_REVALIDATE_DAY}` },
   });
 }

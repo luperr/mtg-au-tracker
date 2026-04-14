@@ -14,8 +14,9 @@
  *
  *   2. Name+foil     — normalised name + foil flag, ignores set     (confidence 0.85 → 0.7)
  *   3. Name-only     — normalised name, ignores set and foil        (confidence 0.7  → 0.6)
- *   4. Fuzzy         — Levenshtein distance ≤ 2 on normalised name  (confidence 0.5+)
- *   5. Unmatched     — saved to unmatched_cards table for review
+ *   4. Front-face    — DFC front face name only (e.g. "Delver of Secrets") (confidence 0.65 → 0.5)
+ *   5. Fuzzy         — Levenshtein distance ≤ 2 on normalised name  (confidence 0.5+)
+ *   6. Unmatched     — saved to unmatched_cards table for review
  *
  * Build the index once per scrape run (loads all printings from DB into memory),
  * then call match() for each scraped card — no further DB queries.
@@ -25,10 +26,13 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
 import { normalizeName, normalizeSetName, stripVariant, levenshteinDistance } from "@mtg-au/shared";
 import type { ScrapedCard } from "@mtg-au/shared";
+import { logger } from "../lib/logger.js";
+
+const log = logger.child({ component: "card-matcher" });
 
 export interface MatchResult {
   printingId: string | null;
-  matchType: "set_collector" | "exact" | "name_foil" | "name_only" | "fuzzy" | "unmatched";
+  matchType: "set_collector" | "exact" | "name_foil" | "name_only" | "front_face" | "fuzzy" | "unmatched";
   confidence: number;
 }
 
@@ -47,6 +51,12 @@ export class CardMatcher {
   // Fallback index: normalizedName → list of matching printings
   // Used when a store doesn't provide a collector number.
   private nameIndex = new Map<string, IndexEntry[]>();
+
+  // Front-face index: normalizedFrontFaceName → list of matching printings
+  // For DFC cards only (e.g. "delver of secrets" → printings for
+  // "Delver of Secrets // Insectile Aberration"). Used when a store lists
+  // only the front face name without the back face.
+  private frontFaceIndex = new Map<string, IndexEntry[]>();
 
   // Set name → set code index built from the DB.
   // Allows stores that provide a human-readable set name (Good Games) to benefit
@@ -81,13 +91,14 @@ export class CardMatcher {
 
       // Fallback: name → candidates
       const nameKey = normalizeName(row.cardName);
-      const existing = this.nameIndex.get(nameKey) ?? [];
-      existing.push({
+      const entry: IndexEntry = {
         printingId: row.id,
         setCode: row.setCode,
         collectorNumber: row.collectorNumber,
         isFoil: row.isFoil,
-      });
+      };
+      const existing = this.nameIndex.get(nameKey) ?? [];
+      existing.push(entry);
       // Keep sorted by collector number ascending so regular printings
       // (low collector numbers) are always preferred over borderless/showcase/
       // extended-art variants (which Scryfall assigns high collector numbers).
@@ -100,11 +111,67 @@ export class CardMatcher {
         return an - bn;
       });
       this.nameIndex.set(nameKey, existing);
+
+      // Front-face index: for DFC cards, also index by front face name alone.
+      // e.g. "Delver of Secrets // Insectile Aberration" → key "delver of secrets"
+      if (row.cardName.includes(" // ")) {
+        const frontKey = normalizeName(row.cardName.split(" // ")[0]);
+        const frontExisting = this.frontFaceIndex.get(frontKey) ?? [];
+        frontExisting.push(entry);
+        this.frontFaceIndex.set(frontKey, frontExisting);
+      }
     }
 
-    console.log(
-      `[CardMatcher] Built index: ${rows.length} printings, ${this.nameIndex.size} unique names`,
+    log.info(
+      { printings: rows.length, unique_names: this.nameIndex.size },
+      "Card matcher index built",
     );
+  }
+
+  /**
+   * Populate indexes from a plain array — no DB required.
+   * Used only in unit tests.
+   */
+  buildForTesting(entries: {
+    id: string;
+    setCode: string;
+    setName: string;
+    collectorNumber: string;
+    isFoil: boolean;
+    cardName: string;
+  }[]): void {
+    for (const row of entries) {
+      const setKey = `${row.setCode}:${row.collectorNumber}:${row.isFoil}`;
+      this.setCollectorIndex.set(setKey, row.id);
+
+      this.setNameIndex.set(normalizeSetName(row.setName), row.setCode);
+
+      const nameKey = normalizeName(row.cardName);
+      const entry: IndexEntry = {
+        printingId: row.id,
+        setCode: row.setCode,
+        collectorNumber: row.collectorNumber,
+        isFoil: row.isFoil,
+      };
+      const existing = this.nameIndex.get(nameKey) ?? [];
+      existing.push(entry);
+      existing.sort((a, b) => {
+        const an = parseInt(a.collectorNumber, 10);
+        const bn = parseInt(b.collectorNumber, 10);
+        if (isNaN(an) && isNaN(bn)) return 0;
+        if (isNaN(an)) return 1;
+        if (isNaN(bn)) return -1;
+        return an - bn;
+      });
+      this.nameIndex.set(nameKey, existing);
+
+      if (row.cardName.includes(" // ")) {
+        const frontKey = normalizeName(row.cardName.split(" // ")[0]);
+        const frontExisting = this.frontFaceIndex.get(frontKey) ?? [];
+        frontExisting.push(entry);
+        this.frontFaceIndex.set(frontKey, frontExisting);
+      }
+    }
   }
 
   /**
@@ -185,7 +252,17 @@ export class CardMatcher {
       }
     }
 
-    // ── Level 4: fuzzy (Levenshtein ≤ 2) ─────────────────────────────────────
+    // ── Level 4: front-face name (DFC stores that omit the back face) ────────
+    // e.g. store lists "Delver of Secrets" for the full DFC card.
+    const frontFaceCandidates = this.frontFaceIndex.get(normalizedName);
+    if (frontFaceCandidates) {
+      const byFoil = frontFaceCandidates.filter((c) => c.isFoil === card.isFoil);
+      const match = byFoil[0] ?? frontFaceCandidates[0];
+      const confidence = frontFaceCandidates.length === 1 ? 0.65 : 0.5;
+      return { printingId: match.printingId, matchType: "front_face", confidence };
+    }
+
+    // ── Level 5: fuzzy (Levenshtein ≤ 2) ─────────────────────────────────────
     // O(n) scan — only reaches here for genuinely unrecognised names.
     let bestDist = 3;
     let bestCandidates: IndexEntry[] | null = null;

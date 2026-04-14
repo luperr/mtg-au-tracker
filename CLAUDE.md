@@ -5,7 +5,7 @@
 Tracks Australian Dollar (AUD) prices for Magic: The Gathering singles.
 It imports all card data from Scryfall (the authoritative MTG card database), scrapes Australian stores and eBay AU for current prices, and serves those prices through a Next.js web UI.
 
-The goal: a self-hosted, self-sustaining price tracker for AU MTG players to compare what stores charge vs eBay market prices.
+The goal: a self-hosted, self-sustaining price tracker for AU MTG players to compare what stores charge vs eBay market prices — with future B2B dashboards for stores to see demand analytics.
 
 ---
 
@@ -19,8 +19,9 @@ The goal: a self-hosted, self-sustaining price tracker for AU MTG players to com
 | ORM | Drizzle ORM (type-safe SQL, no magic) |
 | Scraper runtime | Node.js with `tsx` for dev, compiled JS for prod |
 | HTML scraping | Cheerio (jQuery-style DOM parsing) |
-| Scheduling | `node-cron` |
+| Scheduling | `node-cron` (pinned to `Australia/Sydney` timezone) |
 | Web app | Next.js 15 (App Router) |
+| Analytics | Umami (self-hosted, custom events) |
 | Deployment | Docker Compose on Proxmox LXC, public via Cloudflare tunnel |
 
 ---
@@ -75,9 +76,9 @@ AUD/USD conversion using a static rate from `AUD_USD_RATE` env var (defaults to 
 
 ## apps/scraper — The data collection service
 
-Runs as a long-lived Docker service. Three cron jobs:
+Runs as a long-lived Docker service. Three cron jobs (all `Australia/Sydney` timezone):
 - **3 AM daily** → Scryfall bulk import (refreshes all card/printing data)
-- **5 AM daily** → Store HTML scrapers (MTG Mate, Good Games)
+- **5 AM daily** → Store scrapers (Shopify + MTG Mate)
 - **6 AM daily** → eBay AU price import
 
 Also runs an initial Scryfall import on startup if the DB is empty.
@@ -92,6 +93,16 @@ Tables:
 - **`store_prices`** — Current prices from stores/eBay. Overwritten each scrape run.
 - **`price_history`** — Daily snapshots. Append-only.
 - **`unmatched_cards`** — Scraped listings that couldn't be matched to a Scryfall printing.
+- **`ebay_search_log`** — Tracks when each card name was last searched on eBay + result count. Drives tiered eBay scheduler.
+- **`card_searches`** — Append-only log of user search queries. `card_id` FK populated from top search result. Powers demand-gap analytics (cards searched but not in stock anywhere).
+
+### `apps/scraper/src/stores/shopify.ts` + `shopify-stores.config.ts`
+Generic Shopify scraper — one class drives all 21 Shopify-based stores via config. Shopify's `products.json` API is used directly (no HTML scraping). SKU-based matching significantly improves match rates. `goodgames.ts` was replaced by this.
+
+Active Shopify stores: good_games, gameology, plenty_of_games, games_portal, guf, inn_games, irresistible_force, legends_and_collectables, lots_moore, mana_market, pro_gamers, rhystic_nostalgia, tabernacle_games, cardhouse, tcg_singles, chromatic_games, general_games, elemental_arcade, ronin_games, from_the_deep, crit_hit.
+
+### `apps/scraper/src/stores/mtgmate.ts`
+MTG Mate HTML scraper.
 
 ### `apps/scraper/src/scryfall/bulk-import.ts`
 Downloads Scryfall's "default_cards" bulk data (~300MB JSON), transforms all cards, batch-upserts into `cards` and `printings`. Safe to rerun.
@@ -106,23 +117,19 @@ Matches scraped card names to Scryfall printings via in-memory index:
 
 Also maintains `setNameIndex` built from DB — resolves store set names ("FINAL FANTASY") to Scryfall set codes ("fin") automatically.
 
-### `apps/scraper/src/stores/goodgames.ts`
-Good Games HTML scraper. NM-only. Match quality: **92.3% exact, 99.5% high-conf** over ~35k entries.
-Key behaviours:
-- Borderless detection via `\bborderless\b` word match
-- Collector number extraction from `(NNNN)` 4-digit pattern in title
-- LotR-style named lands: `extractLotRStyleName()` swaps in Scryfall card name
-- Tokens/emblems filtered via `isTokenOrEmblem()`
-- Skips Extended Art, Showcase, Retro Frame, Alternate Art, Serialized (no collector number = can't reliably match)
-
 ### `apps/scraper/src/ebay/`
 Full eBay AU import pipeline:
 - `oauth.ts` — Client Credentials token
 - `browse-client.ts` — Browse API search with rate limiting (500ms) + retry (3x with 5s/15s/30s backoff)
 - `transform.ts` — Parses messy eBay titles into `ScrapedCard` objects
-- `ebay-import.ts` — Orchestrates: search → parse → match → upsert
+- `ebay-import.ts` — Orchestrates: search → parse → match → upsert. Quota-filling approach: always searches `EBAY_DAILY_TARGET` (default 4500) stalest cards per run.
 
 eBay import deletes all `store_prices` rows for `ebay_au` at start of each run, then repopulates. If interrupted, re-run to repopulate.
+
+**eBay API quota notes:**
+- ~5,000 calls/day on production app key. Resets midnight Pacific time.
+- `REQUEST_DELAY_MS = 500` in `browse-client.ts`. On 429, retries 3x with 5s/15s/30s backoff.
+- Current config: `EBAY_RECENT_MONTHS=3`, `EBAY_HIGH_VALUE_USD=50`
 
 ---
 
@@ -134,6 +141,7 @@ eBay import deletes all `store_prices` rows for `ebay_au` at start of each run, 
 - Trend badge (↑/↓/→) vs `price_history`
 - Card thumbnails (63×88px), color identity pips, CardMagnifier on hover
 - Drag-to-search: drag any Scryfall card image onto the app
+- Umami events: `card-search` on new query, `card-click` on row click
 
 ### Card detail page (`apps/web/src/app/cards/[id]/page.tsx`)
 - Two-column layout: sticky card image + info/table/chart
@@ -142,6 +150,25 @@ eBay import deletes all `store_prices` rows for `ebay_au` at start of each run, 
 - Set symbols: Scryfall SVGs tinted by rarity, `❖` fallback for missing
 - Row hover changes card image to that printing's art
 - Price history chart: area chart (overall) + line chart by printing (max 8)
+
+### Want List (`apps/web/src/app/want-list/WantListView.tsx`)
+- Route: `/want-list`, context: `WantListContext.tsx`, badge: `WantListBadge.tsx`
+- localStorage keys: `scrymarket_buy_list` (items), `scrymarket_shipping_overrides` (per-store postage)
+- Per-store collapsible sections with store total shown in header when collapsed
+- Printing selector shows all in-stock printings across ALL stores, sorted cheapest first
+- Flat-rate stores: postage shown once in store footer, click-to-edit inline
+- eBay: per-item postage column + subtotal in footer
+- Item ID: `${printingId}-${storeId}-${url ?? ""}` — unique per distinct listing
+- **Optimise feature** (`/api/optimize`): Branch-and-bound over flat-rate store subsets. Flat fees added once per store. Tie-breaking prefers lower flat-rate stores for equal card prices. Per-store shipping overrides sent in POST body and applied server-side. Review modal: lock cards to current printing, re-optimise, apply selected changes.
+
+### `apps/web/src/app/BuyLink.tsx`
+Single component for all outbound store buy links. Owns:
+- Umami `store-click` event tracking (passes `storeId`, `card`, `price`, `source`)
+- `applyAffiliateParams()` — extend per store when affiliate deals are set up, no call-sites change
+- Correct `rel="noopener noreferrer"` and new-tab behaviour
+
+### `apps/web/src/lib/store-shipping.ts`
+Flat-rate postage per store (AUD), keyed by `store_id`. Fallback when DB doesn't supply `shipping_aud`. eBay is `null` (per-item shipping).
 
 ---
 
@@ -153,16 +180,17 @@ cp .env.example .env
 # Edit .env with real values
 
 docker compose up db -d
-pnpm db:migrate
-pnpm --filter @mtg-au/scraper seed
-pnpm scrape:scryfall   # ~10-15 min, downloads 300MB
+docker compose run --rm scraper pnpm --filter @mtg-au/scraper db:migrate
+docker compose run --rm scraper pnpm --filter @mtg-au/scraper seed
+docker compose up -d
+# Scryfall import runs automatically on first boot (~10-15 min)
 ```
 
 ### Useful DB commands
 ```bash
-pnpm db:generate    # Generate a migration after schema changes
-pnpm db:migrate     # Apply pending migrations
-pnpm db:studio      # Drizzle Studio at localhost:4983
+# All run via docker compose:
+docker compose run --rm scraper pnpm --filter @mtg-au/scraper db:generate   # after schema changes
+docker compose run --rm scraper pnpm --filter @mtg-au/scraper db:migrate    # apply pending migrations
 ```
 
 ---
@@ -180,6 +208,7 @@ See `.env.example` for all variables. Key ones:
 | `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET` | eBay API credentials | — |
 | `EBAY_RECENT_MONTHS` | How far back to search by card name | `3` |
 | `EBAY_HIGH_VALUE_USD` | USD threshold for card-name search pass | `50` |
+| `EBAY_DAILY_TARGET` | Max eBay searches per daily run | `4500` |
 | `USER_AGENT` | HTTP User-Agent for scraping | `Scrymarket/1.0` |
 | `AUD_USD_RATE` | Static USD→AUD rate | `0.65` |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Token for `cloudflared` tunnel service | — |
@@ -211,17 +240,64 @@ To find the collection handle, browse to `/collections.json` on the store's doma
 - [x] Scryfall bulk import (~32k cards, ~141k printings)
 - [x] Card matcher with exact / name-only / fuzzy / collector-number matching
 - [x] eBay AU import pipeline (OAuth → Browse API → title parser → DB)
-- [x] Good Games HTML scraper (99.5% high-confidence match rate)
+- [x] Generic Shopify scraper — 21 AU stores, config-driven
+- [x] MTG Mate HTML scraper
 - [x] Next.js web UI — search, card detail, price history charts
+- [x] Want List with per-store postage editing and Branch-and-Bound optimiser
+- [x] BuyLink component — centralised tracking, affiliate-ready
+- [x] Umami analytics — card-search, card-click, store-click events
+- [x] `card_searches` table — demand analytics foundation (search query + top card ID)
 - [x] Cloudflare tunnel for public access (no open ports)
 - [x] Security headers (CSP, X-Frame-Options, etc.) via Next.js config
+- [x] Cron jobs pinned to Australia/Sydney timezone
 
-## What's next
+## Roadmap
 
-- [ ] **Logging** — Add `pino` structured logging to scraper
-- [ ] **Monitoring** — `prom-client` pushing metrics to Pushgateway → Prometheus → Grafana
-- [ ] **MTG Mate scraper** — HTML scraper for mtgmate.com.au
-- [ ] **AWS deployment** — ECS + RDS (Milestone 6)
+Phases are gated — nothing from Phase N+1 starts until Phase N exit criteria are met.
+
+### Phase 1 — Stability & Foundations
+*Must be done before any new features ship.*
+
+- [x] Fix DFC bug — Shopify scraper now ingests DFC cards (removed `//` rejection); front-face fallback index in card-matcher; `image_uri_back` stored in `printings`; flip button on card detail page (2026-03-31)
+- [x] `price_history` table partitioning by month — monthly RANGE partitions 2025–2028 + DEFAULT catch-all. Add new year's partitions before 2029.
+- [x] Wire `pino` structured logging to scraper and web — structured JSON to stdout, Promtail ships to Loki with `service`, `component`, `level`, `store` labels
+- [x] Add DB indexes on FK columns (`printing_id`, `store_id`) on `store_prices` and `price_history`
+- [ ] Add UNIQUE constraints to `price_history` and `store_prices` — deferred; delete-then-insert pattern is sufficient guard for now
+- [x] Vitest unit tests — 160 tests across card-matcher (all 6 match levels), normalizeName, Scryfall transform, eBay title parser, Shopify parser. Co-located `.test.ts` files, `pnpm test` from repo root (2026-04-02)
+- [ ] Pin `:latest` image tags in docker-compose — `promtail`, `cloudflared`, `cadvisor`
+
+### Phase 2 — Observability & Data Quality
+*Visibility before growth.*
+
+- [x] Deploy Prometheus + Grafana + Pushgateway on monitoring LXC (`vmbr2`) — live on vmbr2, scrapes cAdvisor at `10.10.20.10:8080`
+- [x] `prom-client` gauges: `cards_scraped`, `match_rate`, `scrape_duration_seconds` — per-store match rate catches silent regressions
+- [ ] MTG Mate set code cache — save valid codes to `data/mtgmate-valid-sets.json`, weekly full rescan (~30 min → ~3 min)
+- [ ] Live AUD/USD rate (RBA or Open Exchange Rates API) — replace static `AUD_USD_RATE` env var
+- [ ] eBay atomic swap — staging table → `TRUNCATE + INSERT` in transaction, eliminates zero-price window on interrupted runs
+- [ ] GitHub Actions CI — typecheck + `pnpm audit` + `pnpm test` on PR
+- [ ] Proxmox network hardening — move Docker LXC to vmbr1 (Services VLAN), SSH hardening + fail2ban, 2FA
+
+### Phase 3 — Analytics & User Features
+*Monetisation & engagement.*
+
+- [ ] Demand-gap dashboard — cards searched but not in stock anywhere (`card_searches` + `store_prices`)
+- [ ] B2B store dashboards — nightly ETL of Umami events into PG, Next.js dashboard behind auth
+- [ ] Auth layer — NextAuth + GitHub/Google (required for B2B dashboards)
+- [ ] Price alerts — email/push on threshold drop
+- [ ] Rate limiting on all API routes — `@upstash/ratelimit` or Cloudflare rule
+- [ ] Branding polish — favicon, OG images, CSP `unsafe-inline` cleanup (see Branding section below)
+
+### Phase 4 — Scale
+*Only when Proxmox constrains you.*
+
+- [ ] AWS ECS + RDS deployment
+- [ ] Replace `node-cron` with BullMQ — retry, concurrency, per-job visibility
+- [ ] Public API for AU MTG prices — rate-limited, community goodwill + discovery
+- [ ] Additional AU stores — Hareruya AU, Nerd Cave, etc. (pure config if Shopify)
+- [ ] Per-card OG images — card art + price snapshot for social sharing / SEO
+
+### Deliberately out of scope
+Deck builder integration, international price comparison, MTG Arena/MTGO pricing, social features, mobile app, ML price prediction. None of these strengthen the core value prop before it's fully locked in.
 
 ---
 
@@ -241,3 +317,37 @@ Drizzle produces plain SQL, is fast, and keeps the schema in TypeScript with no 
 
 **Why Cloudflare tunnel instead of open ports?**
 Zero inbound ports exposed. All public traffic goes Cloudflare edge → encrypted tunnel → Docker container. No firewall rules to manage, free TLS, DDoS protection included.
+
+**Why Branch-and-Bound for the optimiser?**
+The Want List optimiser solves an Uncapacitated Facility Location Problem: which subset of flat-rate stores minimises total cost (cards + postage)? 2^N enumeration works for small N but B&B prunes subtrees using an optimistic lower bound (open all undecided stores at $0 flat fee), making it fast in practice. Stores are sorted cheapest-flat-rate-first to produce tight upper bounds early.
+
+**Why store `card_id` on `card_searches` from the top search result?**
+The demand-gap report needs to join user searches against store inventory. At search time, the top result is the most likely intended card. Null is used when no results are returned. This is a best-effort attribution — accurate enough for aggregate demand analytics.
+
+---
+
+## Infrastructure — Proxmox
+
+**Current setup**: Docker running inside an LXC on Proxmox.
+
+**Planned network architecture**:
+- `vmbr0` VLAN 10 (Management): Proxmox UI (8006), SSH — LAN only
+- `vmbr1` VLAN 20 (Services): Docker LXC — internet via Cloudflare tunnel only
+- `vmbr2` VLAN 30 (Monitoring): future Prometheus/Grafana/Pushgateway LXC
+
+**Pending infra tasks**:
+- [ ] SSH hardening + fail2ban on Proxmox host
+- [ ] Create vmbr1, move Docker LXC off management VLAN
+- [ ] Enable Proxmox 2FA
+- [ ] Add monitoring LXC (vmbr2) with Prometheus + Grafana + Pushgateway
+
+---
+
+## Branding — post-alpha nice-to-haves
+
+- **Favicon** — currently an emoji (🃏). Replace with proper SVG/PNG
+- **OG image** — functional placeholder; polish with card art + logo lockup
+- **Logo / wordmark** — SCRYMARKET uses Bitcount Prop Double font; consider proper SVG asset
+- **Colour palette** — CSS vars (--cream, --accent, --price, --cta etc) not yet formally documented
+- **CSP `unsafe-inline` cleanup** — move inline theme init script to `/public/theme-init.js`
+- **Per-card OG images** — card detail pages with card art + price snapshot

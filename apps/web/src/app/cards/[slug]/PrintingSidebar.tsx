@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { PrintingWithPrices } from "@/lib/db";
-import { fmtAUD } from "@/lib/format";
+import { fmtAUD, toSmallImage } from "@/lib/utils";
 
 type FoilFilter = "all" | "nonfoil" | "foil";
 
@@ -107,7 +107,7 @@ export function PrintingSidebar({ printings, selectedId }: Props) {
                   {p.imageUri ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={p.imageUri.replace("/normal/", "/small/")}
+                      src={toSmallImage(p.imageUri) ?? ""}
                       alt={p.setName}
                       className="w-full h-full object-cover object-top"
                       loading="lazy"

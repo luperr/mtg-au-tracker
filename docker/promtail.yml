@@ -2,7 +2,7 @@ server:
   http_listen_port: 9080
 
 positions:
-  filename: /tmp/positions.yaml
+  filename: /var/lib/promtail/positions.yaml
 
 clients:
   - url: http://10.10.30.13:3100/loki/api/v1/push
@@ -11,6 +11,43 @@ scrape_configs:
   - job_name: docker
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
+        filters:
+          - name: label
+            values: ["com.docker.compose.project=mtg-au-tracker"]
     relabel_configs:
       - source_labels: [__meta_docker_container_name]
         target_label: container
+    pipeline_stages:
+      # Attempt to parse each log line as JSON (pino output).
+      # Non-JSON lines (Next.js framework logs) are silently passed through
+      # without structured labels — they still reach Loki as raw strings.
+      - json:
+          expressions:
+            level: level
+            component: component
+            service: service
+            store: store
+      # Promote extracted fields to Loki labels so they can be used in
+      # LogQL selectors: {service="scraper", component="ebay-import"}
+      - labels:
+          level:
+          component:
+          service:
+          store:
+      - labeldrop:
+        - active
+        - dupes
+        - fetched
+        - hot
+        - long_tail
+        - matched
+        - unmatched
+        - zero_result_cards
+        - skipped
+        - cards_searched
+        - detected_level
+        - level_extracted
+        - service_extracted
+        - component_extracted
+        - service_name
+        - time

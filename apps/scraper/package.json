@@ -39,20 +39,31 @@
     "scrape:elementalarcade": "tsx src/stores/run-store.ts elemental_arcade",
     "scrape:ronin": "tsx src/stores/run-store.ts ronin_games",
     "scrape:fromthedeep": "tsx src/stores/run-store.ts from_the_deep",
-    "scrape:crithit": "tsx src/stores/run-store.ts crit_hit"
+    "scrape:crithit": "tsx src/stores/run-store.ts crit_hit",
+    "scrape:hrgamer": "tsx src/stores/run-store.ts hr_gamer",
+    "scrape:megagames": "tsx src/stores/run-store.ts mega_games",
+    "scrape:ozziecollectables": "tsx src/stores/run-store.ts ozzie_collectables",
+    "scrape:playmantis": "tsx src/stores/run-store.ts playmantis",
+    "scrape:raptorgames": "tsx src/stores/run-store.ts raptor_games",
+    "scrape:kastlecardsandgames": "tsx src/stores/run-store.ts kastle_cards_and_games",
+    "scrape:shuffled": "tsx src/stores/run-store.ts shuffled",
+    "scrape:thecardhub": "tsx src/stores/run-store.ts the_card_hub_australia",
+    "scrape:thatgamestore": "tsx src/stores/run-store.ts that_game_store",
+    "scrape:area52": "tsx src/stores/run-store.ts area52",
+    "test": "vitest run"
   },
   "dependencies": {
     "@mtg-au/shared": "workspace:*",
     "cheerio": "^1.0.0",
-    "drizzle-orm": "^0.39.0",
+    "drizzle-orm": "^0.45.2",
     "node-cron": "^4.2.1",
-    "playwright": "1.48.0",
+    "playwright": "1.55.1",
     "postgres": "^3.4.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/node-cron": "^3.0.11",
-    "drizzle-kit": "^0.30.0",
+    "drizzle-kit": "^0.31.10",
     "tsx": "^4.7.0",
     "typescript": "^5.4.0"
   }

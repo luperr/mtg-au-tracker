@@ -1,0 +1,23 @@
+services:
+  promtail:
+    image: grafana/promtail:latest
+    restart: unless-stopped
+    # Runs as root — required to read /var/lib/docker/containers (root:root 710)
+    # and the Docker socket. No safe non-root UID exists for log shipping.
+    read_only: true
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker/promtail.yml:/etc/promtail/config.yml:ro
+      - promtail_positions:/var/lib/promtail
+    command: -config.file=/etc/promtail/config.yml
+
+volumes:
+  promtail_positions:

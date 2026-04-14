@@ -12,12 +12,16 @@
 import cron from "node-cron";
 import { count } from "drizzle-orm";
 import { db, schema } from "./lib/db.js";
+import { CRON_TIMEZONE, CRON_SCRYFALL, CRON_STORES, CRON_EBAY } from "./lib/config.js";
 import { runScryfallImport } from "./scryfall/bulk-import.js";
 import { runAllStores } from "./stores/run-all.js";
 import { runEbayImport } from "./ebay/ebay-import.js";
+import { logger } from "./lib/logger.js";
+
+const log = logger.child({ component: "scheduler" });
 
 async function main(): Promise<void> {
-  console.log("[Scheduler] Scrymarket scraper service starting...");
+  log.info("Scrymarket scraper service starting");
 
   // Bootstrap: run Scryfall import if DB is empty
   const [{ value: cardCount }] = await db
@@ -25,48 +29,48 @@ async function main(): Promise<void> {
     .from(schema.cards);
 
   if (Number(cardCount) === 0) {
-    console.log("[Scheduler] Database is empty — running initial Scryfall import...");
+    log.info("Database is empty — running initial Scryfall import");
     await runScryfallImport();
   } else {
-    console.log(`[Scheduler] Database has ${Number(cardCount).toLocaleString()} cards — skipping bootstrap.`);
+    log.info({ card_count: Number(cardCount) }, "Database has cards — skipping bootstrap");
   }
 
-  const cronOptions = { timezone: "Australia/Sydney" };
+  const cronOptions = { timezone: CRON_TIMEZONE };
 
-  // 3 AM daily AEDT/AEST — refresh Scryfall card data + USD prices
-  cron.schedule("0 3 * * *", async () => {
-    console.log("[Scheduler] 3 AM — Running Scryfall import...");
+  cron.schedule(CRON_SCRYFALL, async () => {
+    log.info("Scryfall cron — running Scryfall import");
     try {
       await runScryfallImport();
     } catch (err) {
-      console.error("[Scheduler] Scryfall import failed:", err);
+      log.error({ err }, "Scryfall import failed");
     }
   }, cronOptions);
 
-  // 5 AM daily AEDT/AEST — scrape store prices
-  cron.schedule("0 5 * * *", async () => {
-    console.log("[Scheduler] 5 AM — Running store scrapers...");
+  cron.schedule(CRON_STORES, async () => {
+    log.info("Stores cron — running store scrapers");
     try {
       await runAllStores();
     } catch (err) {
-      console.error("[Scheduler] Store scrape failed:", err);
+      log.error({ err }, "Store scrape failed");
     }
   }, cronOptions);
 
-  // 6 AM daily AEDT/AEST — import eBay AU market prices
-  cron.schedule("0 6 * * *", async () => {
-    console.log("[Scheduler] 6 AM — Running eBay AU import...");
+  cron.schedule(CRON_EBAY, async () => {
+    log.info("eBay cron — running eBay AU import");
     try {
       await runEbayImport();
     } catch (err) {
-      console.error("[Scheduler] eBay import failed:", err);
+      log.error({ err }, "eBay import failed");
     }
   }, cronOptions);
 
-  console.log("[Scheduler] Cron jobs scheduled (Scryfall @ 3 AM, stores @ 5 AM, eBay @ 6 AM). Service running.");
+  log.info(
+    { scryfall: CRON_SCRYFALL, stores: CRON_STORES, ebay: CRON_EBAY, tz: CRON_TIMEZONE },
+    "Cron jobs scheduled. Service running.",
+  );
 }
 
 main().catch((err) => {
-  console.error("[Scheduler] Fatal startup error:", err);
+  log.fatal({ err }, "Fatal startup error");
   process.exit(1);
 });

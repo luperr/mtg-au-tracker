@@ -7,3 +7,4 @@ data/
 .claude/
 memory/
 *.tsbuildinfo
+coverage/

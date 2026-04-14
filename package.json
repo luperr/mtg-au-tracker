@@ -4,6 +4,20 @@
   "license": "AGPL-3.0-only",
   "scripts": {
     "scrape:scryfall": "pnpm --filter @mtg-au/scraper scrape:scryfall",
-    "import:scryfall": "pnpm --filter @mtg-au/scraper import:scryfall"
+    "import:scryfall": "pnpm --filter @mtg-au/scraper import:scryfall",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.4",
+    "vitest": "^4.1.4"
+  },
+  "pnpm": {
+    "overrides": {
+      "undici": "^8.1.0",
+      "esbuild": "^0.28.0"
+    },
+    "onlyBuiltDependencies": ["esbuild", "sharp"]
   }
 }

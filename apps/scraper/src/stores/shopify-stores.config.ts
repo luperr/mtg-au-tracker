@@ -7,6 +7,7 @@
  * 2. Add the store to STORES in apps/scraper/src/seed.ts (scraperEnabled: true).
  * 3. Add flat-rate postage to STORE_FLAT_SHIPPING_AUD in
  *    apps/web/src/lib/store-shipping.ts (use null if postage varies).
+ * 4. Add to package.json for manual testing (e.g. "scrape:newstore": "tsx src/stores/run-store.ts new_store").
  * 4. Run seed:  docker compose run --rm scraper pnpm --filter @mtg-au/scraper seed
  * 5. Test run: docker compose run --rm scraper pnpm --filter @mtg-au/scraper scrape:stores
  *
@@ -124,5 +125,55 @@ export const SHOPIFY_STORES: ShopifyStoreConfig[] = [
     id: "crit_hit",
     baseUrl: "https://www.crithit.com.au",
     collectionHandle: "magic-the-gathering-singles",
+  },
+  {
+    id: "hr_games",
+    baseUrl: "https://hrgames.au",
+    collectionHandle: "magic-the-gathering-singles",
+  },
+  {
+    id: "mega_games",
+    baseUrl: "https://www.megagames.com.au",
+    collectionHandle: "mtg-singles",
+  },
+  {
+    id: "ozzie_collectables",
+    baseUrl: "https://www.ozziecollectables.com",
+    collectionHandle: "mtg-singles",
+  },
+  {
+    id: "playmantis",
+    baseUrl: "https://playmantis.com.au",
+    collectionHandle: "magic-the-gathering-singles",
+  },
+  {
+    id: "raptor_games",
+    baseUrl: "https://raptorgames.com",
+    collectionHandle: "magic-the-gathering-singles",
+  },
+  {
+    id: "kastle_cards_and_games",
+    baseUrl: "https://kastlecardsandgames.com",
+    collectionHandle: "magic-the-gathering",
+  },
+  {
+    id: "shuffled",
+    baseUrl: "https://shuffled.com.au",
+    collectionHandle: "mtg-singles-instock",
+  },
+  {
+    id: "the_card_hub_australia",
+    baseUrl: "https://thecardhubaustralia.com.au",
+    collectionHandle: "mtg-singles",
+  },
+  {
+    id: "that_game_store",
+    baseUrl: "https://thatgamestore.com.au",
+    collectionHandle: "mtg-singles-australia-instock",
+  },
+  {   
+    id: "area52",
+    baseUrl: "https://area52.com.au",
+    collectionHandle: "mtg-singles-instock",
   },
 ];

@@ -15,26 +15,20 @@
  */
 
 import { getAccessToken, MARKETPLACE_ID } from "./oauth.js";
+import { logger } from "../lib/logger.js";
+import {
+  EBAY_MTG_CATEGORY_ID,
+  EBAY_PAGE_SIZE,
+  EBAY_REQUEST_DELAY_MS,
+  EBAY_MAX_RETRIES,
+  EBAY_RETRY_BACKOFF_MS,
+  EBAY_API_BASE,
+  EBAY_ENV,
+  EBAY_PAGES_PER_SET,
+  EBAY_PAGES_PER_CARD,
+} from "../lib/config.js";
 
-// eBay category ID for "Collectible Card Games > Magic: The Gathering"
-const MTG_CATEGORY_ID = "2536";
-
-// Items per page — eBay Browse API max is 200
-const PAGE_SIZE = 200;
-
-// Minimum delay between API calls (ms). eBay's Browse API is rate-limited.
-// At 500ms we can make ~120 req/min — well within the typical 5,000 req/day limit.
-const REQUEST_DELAY_MS = 500;
-
-// Retry config for 429 Too Many Requests responses
-const MAX_RETRIES = 3;
-const RETRY_BACKOFF_MS = [5_000, 15_000, 30_000]; // 5s, 15s, 30s
-
-// Base URLs
-const API_BASE = {
-  production: "https://api.ebay.com/buy/browse/v1",
-  sandbox: "https://api.sandbox.ebay.com/buy/browse/v1",
-};
+const log = logger.child({ component: "ebay-browse" });
 
 // eBay condition IDs:
 //   1000 = New / Factory Sealed  ← exclude (sealed product, not singles)
@@ -91,18 +85,18 @@ async function fetchPage(
   query: string,
   page: number,
 ): Promise<SearchResponse> {
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= EBAY_MAX_RETRIES; attempt++) {
     if (attempt > 0) {
-      const wait = RETRY_BACKOFF_MS[attempt - 1] ?? 30_000;
-      console.warn(`[eBay Browse] Rate limited — waiting ${wait / 1000}s before retry ${attempt}/${MAX_RETRIES} for "${query}" page ${page}`);
+      const wait = EBAY_RETRY_BACKOFF_MS[attempt - 1] ?? 30_000;
+      log.warn({ query, page, attempt, max_retries: EBAY_MAX_RETRIES, wait_ms: wait }, "Rate limited — waiting before retry");
       await sleep(wait);
     }
 
     const res = await fetch(url, { headers });
 
     if (res.status === 429) {
-      if (attempt === MAX_RETRIES) {
-        throw new Error(`eBay Browse API rate limit exceeded after ${MAX_RETRIES} retries for "${query}" page ${page}`);
+      if (attempt === EBAY_MAX_RETRIES) {
+        throw new Error(`eBay Browse API rate limit exceeded after ${EBAY_MAX_RETRIES} retries for "${query}" page ${page}`);
       }
       continue; // retry after backoff
     }
@@ -125,13 +119,12 @@ async function fetchPage(
  */
 async function* searchEbay(query: string, maxPages: number): AsyncGenerator<EbayItemSummary> {
   const token = await getAccessToken();
-  const env = (process.env.EBAY_ENV ?? "production") as "production" | "sandbox";
-  const base = API_BASE[env];
+  const base = EBAY_API_BASE[EBAY_ENV];
 
   const params = new URLSearchParams({
     q: query,
-    category_ids: MTG_CATEGORY_ID,
-    limit: PAGE_SIZE.toString(),
+    category_ids: EBAY_MTG_CATEGORY_ID,
+    limit: EBAY_PAGE_SIZE.toString(),
     offset: "0",
     filter: `buyingOptions:{FIXED_PRICE},${CONDITION_FILTER},itemLocationCountry:AU`,
     fieldgroups: "EXTENDED",   // includes shippingOptions in each item summary
@@ -148,11 +141,11 @@ async function* searchEbay(query: string, maxPages: number): AsyncGenerator<Ebay
   let totalFetched = 0;
 
   while (page < maxPages) {
-    params.set("offset", (page * PAGE_SIZE).toString());
+    params.set("offset", (page * EBAY_PAGE_SIZE).toString());
 
     // Rate limit: pause before every request (including the first, so back-to-back
     // card-name searches each get their own delay window)
-    await sleep(REQUEST_DELAY_MS);
+    await sleep(EBAY_REQUEST_DELAY_MS);
 
     const data = await fetchPage(`${base}/item_summary/search?${params}`, headers, query, page);
     const items = data.itemSummaries ?? [];
@@ -176,9 +169,8 @@ async function* searchEbay(query: string, maxPages: number): AsyncGenerator<Ebay
  * Returns up to EBAY_PAGES_PER_SET × 200 items.
  */
 export async function* searchEbayBySet(setName: string): AsyncGenerator<EbayItemSummary> {
-  const maxPages = parseInt(process.env.EBAY_PAGES_PER_SET ?? "5", 10);
   const query = `magic the gathering ${setName}`;
-  yield* searchEbay(query, maxPages);
+  yield* searchEbay(query, EBAY_PAGES_PER_SET);
 }
 
 /**
@@ -188,9 +180,8 @@ export async function* searchEbayBySet(setName: string): AsyncGenerator<EbayItem
  * Used for recent-set cards and high-value cards where targeted results matter.
  */
 export async function* searchEbayByCardName(cardName: string): AsyncGenerator<EbayItemSummary> {
-  const maxPages = parseInt(process.env.EBAY_PAGES_PER_CARD ?? "1", 10);
   const query = `${cardName} mtg`;
-  yield* searchEbay(query, maxPages);
+  yield* searchEbay(query, EBAY_PAGES_PER_CARD);
 }
 
 // ── Run directly to test ───────────────────────────────────────────────────────

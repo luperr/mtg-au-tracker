@@ -26,6 +26,10 @@ import {
   integer,
   date,
 } from "drizzle-orm/pg-core";
+// Note: price_history is a PARTITIONED table (RANGE by recorded_at, monthly).
+// Drizzle does not model the partition structure — it sees the parent table only.
+// The id column was dropped as part of partitioning; natural key is
+// (printing_id, store_id, price_type, recorded_at).
 
 // ─── Cards ────────────────────────────────────────────────────────────────────
 // One row per unique game object, keyed by Scryfall oracle_id.
@@ -36,6 +40,7 @@ export const cards = pgTable(
   {
     id: text("id").primaryKey(),                           // Scryfall oracle_id
     name: text("name").notNull(),
+    slug: text("slug"),                                    // URL-safe slug, e.g. "lightning-bolt"
     manaCost: text("mana_cost"),
     typeLine: text("type_line").notNull(),
     oracleText: text("oracle_text"),
@@ -46,6 +51,7 @@ export const cards = pgTable(
   },
   (table) => [
     index("cards_name_idx").on(table.name),                // fast name lookups
+    uniqueIndex("cards_slug_idx").on(table.slug),          // slug lookups for SEO routes
   ]
 );
 
@@ -67,6 +73,7 @@ export const printings = pgTable(
     rarity: text("rarity").notNull(),
     isFoil: boolean("is_foil").notNull().default(false),
     imageUri: text("image_uri"),
+    imageUriBack: text("image_uri_back"),                    // back face for DFCs; null for normal cards
     scryfallUri: text("scryfall_uri").notNull(),
     usdPrice: text("usd_price"),                          // stored as text to avoid float rounding
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -85,6 +92,7 @@ export const stores = pgTable("stores", {
   name: text("name").notNull(),
   baseUrl: text("base_url").notNull(),
   scraperEnabled: boolean("scraper_enabled").notNull().default(false),
+  logoUrl: text("logo_url"),                               // custom logo URL; null falls back to favicon service
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -119,12 +127,11 @@ export const storePrices = pgTable(
 
 // ─── Price history ────────────────────────────────────────────────────────────
 // One row per printing/store/priceType per day. Append-only — never updated.
-// TODO: convert to monthly partitioned table before data accumulates.
+// Partitioned by recorded_at (monthly RANGE). See migration 0004.
 
 export const priceHistory = pgTable(
   "price_history",
   {
-    id: serial("id").primaryKey(),
     printingId: text("printing_id")
       .notNull()
       .references(() => printings.id),
@@ -143,6 +150,7 @@ export const priceHistory = pgTable(
       table.recordedAt,
     ),
     index("price_history_recorded_at_idx").on(table.recordedAt),
+    index("price_history_store_id_idx").on(table.storeId),
   ]
 );
 
@@ -179,3 +187,21 @@ export const ebaySearchLog = pgTable("ebay_search_log", {
   lastSearchedAt: date("last_searched_at").notNull(),
   lastResultCount: integer("last_result_count").notNull().default(0),
 });
+
+// ─── Card Searches ────────────────────────────────────────────────────────────
+// Append-only log of user card searches. One row per search event.
+// Powers the "top searched cards" store dashboard and demand analytics.
+
+export const cardSearches = pgTable(
+  "card_searches",
+  {
+    id: serial("id").primaryKey(),
+    cardId: text("card_id").references(() => cards.id), // null if query matched no card
+    query: text("query").notNull(),                     // raw user query string
+    searchedAt: timestamp("searched_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("card_searches_card_id_idx").on(table.cardId),
+    index("card_searches_searched_at_idx").on(table.searchedAt),
+  ]
+);

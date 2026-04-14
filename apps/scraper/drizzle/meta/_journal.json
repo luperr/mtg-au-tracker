@@ -22,6 +22,41 @@
       "when": 1773929604679,
       "tag": "0002_strong_stark_industries",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1774656740679,
+      "tag": "0003_known_lifeguard",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1774800000000,
+      "tag": "0004_partition_price_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1774886400000,
+      "tag": "0005_dfc_image_uri_back",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1775394599452,
+      "tag": "0006_known_zaladane",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1775784773113,
+      "tag": "0007_wide_next_avengers",
+      "breakpoints": true
     }
   ]
 }

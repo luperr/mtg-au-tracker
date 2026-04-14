@@ -26,9 +26,10 @@
  *   - Only NM variants are emitted (same behaviour as original Good Games scraper).
  */
 
-import type { ScrapedCard } from "@mtg-au/shared";
+import { type ScrapedCard, normaliseCondition } from "@mtg-au/shared";
 import { BaseScraper } from "./base-scraper.js";
 import type { ShopifyStoreConfig } from "./shopify-stores.config.js";
+import { logger } from "../lib/logger.js";
 
 const PAGE_SIZE = 250;
 
@@ -65,41 +66,6 @@ interface ProductsResponse {
   products: ShopifyProduct[];
 }
 
-// ── Condition normalisation ───────────────────────────────────────────────────
-
-function normaliseCondition(raw: string): string {
-  switch (raw.toLowerCase().trim()) {
-    case "near mint":
-    case "nm":
-    case "mint":
-    case "m":
-      return "NM";
-    case "lightly played":
-    case "light played":
-    case "lp":
-    case "excellent":
-    case "ex":
-      return "LP";
-    case "moderately played":
-    case "moderate played":
-    case "mp":
-    case "good":
-    case "gd":
-      return "MP";
-    case "heavily played":
-    case "heavy played":
-    case "hp":
-    case "played":
-      return "HP";
-    case "damaged":
-    case "dmg":
-    case "poor":
-      return "DMG";
-    default:
-      return raw.trim();
-  }
-}
-
 // ── Product title parsing ─────────────────────────────────────────────────────
 // Strip common set-suffix patterns to get the clean card name.
 // Examples:
@@ -107,7 +73,7 @@ function normaliseCondition(raw: string): string {
 //   "Lightning Bolt (M11)"         → { cardName: "Lightning Bolt", setName: "M11" }
 //   "Lightning Bolt"               → { cardName: "Lightning Bolt", setName: null }
 
-function parseProductTitle(title: string): { cardName: string; setName: string | null } {
+export function parseProductTitle(title: string): { cardName: string; setName: string | null } {
   // Pattern: "Name - Set Name" (dash separator)
   const dashMatch = title.match(/^(.+?)\s+[-–—]\s+(.+)$/);
   if (dashMatch) {
@@ -167,7 +133,7 @@ interface SkuData {
 
 const NON_FOIL_FINISHES = new Set(["NF", "NONFOIL", "NON-FOIL"]);
 
-function parseSkuData(sku: string | null | undefined): SkuData {
+export function parseSkuData(sku: string | null | undefined): SkuData {
   if (!sku) return { setCode: null, collectorNumber: null, isFoil: null };
 
   // Format A: SET-COLLECTOR-LANG-FINISH-CONDITION  e.g. "MOC-381-EN-NF-1"
@@ -309,17 +275,18 @@ const BORDERLESS_WORD = /\bborderless\b/i;
 // "Spider-Man 2099 (0216)" or "Kaalia of the Vast () (0343)".
 const COLLECTOR_NUM_RE = /\((\d{4})\)/;
 
-function isSkippedVariant(title: string): boolean {
+export function isSkippedVariant(title: string): boolean {
   const lower = title.toLowerCase();
   return SKIP_VARIANT_KEYWORDS.some((kw) => lower.includes(kw));
 }
 
 // Tokens, emblems, and double-faced tokens are not in our printings DB.
-function isTokenOrEmblem(product: ShopifyProduct): boolean {
+// Note: we do NOT reject on "//" — DFC cards (e.g. "Delver of Secrets // Insectile Aberration")
+// legitimately contain "//" in their title. Double-faced tokens are caught by the \btoken\b check.
+export function isTokenOrEmblem(product: ShopifyProduct): boolean {
   const lower = product.title.toLowerCase();
   if (/\btoken\b/.test(lower)) return true;
   if (/\bemblem\b/.test(lower)) return true;
-  if (product.title.includes("//")) return true;
   if (product.product_type.toLowerCase() === "token") return true;
   return false;
 }
@@ -425,8 +392,11 @@ function mapProduct(product: ShopifyProduct, baseUrl: string): ScrapedCard[] {
 // ── Scraper class ─────────────────────────────────────────────────────────────
 
 export class ShopifyScraper extends BaseScraper {
+  private readonly log;
+
   constructor(private config: ShopifyStoreConfig) {
     super();
+    this.log = logger.child({ component: "shopify", store: config.id });
   }
 
   getBaseUrl(): string {
@@ -439,24 +409,24 @@ export class ShopifyScraper extends BaseScraper {
       const data = await this.fetchJson<ProductsResponse>(url);
       return data.products ?? [];
     } catch (err: unknown) {
-      console.warn(`[${this.config.id}] Failed to fetch page ${pageNum}: ${err}`);
+      this.log.warn({ page: pageNum, err: String(err) }, "Failed to fetch products page");
       return [];
     }
   }
 
   async *scrapeAll(): AsyncGenerator<ScrapedCard> {
-    console.log(`[${this.config.id}] Starting scrape via Shopify products.json...`);
+    this.log.info("Starting Shopify scrape");
 
     let page = 1;
     let totalProducts = 0;
     let totalCards = 0;
 
     while (true) {
-      console.log(`[${this.config.id}] Fetching page ${page}...`);
+      this.log.debug({ page }, "Fetching products page");
       const products = await this.fetchProductsPage(page);
 
       if (products.length === 0) {
-        console.log(`[${this.config.id}] No products on page ${page} — done.`);
+        this.log.debug({ page }, "No products on page — done");
         break;
       }
 
@@ -470,7 +440,7 @@ export class ShopifyScraper extends BaseScraper {
         }
       }
 
-      console.log(`[${this.config.id}] Page ${page}: ${products.length} products → ${totalCards} card variants so far`);
+      this.log.debug({ page, products: products.length, total_cards: totalCards }, "Page fetched");
 
       if (products.length < PAGE_SIZE) {
         // Last page — no need to fetch another
@@ -480,6 +450,6 @@ export class ShopifyScraper extends BaseScraper {
       page++;
     }
 
-    console.log(`[${this.config.id}] Done. ${totalProducts} products → ${totalCards} ScrapedCard entries.`);
+    this.log.info({ total_products: totalProducts, total_cards: totalCards }, "Shopify scrape complete");
   }
 }
