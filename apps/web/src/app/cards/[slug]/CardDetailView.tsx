@@ -7,6 +7,7 @@ import { PriceChart } from "./PriceChart";
 import { ColorSymbols } from "@/app/ColorSymbols";
 import { TrendBadge } from "@/app/TrendBadge";
 import { fmtAUD } from "@/lib/utils";
+import { MTG_CARD_ASPECT_RATIO } from "@/lib/config";
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -84,12 +85,12 @@ export function CardDetailView({
               src={shownImage}
               alt={card.name}
               className="w-full rounded-xl shadow-2xl shadow-black/60 transition-opacity duration-150"
-              style={{ aspectRatio: "63/88", objectFit: "cover" }}
+              style={{ aspectRatio: MTG_CARD_ASPECT_RATIO, objectFit: "cover" }}
             />
           ) : (
             <div
               className="w-full rounded-xl bg-muted border border-subtle flex items-center justify-center text-cream-dim/50 text-sm"
-              style={{ aspectRatio: "63/88" }}
+              style={{ aspectRatio: MTG_CARD_ASPECT_RATIO }}
             >
               No image
             </div>

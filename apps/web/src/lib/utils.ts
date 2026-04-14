@@ -10,3 +10,23 @@ export function fmtAUD(n: number): string {
 export function cardHref(cardSlug: string | null | undefined, cardId: string): string {
   return `/cards/${cardSlug ?? cardId}`;
 }
+
+/**
+ * Convert a Scryfall "normal" image URI to its "small" variant.
+ * Returns null if the input is null.
+ */
+export function toSmallImage(uri: string | null): string | null {
+  return uri ? uri.replace("/normal/", "/small/") : null;
+}
+
+/** Fire an Umami analytics event. No-ops gracefully if Umami is absent. */
+export function trackEvent(event: string, data?: Record<string, unknown>): void {
+  window.umami?.track(event, data);
+}
+
+// ── Global type augmentation for Umami ───────────────────────────────────────
+declare global {
+  interface Window {
+    umami?: { track: (event: string, data?: Record<string, unknown>) => void };
+  }
+}

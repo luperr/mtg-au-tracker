@@ -31,6 +31,11 @@ export const CACHE_SEARCH_MAX_AGE = 300;
 export const CACHE_SEARCH_SWR = 600;
 export const CACHE_STALE_WHILE_REVALIDATE_DAY = 86400;
 
+// ── Card display ─────────────────────────────────────────────────────────────
+
+/** Standard MTG card aspect ratio (63 mm wide × 88 mm tall). */
+export const MTG_CARD_ASPECT_RATIO = "63/88";
+
 // ── Domains & external URLs ──────────────────────────────────────────────────
 
 export const SITE_URL = "https://scrymarket.au";

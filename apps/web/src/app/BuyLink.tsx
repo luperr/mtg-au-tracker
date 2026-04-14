@@ -1,6 +1,6 @@
 "use client";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import { trackEvent } from "@/lib/utils";
 
 interface BuyLinkProps {
   href: string;
@@ -29,9 +29,7 @@ export function BuyLink({ href, storeId, card, price, source, className }: BuyLi
       target="_blank"
       rel="noopener noreferrer"
       className={className ?? "text-price hover:text-cream text-sm transition-colors"}
-      onClick={() =>
-        (window as any).umami?.track("store-click", { store: storeId, card, price, source })
-      }
+      onClick={() => trackEvent("store-click", { store: storeId, card, price, source })}
     >
       Buy ↗
     </a>

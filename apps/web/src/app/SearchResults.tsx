@@ -6,19 +6,10 @@ import { ColorSymbols } from "./ColorSymbols";
 import { TrendBadge } from "./TrendBadge";
 import { ViewToggle } from "./ViewToggle";
 import { useViewPreference } from "@/lib/hooks/useViewPreference";
-import { fmtAUD, cardHref } from "@/lib/utils";
+import { fmtAUD, cardHref, toSmallImage, trackEvent } from "@/lib/utils";
+import { MTG_CARD_ASPECT_RATIO } from "@/lib/config";
 import { useWantList } from "@/app/WantListContext";
 import type { CardSearchResult } from "@/lib/db";
-
-declare global {
-  interface Window {
-    umami?: { track: (event: string, data?: Record<string, unknown>) => void };
-  }
-}
-
-function toSmallImage(uri: string | null): string | null {
-  return uri ? uri.replace("/normal/", "/small/") : null;
-}
 
 // ── Shared want-list button ───────────────────────────────────────────────────
 
@@ -91,22 +82,25 @@ function GridCard({ card }: { card: CardSearchResult }) {
   const smallSrc = toSmallImage(card.image_uri);
   return (
     <div className="flex flex-col rounded-lg overflow-hidden border border-subtle bg-surface hover:border-accent transition-colors group">
-      {/* Card image — MTG aspect ratio 1 : 1.396 */}
+      {/* Card image */}
       <a
         href={cardHref(card.slug, card.id)}
-        onClick={() => window.umami?.track("card-click", { card: card.name })}
-        className="block relative w-full"
-        style={{ paddingBottom: "139.6%" }}
+        onClick={() => trackEvent("card-click", { card: card.name })}
+        className="block w-full overflow-hidden"
       >
-        {smallSrc && card.image_uri ? (
+        {smallSrc ? (
           <img
             src={smallSrc}
             alt={card.name}
-            className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-200"
+            className="w-full object-cover group-hover:scale-[1.02] transition-transform duration-200"
+            style={{ aspectRatio: MTG_CARD_ASPECT_RATIO }}
             loading="lazy"
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-muted text-cream-dim/30 text-xs">
+          <div
+            className="w-full bg-muted flex items-center justify-center text-cream-dim/30 text-xs"
+            style={{ aspectRatio: MTG_CARD_ASPECT_RATIO }}
+          >
             No image
           </div>
         )}
@@ -116,7 +110,7 @@ function GridCard({ card }: { card: CardSearchResult }) {
       <div className="px-2 pt-1.5 pb-2 flex flex-col gap-1 bg-surface">
         <a
           href={cardHref(card.slug, card.id)}
-          onClick={() => window.umami?.track("card-click", { card: card.name })}
+          onClick={() => trackEvent("card-click", { card: card.name })}
           className="text-xs font-medium text-cream truncate hover:text-accent-light transition-colors"
         >
           {card.name}
@@ -147,7 +141,7 @@ function CardRow({ card }: { card: CardSearchResult }) {
     <div className="relative flex items-center rounded-lg border border-subtle bg-surface hover:border-accent hover:bg-muted transition-colors overflow-hidden">
       <a
         href={cardHref(card.slug, card.id)}
-        onClick={() => window.umami?.track("card-click", { card: card.name })}
+        onClick={() => trackEvent("card-click", { card: card.name })}
         className="flex flex-1 items-center gap-3 min-w-0 pr-14"
       >
         {/* Thumbnail */}
@@ -201,7 +195,7 @@ function TextRow({ card }: { card: CardSearchResult }) {
     <div className="relative flex items-center rounded-lg border border-subtle bg-surface hover:border-accent hover:bg-muted transition-colors">
       <a
         href={cardHref(card.slug, card.id)}
-        onClick={() => window.umami?.track("card-click", { card: card.name })}
+        onClick={() => trackEvent("card-click", { card: card.name })}
         className="flex flex-1 items-center gap-3 px-3 py-2 min-w-0 pr-12"
       >
         <div className="flex items-center gap-1 shrink-0">
@@ -252,7 +246,7 @@ export function SearchResults({ initialResults, query, initialHasMore, totalCoun
     setCards(initialResults);
     setHasMore(initialHasMore);
     offsetRef.current = initialResults.length;
-    if (query) window.umami?.track("card-search", { query });
+    if (query) trackEvent("card-search", { query });
   }, [initialResults, initialHasMore, query]);
 
   useEffect(() => {
