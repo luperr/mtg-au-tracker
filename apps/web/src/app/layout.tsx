@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Bitcount_Prop_Double } from "next/font/google";
 import Script from "next/script";
+import { Suspense } from "react";
 import "./globals.css";
 import { ThemeToggle } from "./ThemeToggle";
 import { DragDropSearch } from "./DragDropSearch";
@@ -60,9 +61,11 @@ export default function RootLayout({
                 <span className="hidden sm:inline">SCRYMARKET</span>
                 <span className="sm:hidden">SM</span>
               </a>
-              {/* Centre: search (hidden on home page via client component) */}
+              {/* Centre: search (hidden on landing page via client component) */}
               <div className="flex-1 flex justify-center">
-                <HeaderSearch />
+                <Suspense fallback={<div className="flex-1" />}>
+                  <HeaderSearch />
+                </Suspense>
               </div>
               {/* Right: controls */}
               <div className="flex items-center gap-3 shrink-0">
