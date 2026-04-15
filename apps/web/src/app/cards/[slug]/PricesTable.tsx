@@ -339,129 +339,122 @@ export function PricesTable({
 
       {/* Table */}
       <div className="rounded-lg border border-subtle bg-surface overflow-hidden">
-        {rows.length === 0 && !filtersNonDefault ? (
+        {rows.length === 0 ? (
           <div className="px-4 py-8 text-center text-cream-dim/50">
-            No prices available
+            {filtersNonDefault ? "No prices match the current filters" : "No prices available"}
           </div>
         ) : (
           <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[360px]">
-            <colgroup>
-              {/* Set */}<col className="w-[180px] sm:w-[220px]" />
-              {/* Store */}<col className="w-[110px] sm:w-[140px]" />
-              {/* Price */}<col className="w-auto" />
-              {/* Stock */}<col className="w-[68px]" />
-              {/* Buy link */}<col className="w-[52px]" />
-              {/* Want button */}<col className="w-[40px]" />
-            </colgroup>
-            <thead>
-              <tr className="text-xs bg-cream-muted border-b border-subtle">
-                <th className="px-4 py-2 text-left font-medium text-cream-dim">Set</th>
-                <th className="px-3 py-2 text-left font-medium text-cream-dim">Store</th>
-                <th className="px-3 py-2 text-right font-medium text-cream-dim">Price AUD <span className="font-normal text-cream-dim/50">(postage)</span></th>
-                <th className="px-3 py-2 text-center font-medium text-cream-dim">Stock</th>
-                <th className="px-3 py-2" />
-                <th className="px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {pageRows.map((row, i) => (
-                <tr
-                  key={`${row.printing.id}-${row.storeName}-${i}`}
-                  className="border-b border-subtle/60 last:border-0 hover:bg-muted transition-colors cursor-default"
-                  onMouseEnter={() => onHoverImage(row.printing.imageUri, row.printing.imageUriBack)}
-                  onMouseLeave={() => onHoverImage(defaultImage, null)}
-                >
-                  {/* Set symbol + name */}
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <SetSymbol
-                        setCode={row.printing.setCode}
-                        setName={row.printing.setName}
-                        rarity={row.printing.rarity}
-                      />
-                      <span className="text-cream truncate max-w-[160px] hidden sm:inline">
-                        {row.printing.setName}
-                      </span>
-                      {row.printing.isFoil && (
-                        <span className="text-[10px] text-accent shrink-0">✦</span>
+            <table className="w-full text-sm min-w-[360px]">
+              <colgroup>
+                {/* Set */}<col className="w-[180px] sm:w-[220px]" />
+                {/* Store */}<col className="w-[110px] sm:w-[140px]" />
+                {/* Price */}<col className="w-auto" />
+                {/* Stock */}<col className="w-[68px]" />
+                {/* Buy link */}<col className="w-[52px]" />
+                {/* Want button */}<col className="w-[40px]" />
+              </colgroup>
+              <thead>
+                <tr className="text-xs bg-cream-muted border-b border-subtle">
+                  <th className="px-4 py-2 text-left font-medium text-cream-dim">Set</th>
+                  <th className="px-3 py-2 text-left font-medium text-cream-dim">Store</th>
+                  <th className="px-3 py-2 text-right font-medium text-cream-dim">Price AUD <span className="font-normal text-cream-dim/50">(postage)</span></th>
+                  <th className="px-3 py-2 text-center font-medium text-cream-dim">Stock</th>
+                  <th className="px-3 py-2" />
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {pageRows.map((row, i) => (
+                  <tr
+                    key={`${row.printing.id}-${row.storeName}-${i}`}
+                    className="border-b border-subtle/60 last:border-0 hover:bg-muted transition-colors cursor-default"
+                    onMouseEnter={() => onHoverImage(row.printing.imageUri, row.printing.imageUriBack)}
+                    onMouseLeave={() => onHoverImage(defaultImage, null)}
+                  >
+                    {/* Set symbol + name */}
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <SetSymbol
+                          setCode={row.printing.setCode}
+                          setName={row.printing.setName}
+                          rarity={row.printing.rarity}
+                        />
+                        <span className="text-cream truncate max-w-[160px] hidden sm:inline">
+                          {row.printing.setName}
+                        </span>
+                        {row.printing.isFoil && (
+                          <span className="text-[10px] text-accent shrink-0">✦</span>
+                        )}
+                      </div>
+                    </td>
+
+                    <td className="px-3 py-2.5 text-cream font-medium">{row.storeName}</td>
+
+                    <td className="px-3 py-2.5 text-right text-price font-semibold">
+                      {fmtAUD(row.priceAud)}
+                      {row.shippingAud !== null && (
+                        <span className="ml-1 text-xs font-normal text-cream-dim/60">
+                          (+{row.shippingAud === 0 ? "free" : fmtAUD(row.shippingAud)})
+                        </span>
                       )}
-                    </div>
-                  </td>
+                    </td>
 
-                  <td className="px-3 py-2.5 text-cream font-medium">{row.storeName}</td>
-
-                  <td className="px-3 py-2.5 text-right text-price font-semibold">
-                    {fmtAUD(row.priceAud)}
-                    {row.shippingAud !== null && (
-                      <span className="ml-1 text-xs font-normal text-cream-dim/60">
-                        (+{row.shippingAud === 0 ? "free" : fmtAUD(row.shippingAud)})
+                    <td className="px-3 py-2.5 text-center">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                          row.inStock
+                            ? "bg-green-900/50 text-green-400"
+                            : "bg-red-900/50 text-red-400"
+                        }`}
+                      >
+                        {row.inStock ? "In stock" : "Out"}
                       </span>
-                    )}
-                  </td>
+                    </td>
 
-                  <td className="px-3 py-2.5 text-center">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                        row.inStock
-                          ? "bg-green-900/50 text-green-400"
-                          : "bg-red-900/50 text-red-400"
-                      }`}
-                    >
-                      {row.inStock ? "In stock" : "Out"}
-                    </span>
-                  </td>
+                    <td className="px-3 py-2.5 text-right">
+                      {row.url && (
+                        <BuyLink
+                          href={row.url}
+                          storeId={row.storeId}
+                          card={cardName}
+                          price={row.priceAud}
+                          source="card-detail"
+                        />
+                      )}
+                    </td>
 
-                  <td className="px-3 py-2.5 text-right">
-                    {row.url && (
-                      <BuyLink
-                        href={row.url}
-                        storeId={row.storeId}
-                        card={cardName}
-                        price={row.priceAud}
-                        source="card-detail"
-                      />
-                    )}
-                  </td>
-
-                  <td className="px-2 py-2.5 text-right">
-                    {row.inStock && (
-                      <WantListButton row={row} cardId={cardId} cardSlug={cardSlug} cardName={cardName} />
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-cream-dim/50">
-                    No prices match the current filters
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-2 border-t border-subtle bg-cream-muted text-xs text-cream-dim/60">
-              <button
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-                disabled={page === 0}
-                className="disabled:opacity-30 hover:text-cream transition-colors"
-              >
-                ← Prev
-              </button>
-              <span>
-                {page + 1} / {totalPages}
-              </span>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                disabled={page >= totalPages - 1}
-                className="disabled:opacity-30 hover:text-cream transition-colors"
-              >
-                Next →
-              </button>
-            </div>
-          )}
-        </div>
+                    <td className="px-2 py-2.5 text-right">
+                      {row.inStock && (
+                        <WantListButton row={row} cardId={cardId} cardSlug={cardSlug} cardName={cardName} />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-2 border-t border-subtle bg-cream-muted text-xs text-cream-dim/60">
+                <button
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className="disabled:opacity-30 hover:text-cream transition-colors"
+                >
+                  ← Prev
+                </button>
+                <span>
+                  {page + 1} / {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="disabled:opacity-30 hover:text-cream transition-colors"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

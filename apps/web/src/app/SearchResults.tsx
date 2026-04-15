@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { CardThumb } from "./CardThumb";
 import { ColorSymbols } from "./ColorSymbols";
 import { TrendBadge } from "./TrendBadge";
-import { fmtAUD, cardHref } from "@/lib/utils";
+import { ViewToggle } from "./ViewToggle";
+import { useViewPreference } from "@/lib/hooks/useViewPreference";
+import { fmtAUD, cardHref, toSmallImage, trackEvent } from "@/lib/utils";
+import { MTG_CARD_ASPECT_RATIO } from "@/lib/config";
 import { useWantList } from "@/app/WantListContext";
 import type { CardSearchResult } from "@/lib/db";
 
@@ -60,38 +63,88 @@ function AddToWantListButton({ card }: { card: CardSearchResult }) {
   if (!card.scrymarket_price) return null;
 
   return (
-    <div className="group relative">
-      <button
-        onClick={handleClick}
-        disabled={adding}
-        aria-label={alreadyAdded ? "In want list" : "Add cheapest printing to want list"}
-        className={`w-7 h-7 rounded flex items-center justify-center text-sm transition-colors ${
-          alreadyAdded
-            ? "bg-price/20 text-price"
-            : adding
-            ? "bg-muted text-cream-dim/30"
-            : "bg-muted text-cream-dim/40 hover:bg-price/20 hover:text-price"
-        }`}
+    <button
+      onClick={handleClick}
+      disabled={adding}
+      aria-label={alreadyAdded ? "In want list" : "Add cheapest printing to want list"}
+      className={`w-7 h-7 rounded flex items-center justify-center text-sm transition-colors ${
+        alreadyAdded
+          ? "bg-price/20 text-price"
+          : adding
+          ? "bg-muted text-cream-dim/30"
+          : "bg-muted text-cream-dim/40 hover:bg-price/20 hover:text-price"
+      }`}
+    >
+      {alreadyAdded ? "✓" : adding ? "…" : "+"}
+    </button>
+  );
+}
+
+// ── View 1: Image grid ────────────────────────────────────────────────────────
+// Card art dominant, dynamic responsive grid, name + price + want-list below.
+
+function GridCard({ card }: { card: CardSearchResult }) {
+  return (
+    <div className="flex flex-col rounded-lg overflow-hidden border border-subtle bg-surface hover:border-accent transition-colors group">
+      {/* Card image — use normal-size image; small (146px) blurs at 4-col grid widths */}
+      <a
+        href={cardHref(card.slug, card.id)}
+        onClick={() => trackEvent("card-click", { card: card.name })}
+        className="block w-full overflow-hidden"
       >
-        {alreadyAdded ? "✓" : adding ? "…" : "+"}
-      </button>
-      {!alreadyAdded && (
-        <div className="pointer-events-none absolute bottom-full right-0 mb-1.5 hidden group-hover:block z-20">
-          <div className="whitespace-nowrap rounded bg-surface border border-subtle px-2 py-1 text-[11px] text-cream-dim shadow-lg">
-            Add cheapest printing to want list
+        {card.image_uri ? (
+          <img
+            src={card.image_uri}
+            alt={card.name}
+            className="w-full object-cover group-hover:scale-[1.02] transition-transform duration-200"
+            style={{ aspectRatio: MTG_CARD_ASPECT_RATIO }}
+            loading="lazy"
+          />
+        ) : (
+          <div
+            className="w-full bg-muted flex items-center justify-center text-cream-dim/30 text-xs"
+            style={{ aspectRatio: MTG_CARD_ASPECT_RATIO }}
+          >
+            No image
           </div>
+        )}
+      </a>
+
+      {/* Footer: name · price · want-list */}
+      <div className="px-2 pt-1.5 pb-2 flex flex-col gap-1 bg-surface">
+        <a
+          href={cardHref(card.slug, card.id)}
+          onClick={() => trackEvent("card-click", { card: card.name })}
+          className="text-xs font-medium text-cream truncate hover:text-accent-light transition-colors"
+        >
+          {card.name}
+        </a>
+        <div className="flex items-center justify-between gap-1">
+          <div className="flex items-center gap-1.5">
+            {card.scrymarket_price && <TrendBadge trend={card.trend} size="sm" />}
+            {card.scrymarket_price ? (
+              <span className="text-sm font-semibold text-price tabular-nums">
+                {fmtAUD(parseFloat(card.scrymarket_price))}
+              </span>
+            ) : (
+              <span className="text-xs text-cream-dim/40">no prices</span>
+            )}
+          </div>
+          <AddToWantListButton card={card} />
         </div>
-      )}
+      </div>
     </div>
   );
 }
+
+// ── View 2: Card rows (thumbnail + info) ──────────────────────────────────────
 
 function CardRow({ card }: { card: CardSearchResult }) {
   return (
     <div className="relative flex items-center rounded-lg border border-subtle bg-surface hover:border-accent hover:bg-muted transition-colors overflow-hidden">
       <a
         href={cardHref(card.slug, card.id)}
-        onClick={() => window.umami?.track("card-click", { card: card.name })}
+        onClick={() => trackEvent("card-click", { card: card.name })}
         className="flex flex-1 items-center gap-3 min-w-0 pr-14"
       >
         {/* Thumbnail */}
@@ -113,9 +166,7 @@ function CardRow({ card }: { card: CardSearchResult }) {
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
-            {/* Trend badge */}
             {card.scrymarket_price && <TrendBadge trend={card.trend} size="lg" />}
-            {/* Price */}
             <div className="text-right">
               {card.scrymarket_price ? (
                 <div className="text-price font-medium">
@@ -132,13 +183,56 @@ function CardRow({ card }: { card: CardSearchResult }) {
         </div>
       </a>
 
-      {/* Want list button — outside the <a> to avoid nested interactive elements */}
       <div className="absolute right-3 top-1/2 -translate-y-1/2">
         <AddToWantListButton card={card} />
       </div>
     </div>
   );
 }
+
+// ── View 3: Text rows (minimal, no images) ────────────────────────────────────
+
+function TextRow({ card }: { card: CardSearchResult }) {
+  return (
+    <div className="relative flex items-center rounded-lg border border-subtle bg-surface hover:border-accent hover:bg-muted transition-colors">
+      <a
+        href={cardHref(card.slug, card.id)}
+        onClick={() => trackEvent("card-click", { card: card.name })}
+        className="flex flex-1 items-center gap-3 px-3 py-2 min-w-0 pr-12"
+      >
+        <div className="flex items-center gap-1 shrink-0">
+          <ColorSymbols colors={card.colors} size={11} />
+        </div>
+        <div className="flex-1 min-w-0">
+          {card.image_uri ? (
+            <HoverCardPopup imageSrc={card.image_uri} alt={card.name} delay={500}>
+              <span className="font-medium text-cream">{card.name}</span>
+            </HoverCardPopup>
+          ) : (
+            <span className="font-medium text-cream">{card.name}</span>
+          )}
+          <span className="ml-2 text-xs text-cream-dim/60 hidden sm:inline">{card.type_line}</span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {card.scrymarket_price && <TrendBadge trend={card.trend} size="sm" />}
+          <span className="text-xs text-cream-dim/40">{card.printing_count}p</span>
+          {card.scrymarket_price ? (
+            <span className="text-sm text-price font-medium w-16 text-right tabular-nums">
+              {fmtAUD(parseFloat(card.scrymarket_price))}
+            </span>
+          ) : (
+            <span className="text-sm text-cream-dim/40 w-16 text-right">—</span>
+          )}
+        </div>
+      </a>
+      <div className="absolute right-2 top-1/2 -translate-y-1/2">
+        <AddToWantListButton card={card} />
+      </div>
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 interface Props {
   initialResults: CardSearchResult[];
@@ -151,16 +245,16 @@ export function SearchResults({ initialResults, query, initialHasMore, totalCoun
   const [cards, setCards] = useState(initialResults);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loading, setLoading] = useState(false);
+  const [view, setView] = useViewPreference();
   const sentinelRef = useRef<HTMLDivElement>(null);
   const offsetRef = useRef(initialResults.length);
   const loadingRef = useRef(false);
 
   useEffect(() => {
-    // Reset when query changes
     setCards(initialResults);
     setHasMore(initialHasMore);
     offsetRef.current = initialResults.length;
-    if (query) window.umami?.track("card-search", { query });
+    if (query) trackEvent("card-search", { query });
   }, [initialResults, initialHasMore, query]);
 
   useEffect(() => {
@@ -188,16 +282,42 @@ export function SearchResults({ initialResults, query, initialHasMore, totalCoun
   }, [query, hasMore]);
 
   return (
-    <div className="space-y-2">
-      <p className="text-sm text-cream-dim/70 mb-3">
-        {totalCount} result{totalCount !== 1 ? "s" : ""}
-      </p>
+    <div>
+      {/* Header: result count + view toggle */}
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm text-cream-dim/70">
+          {totalCount} result{totalCount !== 1 ? "s" : ""}
+        </p>
+        <ViewToggle view={view} onChange={setView} />
+      </div>
 
-      {cards.map((card) => (
-        <CardRow key={card.id} card={card} />
-      ))}
+      {/* Grid view */}
+      {view === "grid" && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {cards.map((card) => (
+            <GridCard key={card.id} card={card} />
+          ))}
+        </div>
+      )}
 
-      {/* Sentinel + loading indicator */}
+      {/* Card row view */}
+      {view === "card" && (
+        <div className="space-y-1.5">
+          {cards.map((card) => (
+            <CardRow key={card.id} card={card} />
+          ))}
+        </div>
+      )}
+
+      {/* Text view */}
+      {view === "text" && (
+        <div className="space-y-1">
+          {cards.map((card) => (
+            <TextRow key={card.id} card={card} />
+          ))}
+        </div>
+      )}
+
       <div ref={sentinelRef} />
       {loading && (
         <div className="py-4 text-center text-cream-dim/50 text-sm">Loading more…</div>

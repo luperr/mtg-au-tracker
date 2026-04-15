@@ -1,15 +1,23 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useState, useEffect } from "react";
 
 export function HeaderSearch() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
-  const [query, setQuery] = useState("");
 
-  // Only show on pages other than root
-  if (pathname === "/") return null;
+  const urlQuery = pathname === "/" ? (searchParams.get("q") ?? "") : "";
+  const [query, setQuery] = useState(urlQuery);
+
+  // Sync input when the URL query changes (e.g. back/forward navigation)
+  useEffect(() => {
+    setQuery(urlQuery);
+  }, [urlQuery]);
+
+  // Hide on the landing page (no active query)
+  if (pathname === "/" && !urlQuery) return null;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
