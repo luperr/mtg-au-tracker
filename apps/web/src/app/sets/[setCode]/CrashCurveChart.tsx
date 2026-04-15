@@ -10,7 +10,7 @@ import {
   Tooltip,
   ReferenceLine,
 } from "recharts";
-import type { SetPriceTimelinePoint } from "@/lib/db";
+import type { SetPriceTimelinePoint, SetRarityBreakdown } from "@/lib/db";
 import { fmtAUD } from "@/lib/utils";
 
 function formatDate(dateStr: string) {
@@ -61,10 +61,19 @@ function computeInsights(timeline: SetPriceTimelinePoint[]): InsightStats | null
   return { peakValue, peakDate, currentValue, firstValue, totalChangePct, weekOneSaved };
 }
 
+const RARITY_STYLE: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  mythic:   { label: "Mythic",   color: "#b5642a", bg: "bg-orange-900/20", border: "border-orange-900/30" },
+  rare:     { label: "Rare",     color: "#a8894a", bg: "bg-yellow-900/20", border: "border-yellow-900/30" },
+  uncommon: { label: "Uncommon", color: "#8aa7b8", bg: "bg-blue-900/20",   border: "border-blue-900/40" },
+  common:   { label: "Common",   color: "#888888", bg: "bg-muted",         border: "border-subtle" },
+};
+
 export function CrashCurveChart({
   timeline,
+  rarityBreakdown = [],
 }: {
   timeline: SetPriceTimelinePoint[];
+  rarityBreakdown?: SetRarityBreakdown[];
 }) {
   const chartData = useMemo(
     () => timeline.map((t) => ({ date: t.date, value: parseFloat(t.total_value) })),
@@ -197,6 +206,34 @@ export function CrashCurveChart({
         <div className="flex justify-between text-[10px] text-cream-dim/30 px-1">
           <span>{formatDate(timeline[0].date)}</span>
           <span>{formatDate(timeline[timeline.length - 1].date)}</span>
+        </div>
+      )}
+
+      {/* Rarity breakdown — overlaid below the chart */}
+      {rarityBreakdown.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+          {rarityBreakdown.map((r) => {
+            const style = RARITY_STYLE[r.rarity];
+            if (!style) return null;
+            const avg = r.avg_price ? parseFloat(r.avg_price) : null;
+            return (
+              <div
+                key={r.rarity}
+                className={`rounded-lg border ${style.border} ${style.bg} px-3 py-2`}
+              >
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: style.color }} />
+                  <span className="text-[10px] uppercase tracking-wider text-cream-dim/60">{style.label}</span>
+                </div>
+                <div className="text-sm font-bold text-cream">
+                  {avg != null ? fmtAUD(avg) : "—"}
+                </div>
+                <div className="text-[10px] text-cream-dim/40">
+                  avg · {r.card_count} card{r.card_count !== 1 ? "s" : ""}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

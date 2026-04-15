@@ -2,9 +2,12 @@ export const revalidate = 3600;
 
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { getCard, getCardMetadata, getPrintingsWithPrices, getCardTrend, getCardPriceHistory, type PrintingWithPrices } from "@/lib/db";
 import { getAudPerUsd } from "@/lib/exchange-rate";
 import { CardDetailView } from "./CardDetailView";
+import { CardBreadcrumb } from "@/app/CardBreadcrumb";
+import { Breadcrumb } from "@/app/Breadcrumb";
 
 function sortPrintings(printings: PrintingWithPrices[]): PrintingWithPrices[] {
   return [...printings].sort((a, b) => {
@@ -62,7 +65,6 @@ export default async function CardPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<Record<string, string>>;
 }) {
   const { slug } = await params;
 
@@ -111,12 +113,9 @@ export default async function CardPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <a
-        href="/"
-        className="mb-5 inline-flex items-center gap-1 text-sm text-accent hover:text-accent-light transition-colors"
-      >
-        ← Back to search
-      </a>
+      <Suspense fallback={<Breadcrumb items={[{ label: "Search", href: "/" }, { label: card!.name }]} />}>
+        <CardBreadcrumb cardName={card!.name} />
+      </Suspense>
       <CardDetailView card={card!} cardSlug={slug} printings={printings} trend={trend} history={history} audPerUsd={audPerUsd} />
     </div>
   );

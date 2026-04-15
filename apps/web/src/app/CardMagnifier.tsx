@@ -6,38 +6,50 @@ interface Props {
   smallSrc: string;
   largeSrc: string;
   alt: string;
+  /** Milliseconds to wait before showing the popup. Defaults to 0 (immediate). */
+  delayMs?: number;
 }
 
-export function CardMagnifier({ smallSrc, largeSrc, alt }: Props) {
+export function CardMagnifier({ smallSrc, largeSrc, alt, delayMs = 0 }: Props) {
   const [show, setShow] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function open() {
-    if (!wrapperRef.current) return;
+  function computePos() {
+    if (!wrapperRef.current) return null;
     const rect = wrapperRef.current.getBoundingClientRect();
     const popupW = 380;
-    const popupH = 530; // approx height of card at 380px wide
+    const popupH = 530;
 
-    // Prefer right side, fall back to left
     const spaceRight = window.innerWidth - rect.right;
     let left = spaceRight >= popupW + 16
       ? rect.right + 8
       : rect.left - popupW - 8;
-    // Clamp horizontally
     left = Math.max(8, Math.min(left, window.innerWidth - popupW - 8));
 
-    // Centre vertically on the thumbnail, clamp to viewport
-    // rect.top is already viewport-relative; fixed positioning needs viewport coords (no scrollY)
     const thumbMidY = rect.top + rect.height / 2;
     let top = thumbMidY - popupH / 2;
     top = Math.max(8, Math.min(top, window.innerHeight - popupH - 8));
 
-    setPos({ top, left });
-    setShow(true);
+    return { top, left };
+  }
+
+  function open() {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (delayMs > 0) {
+      timerRef.current = setTimeout(() => {
+        const p = computePos();
+        if (p) { setPos(p); setShow(true); }
+      }, delayMs);
+    } else {
+      const p = computePos();
+      if (p) { setPos(p); setShow(true); }
+    }
   }
 
   function close() {
+    if (timerRef.current) clearTimeout(timerRef.current);
     setShow(false);
   }
 

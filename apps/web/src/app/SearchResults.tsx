@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CardMagnifier } from "./CardMagnifier";
+import { CardThumb } from "./CardThumb";
 import { ColorSymbols } from "./ColorSymbols";
 import { TrendBadge } from "./TrendBadge";
 import { fmtAUD, cardHref } from "@/lib/utils";
@@ -14,9 +14,6 @@ declare global {
   }
 }
 
-function toSmallImage(uri: string | null): string | null {
-  return uri ? uri.replace("/normal/", "/small/") : null;
-}
 
 function AddToWantListButton({ card }: { card: CardSearchResult }) {
   const { items, addItem } = useWantList();
@@ -90,7 +87,6 @@ function AddToWantListButton({ card }: { card: CardSearchResult }) {
 }
 
 function CardRow({ card }: { card: CardSearchResult }) {
-  const thumb = toSmallImage(card.image_uri);
   return (
     <div className="relative flex items-center rounded-lg border border-subtle bg-surface hover:border-accent hover:bg-muted transition-colors overflow-hidden">
       <a
@@ -99,13 +95,12 @@ function CardRow({ card }: { card: CardSearchResult }) {
         className="flex flex-1 items-center gap-3 min-w-0 pr-14"
       >
         {/* Thumbnail */}
-        <div className="shrink-0 w-[44px] h-[61px] sm:w-[63px] sm:h-[88px] bg-muted overflow-hidden">
-          {thumb && card.image_uri ? (
-            <CardMagnifier smallSrc={thumb} largeSrc={card.image_uri} alt={card.name} />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-cream-dim/40 text-xs">?</div>
-          )}
-        </div>
+        <CardThumb
+          imageUri={card.image_uri}
+          alt={card.name}
+          className="w-[44px] h-[61px] sm:w-[63px] sm:h-[88px]"
+          delayMs={0}
+        />
 
         {/* Info */}
         <div className="flex flex-1 items-center justify-between gap-2 min-w-0">

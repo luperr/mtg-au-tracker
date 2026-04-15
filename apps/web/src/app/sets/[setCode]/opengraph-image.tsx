@@ -29,8 +29,8 @@ export default async function SetOgImage({
 
   const [meta, timeline, cardPerf] = await Promise.all([
     getSetMetadata(setCode),
-    getSetPriceTimeline(setCode),
-    getSetCardPerformance(setCode),
+    getSetPriceTimeline([setCode]),
+    getSetCardPerformance([setCode]),
   ]);
 
   const setName = meta?.set_name ?? "MTG Set";
@@ -111,7 +111,7 @@ export default async function SetOgImage({
                 marginBottom: 20,
               }}
             >
-              SCRYMARKET · AU Price Story
+              SCRYMARKET · AU Market Breakdown
             </div>
 
             {/* Set icon + name */}

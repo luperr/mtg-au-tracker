@@ -57,6 +57,20 @@
       "when": 1775784773113,
       "tag": "0007_wide_next_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1776240257521,
+      "tag": "0008_powerful_harpoon",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1776500000000,
+      "tag": "0009_set_value_aud",
+      "breakpoints": true
     }
   ]
 }

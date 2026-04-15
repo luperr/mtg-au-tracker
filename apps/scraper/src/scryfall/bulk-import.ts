@@ -11,6 +11,7 @@ import { sql } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
 import { SCRYFALL_BULK_API_URL, SCRYFALL_OUTPUT_DIR, SCRYFALL_USER_AGENT, BATCH_SIZE } from "../lib/config.js";
 import { shouldImport, transform, type ScryfallCard } from "./transform.js";
+import { importSets } from "./sets-import.js";
 import { logger } from "../lib/logger.js";
 
 const log = logger.child({ component: "scryfall" });
@@ -61,6 +62,10 @@ async function fetchData(): Promise<void> {
 }
 
 async function importData(): Promise<void> {
+  // Populate sets table first so set_type + parent_set_code are available
+  // before any queries that join printings → sets.
+  await importSets();
+
   log.info("Reading saved Scryfall data");
   const raw = await readFile(OUTPUT_FILE, "utf-8");
   const allCards = JSON.parse(raw) as ScryfallCard[];

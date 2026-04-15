@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import type { SetCardPerf } from "@/lib/db";
 import { fmtAUD } from "@/lib/utils";
 import { cardHref } from "@/lib/utils";
+import { CardThumb } from "@/app/CardThumb";
 
 const RARITY_COLOR: Record<string, string> = {
   mythic: "text-orange-400",
@@ -24,9 +25,13 @@ const TOP_N = 8;
 function CardRow({
   card,
   isGainer,
+  setCode,
+  setName,
 }: {
   card: SetCardPerf;
   isGainer: boolean;
+  setCode: string;
+  setName: string;
 }) {
   const pct = card.pct_change != null ? parseFloat(card.pct_change) : null;
   const first = card.first_price != null ? parseFloat(card.first_price) : null;
@@ -36,23 +41,15 @@ function CardRow({
 
   return (
     <a
-      href={cardHref(card.slug, card.card_id)}
+      href={cardHref(card.slug, card.card_id, { code: setCode, name: setName })}
       className="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors"
     >
       {/* Card thumbnail */}
-      {card.image_uri ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={card.image_uri}
-          alt={card.name}
-          width={28}
-          height={39}
-          className="rounded shrink-0 opacity-90 group-hover:opacity-100 transition-opacity"
-          loading="lazy"
-        />
-      ) : (
-        <div className="w-7 h-10 rounded bg-subtle shrink-0" />
-      )}
+      <CardThumb
+        imageUri={card.image_uri}
+        alt={card.name}
+        className="w-7 h-10 opacity-90 group-hover:opacity-100 transition-opacity"
+      />
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
@@ -99,9 +96,11 @@ function CardRow({
 export function WinnersLosersBoard({
   cardPerf,
   setCode,
+  setName,
 }: {
   cardPerf: SetCardPerf[];
   setCode: string;
+  setName: string;
 }) {
   const gainers = useMemo(
     () =>
@@ -147,7 +146,7 @@ export function WinnersLosersBoard({
         {gainers.length > 0 ? (
           <div className="divide-y divide-subtle/30 py-1">
             {gainers.map((card) => (
-              <CardRow key={card.card_id} card={card} isGainer />
+              <CardRow key={card.card_id} card={card} isGainer setCode={setCode} setName={setName} />
             ))}
           </div>
         ) : (
@@ -171,7 +170,7 @@ export function WinnersLosersBoard({
         {losers.length > 0 ? (
           <div className="divide-y divide-subtle/30 py-1">
             {losers.map((card) => (
-              <CardRow key={card.card_id} card={card} isGainer={false} />
+              <CardRow key={card.card_id} card={card} isGainer={false} setCode={setCode} setName={setName} />
             ))}
           </div>
         ) : (

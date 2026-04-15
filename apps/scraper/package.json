@@ -50,6 +50,7 @@
     "scrape:thecardhub": "tsx src/stores/run-store.ts the_card_hub_australia",
     "scrape:thatgamestore": "tsx src/stores/run-store.ts that_game_store",
     "scrape:area52": "tsx src/stores/run-store.ts area52",
+    "compute:set-values": "tsx src/stores/compute-set-values.ts",
     "test": "vitest run"
   },
   "dependencies": {

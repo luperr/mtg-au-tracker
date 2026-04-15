@@ -258,41 +258,135 @@ export type SetSummary = {
   set_code: string;
   set_name: string;
   released_at: string;
-  unique_cards: number;
-  in_stock_cards: number;
-  total_value: string | null;
+  set_type: string | null;
+  card_count: number;
+  child_types: string | null;   // comma-separated distinct child set_types (excl. tokens)
+  set_value_aud: string | null; // pre-computed by scraper after each nightly store run
 };
 
-/** All sets that have >20 unique cards and at least some AU store inventory. */
-export async function getSetList(): Promise<SetSummary[]> {
+/**
+ * Canonical root sets ordered by release date, newest first.
+ * Single-table query on `sets` — sub-millisecond. Values are pre-computed by
+ * the scraper's updateSetValues() step after each nightly store scrape.
+ */
+export async function getSetList(yearsBack = 2): Promise<SetSummary[]> {
   return sql<SetSummary[]>`
-    WITH card_prices AS (
-      SELECT
-        p.set_code,
+    SELECT
+      s.set_code,
+      s.set_name,
+      s.released_at::text,
+      s.set_type,
+      s.card_count,
+      s.set_value_aud::text,
+      STRING_AGG(DISTINCT c.set_type, ',' ORDER BY c.set_type) AS child_types
+    FROM sets s
+    LEFT JOIN sets c ON c.parent_set_code = s.set_code
+      AND c.set_type IS NOT NULL
+      AND c.set_type != 'token'
+    WHERE s.parent_set_code IS NULL
+      AND (s.set_type IS NULL OR s.set_type = ANY(${CANONICAL_SET_TYPES}))
+      AND s.card_count > 20
+      AND s.released_at >= CURRENT_DATE - (${yearsBack} * INTERVAL '1 year')
+    GROUP BY s.set_code, s.set_name, s.released_at, s.set_type, s.card_count, s.set_value_aud
+    ORDER BY s.released_at DESC
+    LIMIT 100
+  `;
+}
+
+export type TopMover = {
+  card_id: string;
+  set_code: string;
+  set_name: string;
+  name: string;
+  slug: string | null;
+  image_uri: string | null;
+  start_price: string;
+  current_price: string;
+  pct_change: string;   // positive = up, negative = down
+  direction: "up" | "down";
+};
+
+/**
+ * Top 3 price gainers and top 3 losers globally over the last `days` days.
+ * Baseline price ≥ $2 to filter noise. Scans a (days + 14) day lookback window.
+ */
+export async function getTopMovers(days: number): Promise<TopMover[]> {
+  return sql<TopMover[]>`
+    WITH baseline AS (
+      SELECT DISTINCT ON (p.card_id)
         p.card_id,
-        MIN(sp.price_aud::numeric) AS min_price
-      FROM printings p
-      JOIN store_prices sp ON sp.printing_id = p.id
+        ph.price_aud::numeric AS price
+      FROM price_history ph
+      JOIN printings p ON p.id = ph.printing_id
+      JOIN store_prices sp_check ON sp_check.printing_id = ph.printing_id
+        AND sp_check.store_id = ph.store_id
+        AND sp_check.in_stock = true
+        AND sp_check.price_type = 'sell'
+      WHERE p.is_foil = false
+        AND ph.price_type = 'sell'
+        AND ph.recorded_at >= NOW() - (${days} * INTERVAL '1 day')
+      ORDER BY p.card_id, ph.recorded_at ASC
+    ),
+    current_price AS (
+      SELECT
+        p.card_id,
+        MIN(sp.price_aud::numeric) AS price,
+        (
+          SELECT p2.set_code FROM store_prices sp2
+          JOIN printings p2 ON p2.id = sp2.printing_id
+          WHERE p2.card_id = p.card_id
+            AND p2.is_foil = false
+            AND sp2.in_stock = true
+            AND sp2.price_type = 'sell'
+          ORDER BY sp2.price_aud ASC LIMIT 1
+        ) AS set_code
+      FROM store_prices sp
+      JOIN printings p ON p.id = sp.printing_id
       WHERE p.is_foil = false
         AND sp.in_stock = true
         AND sp.price_type = 'sell'
-      GROUP BY p.set_code, p.card_id
+      GROUP BY p.card_id
+    ),
+    movers AS (
+      SELECT
+        cp.set_code,
+        b.card_id,
+        b.price AS start_price,
+        cp.price AS current_price,
+        ROUND(((cp.price - b.price) / b.price * 100)::numeric, 1) AS pct_change
+      FROM baseline b
+      JOIN current_price cp ON cp.card_id = b.card_id
+      WHERE b.price >= 2.0
+        AND cp.set_code IS NOT NULL
+        AND cp.price != b.price
     )
-    SELECT
-      p.set_code,
-      p.set_name,
-      MIN(p.released_at)::text AS released_at,
-      COUNT(DISTINCT p.card_id)::int AS unique_cards,
-      COUNT(DISTINCT cp.card_id)::int AS in_stock_cards,
-      SUM(cp.min_price)::text AS total_value
-    FROM printings p
-    LEFT JOIN card_prices cp ON cp.set_code = p.set_code AND cp.card_id = p.card_id
-    WHERE p.is_foil = false
-    GROUP BY p.set_code, p.set_name
-    HAVING COUNT(DISTINCT p.card_id) > 20
-      AND COUNT(DISTINCT cp.card_id) > 5
-    ORDER BY MIN(p.released_at) DESC
-    LIMIT 50
+    (
+      SELECT m.card_id, m.set_code, s.set_name, c.name, c.slug,
+             (SELECT p2.image_uri FROM printings p2
+              WHERE p2.card_id = m.card_id AND p2.image_uri IS NOT NULL AND p2.is_foil = false
+              ORDER BY p2.released_at DESC LIMIT 1) AS image_uri,
+             m.start_price::text, m.current_price::text, m.pct_change::text,
+             'up' AS direction
+      FROM movers m
+      JOIN cards c ON c.id = m.card_id
+      JOIN sets s ON s.set_code = m.set_code
+      WHERE m.pct_change > 0
+      ORDER BY m.pct_change DESC LIMIT 3
+    )
+    UNION ALL
+    (
+      SELECT m.card_id, m.set_code, s.set_name, c.name, c.slug,
+             (SELECT p2.image_uri FROM printings p2
+              WHERE p2.card_id = m.card_id AND p2.image_uri IS NOT NULL AND p2.is_foil = false
+              ORDER BY p2.released_at DESC LIMIT 1) AS image_uri,
+             m.start_price::text, m.current_price::text, m.pct_change::text,
+             'down' AS direction
+      FROM movers m
+      JOIN cards c ON c.id = m.card_id
+      JOIN sets s ON s.set_code = m.set_code
+      WHERE m.pct_change < 0
+      ORDER BY m.pct_change ASC LIMIT 3
+    )
   `;
 }
 
@@ -308,22 +402,24 @@ export type SetMetadata = {
   common_count: number;
 };
 
-/** Header stats for a single set page. */
+/** Header stats for a single set page. Basic lands excluded. */
 export async function getSetMetadata(setCode: string): Promise<SetMetadata | null> {
   const rows = await sql<SetMetadata[]>`
     SELECT
-      set_code,
-      set_name,
-      MIN(released_at)::text AS released_at,
-      COUNT(DISTINCT card_id)::int AS unique_cards,
+      p.set_code,
+      p.set_name,
+      MIN(p.released_at)::text AS released_at,
+      COUNT(DISTINCT p.card_id)::int AS unique_cards,
       COUNT(*)::int AS total_printings,
-      COUNT(*) FILTER (WHERE rarity = 'mythic' AND is_foil = false)::int AS mythic_count,
-      COUNT(*) FILTER (WHERE rarity = 'rare' AND is_foil = false)::int AS rare_count,
-      COUNT(*) FILTER (WHERE rarity = 'uncommon' AND is_foil = false)::int AS uncommon_count,
-      COUNT(*) FILTER (WHERE rarity = 'common' AND is_foil = false)::int AS common_count
-    FROM printings
-    WHERE set_code = ${setCode}
-    GROUP BY set_code, set_name
+      COUNT(*) FILTER (WHERE p.rarity = 'mythic' AND p.is_foil = false)::int AS mythic_count,
+      COUNT(*) FILTER (WHERE p.rarity = 'rare' AND p.is_foil = false)::int AS rare_count,
+      COUNT(*) FILTER (WHERE p.rarity = 'uncommon' AND p.is_foil = false)::int AS uncommon_count,
+      COUNT(*) FILTER (WHERE p.rarity = 'common' AND p.is_foil = false)::int AS common_count
+    FROM printings p
+    JOIN cards c ON c.id = p.card_id
+    WHERE p.set_code = ${setCode}
+      AND c.type_line NOT ILIKE 'Basic Land%'
+    GROUP BY p.set_code, p.set_name
   `;
   return rows[0] ?? null;
 }
@@ -334,8 +430,8 @@ export type SetPriceTimelinePoint = {
   card_count: number;
 };
 
-/** Daily total set value (sum of cheapest non-foil price per unique card). */
-export async function getSetPriceTimeline(setCode: string): Promise<SetPriceTimelinePoint[]> {
+/** Daily total set value (sum of cheapest non-foil price per unique card). Basic lands excluded. */
+export async function getSetPriceTimeline(setCodes: string[]): Promise<SetPriceTimelinePoint[]> {
   return sql<SetPriceTimelinePoint[]>`
     WITH daily_card_prices AS (
       SELECT
@@ -344,9 +440,11 @@ export async function getSetPriceTimeline(setCode: string): Promise<SetPriceTime
         MIN(ph.price_aud::numeric) AS min_price
       FROM price_history ph
       JOIN printings p ON p.id = ph.printing_id
-      WHERE p.set_code = ${setCode}
+      JOIN cards c ON c.id = p.card_id
+      WHERE p.set_code = ANY(${setCodes})
         AND ph.price_type = 'sell'
         AND p.is_foil = false
+        AND c.type_line NOT ILIKE 'Basic Land%'
       GROUP BY ph.recorded_at, p.card_id
     )
     SELECT
@@ -372,9 +470,9 @@ export type SetCardPerf = {
 
 /**
  * Per-card price performance: first recorded price vs current in-stock price.
- * Ordered by pct_change DESC (biggest gainers first).
+ * Ordered by pct_change DESC (biggest gainers first). Basic lands excluded.
  */
-export async function getSetCardPerformance(setCode: string): Promise<SetCardPerf[]> {
+export async function getSetCardPerformance(setCodes: string[]): Promise<SetCardPerf[]> {
   return sql<SetCardPerf[]>`
     WITH first_seen AS (
       SELECT
@@ -382,9 +480,11 @@ export async function getSetCardPerformance(setCode: string): Promise<SetCardPer
         MIN(ph.recorded_at) AS first_date
       FROM price_history ph
       JOIN printings p ON p.id = ph.printing_id
-      WHERE p.set_code = ${setCode}
+      JOIN cards c ON c.id = p.card_id
+      WHERE p.set_code = ANY(${setCodes})
         AND ph.price_type = 'sell'
         AND p.is_foil = false
+        AND c.type_line NOT ILIKE 'Basic Land%'
       GROUP BY p.card_id
     ),
     first_price AS (
@@ -393,7 +493,7 @@ export async function getSetCardPerformance(setCode: string): Promise<SetCardPer
         MIN(ph.price_aud::numeric) AS price
       FROM first_seen fs
       JOIN printings p ON p.card_id = fs.card_id
-        AND p.set_code = ${setCode}
+        AND p.set_code = ANY(${setCodes})
         AND p.is_foil = false
       JOIN price_history ph ON ph.printing_id = p.id
         AND ph.recorded_at = fs.first_date
@@ -406,20 +506,24 @@ export async function getSetCardPerformance(setCode: string): Promise<SetCardPer
         MIN(sp.price_aud::numeric) AS price
       FROM store_prices sp
       JOIN printings p ON p.id = sp.printing_id
-      WHERE p.set_code = ${setCode}
+      JOIN cards c ON c.id = p.card_id
+      WHERE p.set_code = ANY(${setCodes})
         AND sp.price_type = 'sell'
         AND sp.in_stock = true
         AND p.is_foil = false
+        AND c.type_line NOT ILIKE 'Basic Land%'
       GROUP BY p.card_id
     ),
     printing_info AS (
-      SELECT DISTINCT ON (card_id)
-        card_id,
-        rarity,
-        image_uri
-      FROM printings
-      WHERE set_code = ${setCode} AND is_foil = false
-      ORDER BY card_id, released_at ASC
+      SELECT DISTINCT ON (p.card_id)
+        p.card_id,
+        p.rarity,
+        p.image_uri
+      FROM printings p
+      JOIN cards c ON c.id = p.card_id
+      WHERE p.set_code = ANY(${setCodes}) AND p.is_foil = false
+        AND c.type_line NOT ILIKE 'Basic Land%'
+      ORDER BY p.card_id, p.released_at ASC
     )
     SELECT
       c.id AS card_id,
@@ -450,8 +554,8 @@ export type SetRarityBreakdown = {
   total_value: string | null;
 };
 
-/** Value distribution by rarity for in-stock non-foil cards. */
-export async function getSetRarityBreakdown(setCode: string): Promise<SetRarityBreakdown[]> {
+/** Value distribution by rarity for in-stock non-foil cards. Basic lands excluded. */
+export async function getSetRarityBreakdown(setCodes: string[]): Promise<SetRarityBreakdown[]> {
   return sql<SetRarityBreakdown[]>`
     WITH card_prices AS (
       SELECT
@@ -459,11 +563,13 @@ export async function getSetRarityBreakdown(setCode: string): Promise<SetRarityB
         p.rarity,
         MIN(sp.price_aud::numeric) AS min_price
       FROM printings p
+      JOIN cards c ON c.id = p.card_id
       JOIN store_prices sp ON sp.printing_id = p.id
-      WHERE p.set_code = ${setCode}
+      WHERE p.set_code = ANY(${setCodes})
         AND p.is_foil = false
         AND sp.in_stock = true
         AND sp.price_type = 'sell'
+        AND c.type_line NOT ILIKE 'Basic Land%'
       GROUP BY p.card_id, p.rarity
     )
     SELECT
@@ -509,6 +615,201 @@ export async function getSetStoreComparison(setCode: string): Promise<SetStoreCo
     GROUP BY s.id, s.name
     HAVING COUNT(sp.id) FILTER (WHERE sp.in_stock = true) > 0
     ORDER BY AVG(sp.price_aud::numeric) FILTER (WHERE sp.in_stock = true) ASC NULLS LAST
+  `;
+}
+
+export type SetReprintCard = {
+  card_id: string;
+  name: string;
+  slug: string | null;
+  rarity: string;
+  image_uri: string | null;
+  new_printing_price: string | null;
+  other_printing_price: string | null;
+  pct_diff: string | null;
+};
+
+// Set types considered "canonical" for reprint purposes — genuine MTG products
+// where a card appearing means it was truly reprinted, not just a same-release
+// variant (Secret Lair, promo drop, bonus sheet).
+const CANONICAL_SET_TYPES = [
+  "expansion", "core", "masters", "draft_innovation", "commander",
+  "planechase", "archenemy", "duel_deck", "from_the_vault", "spellbook",
+];
+
+/**
+ * Cards in this set that are genuine reprints — previously appeared in a
+ * canonical product type (expansion, core, masters, etc.) and NOT in a
+ * child/sibling release of this same set (Commander decks, promo drops,
+ * Secret Lairs sharing this set's parent).
+ *
+ * Compares this printing's price against the cheapest other qualifying printing.
+ */
+export async function getSetReprintCards(setCode: string): Promise<SetReprintCard[]> {
+  return sql<SetReprintCard[]>`
+    WITH this_set_printing AS (
+      SELECT DISTINCT ON (p.card_id)
+        p.card_id, p.id AS printing_id, p.rarity, p.image_uri
+      FROM printings p
+      JOIN cards c ON c.id = p.card_id
+      WHERE p.set_code = ${setCode} AND p.is_foil = false
+        AND c.type_line NOT ILIKE 'Basic Land%'
+      ORDER BY p.card_id, p.released_at ASC
+    ),
+    -- Cards that have a prior printing in a canonical set that is not a
+    -- child/sibling of this set's release family.
+    reprinted_cards AS (
+      SELECT tsp.card_id
+      FROM this_set_printing tsp
+      WHERE EXISTS (
+        SELECT 1
+        FROM printings p2
+        LEFT JOIN sets s ON s.set_code = p2.set_code
+        WHERE p2.card_id = tsp.card_id
+          AND p2.set_code != ${setCode}
+          AND p2.is_foil = false
+          -- Canonical set type, or unknown (NULL) during migration window
+          AND (s.set_type IS NULL OR s.set_type = ANY(${CANONICAL_SET_TYPES}))
+          -- Not a child of this set (same-release Commander decks, promos, etc.)
+          AND (s.parent_set_code IS NULL OR s.parent_set_code != ${setCode})
+      )
+    ),
+    new_printing_price AS (
+      SELECT tsp.card_id, MIN(sp.price_aud::numeric) AS price
+      FROM this_set_printing tsp
+      JOIN reprinted_cards rc ON rc.card_id = tsp.card_id
+      JOIN store_prices sp ON sp.printing_id = tsp.printing_id
+      WHERE sp.in_stock = true AND sp.price_type = 'sell'
+      GROUP BY tsp.card_id
+    ),
+    other_printing_price AS (
+      SELECT p.card_id, MIN(sp.price_aud::numeric) AS price
+      FROM printings p
+      JOIN reprinted_cards rc ON rc.card_id = p.card_id
+      LEFT JOIN sets s ON s.set_code = p.set_code
+      JOIN store_prices sp ON sp.printing_id = p.id
+      WHERE p.set_code != ${setCode}
+        AND p.is_foil = false
+        AND (s.set_type IS NULL OR s.set_type = ANY(${CANONICAL_SET_TYPES}))
+        AND (s.parent_set_code IS NULL OR s.parent_set_code != ${setCode})
+        AND sp.in_stock = true
+        AND sp.price_type = 'sell'
+      GROUP BY p.card_id
+    )
+    SELECT
+      c.id AS card_id,
+      c.name,
+      c.slug,
+      tsp.rarity,
+      tsp.image_uri,
+      npp.price::text AS new_printing_price,
+      opp.price::text AS other_printing_price,
+      CASE
+        WHEN opp.price > 0
+        THEN ROUND(((npp.price - opp.price) / opp.price * 100)::numeric, 1)::text
+        ELSE NULL
+      END AS pct_diff
+    FROM new_printing_price npp
+    JOIN other_printing_price opp ON opp.card_id = npp.card_id
+    JOIN cards c ON c.id = npp.card_id
+    JOIN this_set_printing tsp ON tsp.card_id = npp.card_id
+    ORDER BY ABS(npp.price - opp.price) DESC NULLS LAST
+    LIMIT 20
+  `;
+}
+
+export type SymbioticMover = {
+  card_id: string;
+  name: string;
+  slug: string | null;
+  image_uri: string | null;
+  first_price: string;
+  current_price: string;
+  pct_change: string;
+};
+
+/**
+ * Cards NOT in this set whose price increased ≥15% since the set's release date.
+ * Only meaningful for recently released sets — call only when released_at is within 90 days.
+ */
+export async function getSymbioticMovers(setCode: string, releasedAt: string): Promise<SymbioticMover[]> {
+  return sql<SymbioticMover[]>`
+    WITH set_card_ids AS (
+      SELECT DISTINCT card_id FROM printings WHERE set_code = ${setCode}
+    ),
+    -- Baseline: prefer first price on or after set release; fall back to oldest price
+    -- within a 30-day pre-release window. Scanning only the 30-day pre-release window
+    -- keeps query time reasonable (hits 1–2 partitions, not all history).
+    first_recorded AS (
+      SELECT
+        p.card_id,
+        COALESCE(
+          MIN(ph.recorded_at) FILTER (WHERE ph.recorded_at >= ${releasedAt}::date),
+          MIN(ph.recorded_at)
+        ) AS first_date
+      FROM price_history ph
+      JOIN printings p ON p.id = ph.printing_id
+      WHERE p.card_id NOT IN (SELECT card_id FROM set_card_ids)
+        AND p.is_foil = false
+        AND ph.price_type = 'sell'
+        AND ph.recorded_at >= ${releasedAt}::date - INTERVAL '30 days'
+      GROUP BY p.card_id
+    ),
+    first_price AS (
+      SELECT fr.card_id, MIN(ph.price_aud::numeric) AS price
+      FROM first_recorded fr
+      JOIN printings p ON p.card_id = fr.card_id AND p.is_foil = false
+      JOIN price_history ph ON ph.printing_id = p.id
+        AND ph.recorded_at = fr.first_date
+        AND ph.price_type = 'sell'
+      GROUP BY fr.card_id
+    ),
+    current_price AS (
+      SELECT p.card_id, MIN(sp.price_aud::numeric) AS price
+      FROM store_prices sp
+      JOIN printings p ON p.id = sp.printing_id
+      WHERE p.card_id NOT IN (SELECT card_id FROM set_card_ids)
+        AND p.is_foil = false
+        AND sp.in_stock = true
+        AND sp.price_type = 'sell'
+      GROUP BY p.card_id
+    )
+    SELECT
+      c.id AS card_id,
+      c.name,
+      c.slug,
+      (
+        SELECT p2.image_uri FROM printings p2
+        WHERE p2.card_id = c.id AND p2.image_uri IS NOT NULL AND p2.is_foil = false
+        ORDER BY p2.released_at DESC LIMIT 1
+      ) AS image_uri,
+      fp.price::text AS first_price,
+      cp.price::text AS current_price,
+      ROUND(((cp.price - fp.price) / fp.price * 100)::numeric, 1)::text AS pct_change
+    FROM first_price fp
+    JOIN current_price cp ON cp.card_id = fp.card_id
+    JOIN cards c ON c.id = fp.card_id
+    WHERE fp.price >= 1.0
+      AND cp.price > fp.price
+      AND (cp.price - fp.price) / fp.price >= 0.15
+    ORDER BY (cp.price - fp.price) / fp.price DESC
+    LIMIT 15
+  `;
+}
+
+export type ChildSet = {
+  set_code: string;
+  set_name: string;
+  set_type: string | null;
+};
+
+/** Child sets of the given set code (e.g. Commander decks, promo sets, bonus sheets). */
+export async function getChildSets(setCode: string): Promise<ChildSet[]> {
+  return sql<ChildSet[]>`
+    SELECT set_code, set_name, set_type
+    FROM sets
+    WHERE parent_set_code = ${setCode}
+    ORDER BY released_at ASC, set_name ASC
   `;
 }
 

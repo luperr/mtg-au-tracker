@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import type { SetCardPerf } from "@/lib/db";
 import { fmtAUD, cardHref } from "@/lib/utils";
+import { CardThumb } from "@/app/CardThumb";
 
 type SortKey = "name" | "current_price" | "pct_change" | "rarity";
 type SortDir = "asc" | "desc";
@@ -55,13 +56,18 @@ function SortHeader({
 export function SetCardExplorer({
   cardPerf,
   setCode,
+  setName,
+  rarityFilter,
+  onRarityFilterChange,
 }: {
   cardPerf: SetCardPerf[];
   setCode: string;
+  setName: string;
+  rarityFilter: string;
+  onRarityFilterChange: (r: string) => void;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>("pct_change");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [rarityFilter, setRarityFilter] = useState<string>("all");
   const [page, setPage] = useState(0);
 
   function handleSort(key: SortKey) {
@@ -116,7 +122,7 @@ export function SetCardExplorer({
   const pageSlice = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   return (
-    <div className="space-y-3">
+    <div id="all-cards" className="space-y-3">
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[10px] text-cream-dim/40 uppercase tracking-wider">
@@ -127,7 +133,7 @@ export function SetCardExplorer({
           return (
             <button
               key={r}
-              onClick={() => { setRarityFilter(r); setPage(0); }}
+              onClick={() => { onRarityFilterChange(r); setPage(0); }}
               className={`rounded px-2 py-0.5 text-[10px] font-medium border transition-colors ${
                 rarityFilter === r
                   ? "bg-accent-muted text-accent-light border-accent-border"
@@ -180,24 +186,16 @@ export function SetCardExplorer({
               return (
                 <a
                   key={card.card_id}
-                  href={cardHref(card.slug, card.card_id)}
+                  href={cardHref(card.slug, card.card_id, { code: setCode, name: setName })}
                   className="grid grid-cols-[auto_1fr_auto_auto] sm:grid-cols-[auto_1fr_auto_auto_auto] items-center gap-0 hover:bg-muted transition-colors group"
                 >
                   {/* Thumbnail */}
                   <div className="px-2 py-1.5">
-                    {card.image_uri ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={card.image_uri}
-                        alt={card.name}
-                        width={24}
-                        height={33}
-                        className="rounded shrink-0 opacity-80 group-hover:opacity-100 transition-opacity"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="w-6 h-8 rounded bg-subtle" />
-                    )}
+                    <CardThumb
+                      imageUri={card.image_uri}
+                      alt={card.name}
+                      className="w-6 h-8 opacity-80 group-hover:opacity-100 transition-opacity"
+                    />
                   </div>
 
                   {/* Name + rarity */}

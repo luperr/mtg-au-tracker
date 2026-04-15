@@ -1,5 +1,6 @@
 import type { SetMetadata, SetPriceTimelinePoint } from "@/lib/db";
 import { fmtAUD } from "@/lib/utils";
+import { Breadcrumb } from "@/app/Breadcrumb";
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-AU", {
@@ -21,9 +22,17 @@ function computeOverallChange(timeline: SetPriceTimelinePoint[]): number | null 
 export function SetHero({
   meta,
   timeline,
+  reprintCount,
+  onCardsClick,
+  onMythicsClick,
+  onReprintsClick,
 }: {
   meta: SetMetadata;
   timeline: SetPriceTimelinePoint[];
+  reprintCount: number;
+  onCardsClick: () => void;
+  onMythicsClick: () => void;
+  onReprintsClick?: () => void;
 }) {
   const currentValue =
     timeline.length > 0
@@ -39,14 +48,10 @@ export function SetHero({
 
   return (
     <div className="mb-8">
-      {/* Breadcrumb */}
-      <div className="text-[11px] text-cream-dim/40 mb-4">
-        <a href="/sets" className="hover:text-accent transition-colors">
-          Sets
-        </a>
-        <span className="mx-1.5">›</span>
-        <span>{meta.set_name}</span>
-      </div>
+      <Breadcrumb items={[
+        { label: "Sets", href: "/sets" },
+        { label: meta.set_name },
+      ]} />
 
       <div className="rounded-xl border border-subtle bg-surface p-5 sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-start gap-4">
@@ -102,32 +107,51 @@ export function SetHero({
                 )}
               </div>
 
-              {/* Cards */}
-              <div className="rounded-lg bg-muted border border-subtle px-3 py-2.5">
-                <div className="text-[10px] text-cream-dim/40 uppercase tracking-wider mb-0.5">
+              {/* Cards — clickable, scrolls to All Cards */}
+              <button
+                onClick={onCardsClick}
+                className="rounded-lg bg-muted border border-subtle px-3 py-2.5 text-left hover:border-accent/40 hover:bg-muted/80 transition-colors group"
+              >
+                <div className="text-[10px] text-cream-dim/40 uppercase tracking-wider mb-0.5 group-hover:text-accent/60 transition-colors">
                   Cards
                 </div>
                 <div className="text-lg font-bold text-cream">{meta.unique_cards}</div>
-                <div className="text-[10px] text-cream-dim/40">unique</div>
-              </div>
+                <div className="text-[10px] text-cream-dim/40">unique ↓</div>
+              </button>
 
-              {/* Mythics */}
-              <div className="rounded-lg bg-muted border border-subtle px-3 py-2.5">
-                <div className="text-[10px] text-cream-dim/40 uppercase tracking-wider mb-0.5">
+              {/* Mythics — clickable, scrolls to All Cards + applies mythic filter */}
+              <button
+                onClick={onMythicsClick}
+                className="rounded-lg bg-muted border border-subtle px-3 py-2.5 text-left hover:border-orange-500/40 hover:bg-muted/80 transition-colors group"
+              >
+                <div className="text-[10px] text-cream-dim/40 uppercase tracking-wider mb-0.5 group-hover:text-orange-400/60 transition-colors">
                   Mythics
                 </div>
                 <div className="text-lg font-bold text-cream">{meta.mythic_count}</div>
-                <div className="text-[10px] text-cream-dim/40">{meta.rare_count} rares</div>
-              </div>
+                <div className="text-[10px] text-cream-dim/40">{meta.rare_count} rares ↓</div>
+              </button>
 
-              {/* Data range */}
-              <div className="rounded-lg bg-muted border border-subtle px-3 py-2.5">
-                <div className="text-[10px] text-cream-dim/40 uppercase tracking-wider mb-0.5">
-                  Data points
+              {/* Reprints */}
+              {onReprintsClick ? (
+                <button
+                  onClick={onReprintsClick}
+                  className="rounded-lg bg-muted border border-subtle px-3 py-2.5 text-left hover:border-accent/40 hover:bg-muted/80 transition-colors group"
+                >
+                  <div className="text-[10px] text-cream-dim/40 uppercase tracking-wider mb-0.5 group-hover:text-accent/60 transition-colors">
+                    Reprints
+                  </div>
+                  <div className="text-lg font-bold text-cream">{reprintCount}</div>
+                  <div className="text-[10px] text-cream-dim/40">in this set ↓</div>
+                </button>
+              ) : (
+                <div className="rounded-lg bg-muted border border-subtle px-3 py-2.5">
+                  <div className="text-[10px] text-cream-dim/40 uppercase tracking-wider mb-0.5">
+                    Reprints
+                  </div>
+                  <div className="text-lg font-bold text-cream">{reprintCount}</div>
+                  <div className="text-[10px] text-cream-dim/40">in this set</div>
                 </div>
-                <div className="text-lg font-bold text-cream">{timeline.length}</div>
-                <div className="text-[10px] text-cream-dim/40">daily snapshots</div>
-              </div>
+              )}
             </div>
           </div>
         </div>

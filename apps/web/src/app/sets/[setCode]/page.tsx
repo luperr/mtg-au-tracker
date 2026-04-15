@@ -5,11 +5,12 @@ import {
   getSetPriceTimeline,
   getSetCardPerformance,
   getSetRarityBreakdown,
-  getSetStoreComparison,
+  getSetReprintCards,
+  getChildSets,
 } from "@/lib/db";
 import { SetDataStory } from "./SetDataStory";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({
   params,
@@ -21,15 +22,15 @@ export async function generateMetadata({
   if (!meta) return { title: "Set Not Found | Scrymarket" };
 
   return {
-    title: `${meta.set_name} Price Story | Scrymarket`,
-    description: `Track ${meta.set_name} card prices across Australian stores. See winners, losers, and the full AU price story since release.`,
+    title: `${meta.set_name} — AU Market Breakdown | Scrymarket`,
+    description: `Track ${meta.set_name} card prices across Australian stores. See winners, losers, and the full AU market breakdown since release.`,
     openGraph: {
-      title: `${meta.set_name} — AU Price Story`,
+      title: `${meta.set_name} — AU Market Breakdown`,
       description: `${meta.unique_cards} cards tracked across AU stores. See which cards spiked, which crashed, and the full market timeline.`,
     },
     twitter: {
       card: "summary_large_image",
-      title: `${meta.set_name} — AU Price Story | Scrymarket`,
+      title: `${meta.set_name} — AU Market Breakdown | Scrymarket`,
       description: `${meta.unique_cards} cards. Full AU price data since release.`,
     },
   };
@@ -37,29 +38,53 @@ export async function generateMetadata({
 
 export default async function SetPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ setCode: string }>;
+  searchParams: Promise<{ subsets?: string }>;
 }) {
   const { setCode } = await params;
+  const { subsets: subsetsParam } = await searchParams;
 
-  const [meta, timeline, cardPerf, rarityBreakdown, storeComparison] =
-    await Promise.all([
-      getSetMetadata(setCode),
-      getSetPriceTimeline(setCode),
-      getSetCardPerformance(setCode),
-      getSetRarityBreakdown(setCode),
-      getSetStoreComparison(setCode),
-    ]);
-
+  const [meta, allChildSets] = await Promise.all([
+    getSetMetadata(setCode),
+    getChildSets(setCode),
+  ]);
   if (!meta) notFound();
+
+  // Tokens are never included in data or shown in the toggle UI
+  const childSets = allChildSets.filter((s) => s.set_type !== "token");
+  const validChildCodes = new Set(childSets.map((s) => s.set_code));
+
+  // Default: include ALL non-token children.
+  // When ?subsets param is present, use that explicit list (empty string = none).
+  let activeSubsets: string[];
+  if (subsetsParam === undefined) {
+    activeSubsets = childSets.map((s) => s.set_code);
+  } else {
+    activeSubsets = subsetsParam
+      ? subsetsParam.split(",").filter((c) => validChildCodes.has(c))
+      : [];
+  }
+  const allSetCodes = [setCode, ...activeSubsets];
+
+  const [timeline, cardPerf, rarityBreakdown, reprintCards] =
+    await Promise.all([
+      getSetPriceTimeline(allSetCodes),
+      getSetCardPerformance(allSetCodes),
+      getSetRarityBreakdown(allSetCodes),
+      getSetReprintCards(setCode),
+    ]);
 
   return (
     <SetDataStory
-      meta={meta!}
+      meta={meta}
       timeline={timeline}
       cardPerf={cardPerf}
       rarityBreakdown={rarityBreakdown}
-      storeComparison={storeComparison}
+      reprintCards={reprintCards}
+      childSets={childSets}
+      activeSubsets={activeSubsets}
     />
   );
 }

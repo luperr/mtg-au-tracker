@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import React, { useMemo } from "react";
 import type { SetStoreComparison } from "@/lib/db";
 import { fmtAUD } from "@/lib/utils";
 
@@ -44,9 +44,8 @@ export function StoreComparison({
           const isBest = i === 0;
 
           return (
-            <>
+            <React.Fragment key={store.store_id}>
               <div
-                key={`name-${store.store_id}`}
                 className="px-4 py-2.5 flex items-center gap-2 border-b border-subtle/50"
               >
                 <div className="min-w-0">
@@ -100,7 +99,7 @@ export function StoreComparison({
                   </span>
                 </span>
               </div>
-            </>
+            </React.Fragment>
           );
         })}
       </div>
