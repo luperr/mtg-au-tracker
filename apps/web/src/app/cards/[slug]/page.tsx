@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { getCard, getCardMetadata, getPrintingsWithPrices, getCardTrend, getCardPriceHistory, type PrintingWithPrices } from "@/lib/db";
 import { getAudPerUsd } from "@/lib/exchange-rate";
 import { CardDetailView } from "./CardDetailView";
-import { BackButton } from "./BackButton";
+import { BackButton } from "@/app/BackButton";
 
 function sortPrintings(printings: PrintingWithPrices[]): PrintingWithPrices[] {
   return [...printings].sort((a, b) => {
