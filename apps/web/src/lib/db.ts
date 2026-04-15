@@ -252,6 +252,266 @@ export async function getStores(): Promise<StoreRow[]> {
   `;
 }
 
+// ─── Set queries ─────────────────────────────────────────────────────────────
+
+export type SetSummary = {
+  set_code: string;
+  set_name: string;
+  released_at: string;
+  unique_cards: number;
+  in_stock_cards: number;
+  total_value: string | null;
+};
+
+/** All sets that have >20 unique cards and at least some AU store inventory. */
+export async function getSetList(): Promise<SetSummary[]> {
+  return sql<SetSummary[]>`
+    WITH card_prices AS (
+      SELECT
+        p.set_code,
+        p.card_id,
+        MIN(sp.price_aud::numeric) AS min_price
+      FROM printings p
+      JOIN store_prices sp ON sp.printing_id = p.id
+      WHERE p.is_foil = false
+        AND sp.in_stock = true
+        AND sp.price_type = 'sell'
+      GROUP BY p.set_code, p.card_id
+    )
+    SELECT
+      p.set_code,
+      p.set_name,
+      MIN(p.released_at)::text AS released_at,
+      COUNT(DISTINCT p.card_id)::int AS unique_cards,
+      COUNT(DISTINCT cp.card_id)::int AS in_stock_cards,
+      SUM(cp.min_price)::text AS total_value
+    FROM printings p
+    LEFT JOIN card_prices cp ON cp.set_code = p.set_code AND cp.card_id = p.card_id
+    WHERE p.is_foil = false
+    GROUP BY p.set_code, p.set_name
+    HAVING COUNT(DISTINCT p.card_id) > 20
+      AND COUNT(DISTINCT cp.card_id) > 5
+    ORDER BY MIN(p.released_at) DESC
+    LIMIT 50
+  `;
+}
+
+export type SetMetadata = {
+  set_code: string;
+  set_name: string;
+  released_at: string;
+  unique_cards: number;
+  total_printings: number;
+  mythic_count: number;
+  rare_count: number;
+  uncommon_count: number;
+  common_count: number;
+};
+
+/** Header stats for a single set page. */
+export async function getSetMetadata(setCode: string): Promise<SetMetadata | null> {
+  const rows = await sql<SetMetadata[]>`
+    SELECT
+      set_code,
+      set_name,
+      MIN(released_at)::text AS released_at,
+      COUNT(DISTINCT card_id)::int AS unique_cards,
+      COUNT(*)::int AS total_printings,
+      COUNT(*) FILTER (WHERE rarity = 'mythic' AND is_foil = false)::int AS mythic_count,
+      COUNT(*) FILTER (WHERE rarity = 'rare' AND is_foil = false)::int AS rare_count,
+      COUNT(*) FILTER (WHERE rarity = 'uncommon' AND is_foil = false)::int AS uncommon_count,
+      COUNT(*) FILTER (WHERE rarity = 'common' AND is_foil = false)::int AS common_count
+    FROM printings
+    WHERE set_code = ${setCode}
+    GROUP BY set_code, set_name
+  `;
+  return rows[0] ?? null;
+}
+
+export type SetPriceTimelinePoint = {
+  date: string;
+  total_value: string;
+  card_count: number;
+};
+
+/** Daily total set value (sum of cheapest non-foil price per unique card). */
+export async function getSetPriceTimeline(setCode: string): Promise<SetPriceTimelinePoint[]> {
+  return sql<SetPriceTimelinePoint[]>`
+    WITH daily_card_prices AS (
+      SELECT
+        ph.recorded_at,
+        p.card_id,
+        MIN(ph.price_aud::numeric) AS min_price
+      FROM price_history ph
+      JOIN printings p ON p.id = ph.printing_id
+      WHERE p.set_code = ${setCode}
+        AND ph.price_type = 'sell'
+        AND p.is_foil = false
+      GROUP BY ph.recorded_at, p.card_id
+    )
+    SELECT
+      recorded_at::text AS date,
+      SUM(min_price)::text AS total_value,
+      COUNT(*)::int AS card_count
+    FROM daily_card_prices
+    GROUP BY recorded_at
+    ORDER BY recorded_at
+  `;
+}
+
+export type SetCardPerf = {
+  card_id: string;
+  name: string;
+  slug: string | null;
+  rarity: string;
+  image_uri: string | null;
+  first_price: string | null;
+  current_price: string | null;
+  pct_change: string | null;
+};
+
+/**
+ * Per-card price performance: first recorded price vs current in-stock price.
+ * Ordered by pct_change DESC (biggest gainers first).
+ */
+export async function getSetCardPerformance(setCode: string): Promise<SetCardPerf[]> {
+  return sql<SetCardPerf[]>`
+    WITH first_seen AS (
+      SELECT
+        p.card_id,
+        MIN(ph.recorded_at) AS first_date
+      FROM price_history ph
+      JOIN printings p ON p.id = ph.printing_id
+      WHERE p.set_code = ${setCode}
+        AND ph.price_type = 'sell'
+        AND p.is_foil = false
+      GROUP BY p.card_id
+    ),
+    first_price AS (
+      SELECT
+        fs.card_id,
+        MIN(ph.price_aud::numeric) AS price
+      FROM first_seen fs
+      JOIN printings p ON p.card_id = fs.card_id
+        AND p.set_code = ${setCode}
+        AND p.is_foil = false
+      JOIN price_history ph ON ph.printing_id = p.id
+        AND ph.recorded_at = fs.first_date
+        AND ph.price_type = 'sell'
+      GROUP BY fs.card_id
+    ),
+    current_price AS (
+      SELECT
+        p.card_id,
+        MIN(sp.price_aud::numeric) AS price
+      FROM store_prices sp
+      JOIN printings p ON p.id = sp.printing_id
+      WHERE p.set_code = ${setCode}
+        AND sp.price_type = 'sell'
+        AND sp.in_stock = true
+        AND p.is_foil = false
+      GROUP BY p.card_id
+    ),
+    printing_info AS (
+      SELECT DISTINCT ON (card_id)
+        card_id,
+        rarity,
+        image_uri
+      FROM printings
+      WHERE set_code = ${setCode} AND is_foil = false
+      ORDER BY card_id, released_at ASC
+    )
+    SELECT
+      c.id AS card_id,
+      c.name,
+      c.slug,
+      pi.rarity,
+      pi.image_uri,
+      fp.price::text AS first_price,
+      cp.price::text AS current_price,
+      CASE
+        WHEN fp.price > 0
+        THEN ROUND(((cp.price - fp.price) / fp.price * 100)::numeric, 1)::text
+        ELSE NULL
+      END AS pct_change
+    FROM first_price fp
+    JOIN current_price cp ON cp.card_id = fp.card_id
+    JOIN cards c ON c.id = fp.card_id
+    JOIN printing_info pi ON pi.card_id = fp.card_id
+    ORDER BY
+      CASE WHEN fp.price > 0 THEN (cp.price - fp.price) / fp.price END DESC NULLS LAST
+  `;
+}
+
+export type SetRarityBreakdown = {
+  rarity: string;
+  card_count: number;
+  avg_price: string | null;
+  total_value: string | null;
+};
+
+/** Value distribution by rarity for in-stock non-foil cards. */
+export async function getSetRarityBreakdown(setCode: string): Promise<SetRarityBreakdown[]> {
+  return sql<SetRarityBreakdown[]>`
+    WITH card_prices AS (
+      SELECT
+        p.card_id,
+        p.rarity,
+        MIN(sp.price_aud::numeric) AS min_price
+      FROM printings p
+      JOIN store_prices sp ON sp.printing_id = p.id
+      WHERE p.set_code = ${setCode}
+        AND p.is_foil = false
+        AND sp.in_stock = true
+        AND sp.price_type = 'sell'
+      GROUP BY p.card_id, p.rarity
+    )
+    SELECT
+      rarity,
+      COUNT(*)::int AS card_count,
+      AVG(min_price)::text AS avg_price,
+      SUM(min_price)::text AS total_value
+    FROM card_prices
+    GROUP BY rarity
+    ORDER BY CASE rarity
+      WHEN 'mythic' THEN 1
+      WHEN 'rare' THEN 2
+      WHEN 'uncommon' THEN 3
+      WHEN 'common' THEN 4
+      ELSE 5
+    END
+  `;
+}
+
+export type SetStoreComparison = {
+  store_id: string;
+  store_name: string;
+  in_stock_count: number;
+  avg_price: string | null;
+  unique_cards: number;
+};
+
+/** Per-store inventory and price stats for a set. */
+export async function getSetStoreComparison(setCode: string): Promise<SetStoreComparison[]> {
+  return sql<SetStoreComparison[]>`
+    SELECT
+      s.id AS store_id,
+      s.name AS store_name,
+      COUNT(sp.id) FILTER (WHERE sp.in_stock = true)::int AS in_stock_count,
+      AVG(sp.price_aud::numeric) FILTER (WHERE sp.in_stock = true)::text AS avg_price,
+      COUNT(DISTINCT p.card_id) FILTER (WHERE sp.in_stock = true)::int AS unique_cards
+    FROM store_prices sp
+    JOIN printings p ON p.id = sp.printing_id
+    JOIN stores s ON s.id = sp.store_id
+    WHERE p.set_code = ${setCode}
+      AND sp.price_type = 'sell'
+      AND p.is_foil = false
+    GROUP BY s.id, s.name
+    HAVING COUNT(sp.id) FILTER (WHERE sp.in_stock = true) > 0
+    ORDER BY AVG(sp.price_aud::numeric) FILTER (WHERE sp.in_stock = true) ASC NULLS LAST
+  `;
+}
+
 export async function getCardSlugsForSitemap(): Promise<{ slug: string; updated_at: Date }[]> {
   return sql<{ slug: string; updated_at: Date }[]>`
     SELECT slug, updated_at
