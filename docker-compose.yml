@@ -2,6 +2,7 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    shm_size: 256mb
     environment:
       POSTGRES_DB: mtg_tracker
       POSTGRES_USER: mtg

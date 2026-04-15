@@ -3,7 +3,21 @@
 import { useState, type SyntheticEvent } from "react";
 import { RARITY_FILTER, RARITY_FALLBACK_COLOR } from "@/lib/rarity";
 
-export function SetSymbol({ setCode, setName, rarity }: { setCode: string; setName: string; rarity: string }) {
+interface SetSymbolProps {
+  setCode: string;
+  setName: string;
+  rarity?: string;
+  size?: number;
+  className?: string;
+}
+
+export function SetSymbol({
+  setCode,
+  setName,
+  rarity = "rare",
+  size = 18,
+  className = "shrink-0",
+}: SetSymbolProps) {
   const [failed, setFailed] = useState(false);
   const color = RARITY_FALLBACK_COLOR[rarity] ?? RARITY_FALLBACK_COLOR.common;
 
@@ -14,7 +28,10 @@ export function SetSymbol({ setCode, setName, rarity }: { setCode: string; setNa
 
   if (failed) {
     return (
-      <span style={{ color, fontSize: 14, width: 18, textAlign: "center", display: "inline-block" }} title={setName}>
+      <span
+        style={{ color, fontSize: size * 0.8, width: size, textAlign: "center", display: "inline-block" }}
+        title={setName}
+      >
         ❖
       </span>
     );
@@ -25,9 +42,9 @@ export function SetSymbol({ setCode, setName, rarity }: { setCode: string; setNa
     <img
       src={`https://svgs.scryfall.io/sets/${setCode}.svg`}
       alt={setName}
-      width={18}
-      height={18}
-      className="shrink-0"
+      width={size}
+      height={size}
+      className={className}
       style={{ filter: RARITY_FILTER[rarity] ?? RARITY_FILTER.common }}
       loading="lazy"
       onError={onError}

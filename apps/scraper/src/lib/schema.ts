@@ -1,6 +1,7 @@
 /**
  * Database schema — defines all tables using Drizzle ORM.
  *
+ *   sets            — one row per Scryfall set (set_code PK, set_type, parent_set_code)
  *   cards           — one row per unique MTG game object (oracle_id)
  *   printings       — one row per physical card version (scryfall card id)
  *   stores          — Australian retailers + eBay AU
@@ -25,11 +26,28 @@ import {
   serial,
   integer,
   date,
+  numeric,
 } from "drizzle-orm/pg-core";
 // Note: price_history is a PARTITIONED table (RANGE by recorded_at, monthly).
 // Drizzle does not model the partition structure — it sees the parent table only.
 // The id column was dropped as part of partitioning; natural key is
 // (printing_id, store_id, price_type, recorded_at).
+
+// ─── Sets ─────────────────────────────────────────────────────────────────────
+// One row per Scryfall set, populated by the Sets API during bulk import.
+// parent_set_code links child releases (Commander decks, Secret Lairs, promos)
+// back to their parent expansion. NULL = root set.
+
+export const sets = pgTable("sets", {
+  setCode: text("set_code").primaryKey(),                  // e.g. "ecl", "pecl"
+  setName: text("set_name").notNull(),
+  setType: text("set_type"),                               // nullable until first Scryfall import
+  parentSetCode: text("parent_set_code"),                  // NULL = root set
+  releasedAt: date("released_at").notNull(),
+  cardCount: integer("card_count").notNull().default(0),
+  iconSvgUri: text("icon_svg_uri"),
+  setValueAud: numeric("set_value_aud"),                   // updated after each nightly store scrape
+});
 
 // ─── Cards ────────────────────────────────────────────────────────────────────
 // One row per unique game object, keyed by Scryfall oracle_id.

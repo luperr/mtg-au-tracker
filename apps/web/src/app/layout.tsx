@@ -82,6 +82,7 @@ export default function RootLayout({
                 <span className="sm:hidden">© {new Date().getFullYear()} Scrymarket</span>
               </p>
               <nav className="flex flex-wrap gap-x-3 gap-y-1">
+                <a href="/sets" className="hover:text-accent transition-colors">Sets</a>
                 <a href="/about" className="hover:text-accent transition-colors">About</a>
                 <a href="/faq" className="hover:text-accent transition-colors">FAQ</a>
                 <a href="/contact" className="hover:text-accent transition-colors">Contact</a>

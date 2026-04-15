@@ -1,17 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CardMagnifier, HoverCardPopup } from "./CardMagnifier";
+import { CardThumb } from "./CardThumb";
 import { ColorSymbols } from "./ColorSymbols";
 import { TrendBadge } from "./TrendBadge";
-import { ViewToggle } from "./ViewToggle";
-import { useViewPreference } from "@/lib/hooks/useViewPreference";
+import { useViewPreference, type ViewMode } from "@/lib/hooks/useViewPreference";
 import { fmtAUD, cardHref, toSmallImage, trackEvent } from "@/lib/utils";
 import { MTG_CARD_ASPECT_RATIO } from "@/lib/config";
 import { useWantList } from "@/app/WantListContext";
 import type { CardSearchResult } from "@/lib/db";
 
-// ── Shared want-list button ───────────────────────────────────────────────────
+declare global {
+  interface Window {
+    umami?: { track: (event: string, data?: Record<string, unknown>) => void };
+  }
+}
+
 
 function AddToWantListButton({ card }: { card: CardSearchResult }) {
   const { items, addItem } = useWantList();
@@ -75,6 +79,30 @@ function AddToWantListButton({ card }: { card: CardSearchResult }) {
   );
 }
 
+function SearchViewToggle({ view, onChange }: { view: ViewMode; onChange: (v: ViewMode) => void }) {
+  const options: { mode: ViewMode; label: string; title: string }[] = [
+    { mode: "grid", label: "⊞", title: "Grid view" },
+    { mode: "card", label: "▤", title: "Card view" },
+    { mode: "text", label: "☰", title: "Text view" },
+  ];
+  return (
+    <div className="flex items-center gap-0.5 rounded-lg border border-subtle bg-muted p-0.5">
+      {options.map(({ mode, label, title }) => (
+        <button
+          key={mode}
+          onClick={() => onChange(mode)}
+          title={title}
+          className={`rounded px-2 py-1 text-sm transition-colors ${
+            view === mode ? "bg-surface text-cream shadow-sm" : "text-cream-dim/50 hover:text-cream-dim"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ── View 1: Image grid ────────────────────────────────────────────────────────
 // Card art dominant, dynamic responsive grid, name + price + want-list below.
 
@@ -135,7 +163,6 @@ function GridCard({ card }: { card: CardSearchResult }) {
 // ── View 2: Card rows (thumbnail + info) ──────────────────────────────────────
 
 function CardRow({ card }: { card: CardSearchResult }) {
-  const thumb = toSmallImage(card.image_uri);
   return (
     <div className="relative flex items-center rounded-lg border border-subtle bg-surface hover:border-accent hover:bg-muted transition-colors overflow-hidden">
       <a
@@ -144,13 +171,12 @@ function CardRow({ card }: { card: CardSearchResult }) {
         className="flex flex-1 items-center gap-3 min-w-0 pr-14"
       >
         {/* Thumbnail */}
-        <div className="shrink-0 w-[44px] h-[61px] sm:w-[63px] sm:h-[88px] bg-muted overflow-hidden">
-          {thumb && card.image_uri ? (
-            <CardMagnifier smallSrc={thumb} largeSrc={card.image_uri} alt={card.name} />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-cream-dim/40 text-xs">?</div>
-          )}
-        </div>
+        <CardThumb
+          imageUri={card.image_uri}
+          alt={card.name}
+          className="w-[44px] h-[61px] sm:w-[63px] sm:h-[88px]"
+          delayMs={0}
+        />
 
         {/* Info */}
         <div className="flex flex-1 items-center justify-between gap-2 min-w-0">
@@ -201,13 +227,7 @@ function TextRow({ card }: { card: CardSearchResult }) {
           <ColorSymbols colors={card.colors} size={11} />
         </div>
         <div className="flex-1 min-w-0">
-          {card.image_uri ? (
-            <HoverCardPopup imageSrc={card.image_uri} alt={card.name} delay={500}>
-              <span className="font-medium text-cream">{card.name}</span>
-            </HoverCardPopup>
-          ) : (
-            <span className="font-medium text-cream">{card.name}</span>
-          )}
+          <span className="font-medium text-cream">{card.name}</span>
           <span className="ml-2 text-xs text-cream-dim/60 hidden sm:inline">{card.type_line}</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -285,7 +305,7 @@ export function SearchResults({ initialResults, query, initialHasMore, totalCoun
         <p className="text-sm text-cream-dim/70">
           {totalCount} result{totalCount !== 1 ? "s" : ""}
         </p>
-        <ViewToggle view={view} onChange={setView} />
+        <SearchViewToggle view={view} onChange={setView} />
       </div>
 
       {/* Grid view */}

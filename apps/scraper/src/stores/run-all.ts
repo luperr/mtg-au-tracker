@@ -26,6 +26,7 @@ import { SHOPIFY_STORES } from "./shopify-stores.config.js";
 import { seedStores } from "../seed.js";
 import type { BaseScraper } from "./base-scraper.js";
 import type { ScrapedCard } from "@mtg-au/shared";
+import { updateSetValues } from "./update-set-values.js";
 import { logger } from "../lib/logger.js";
 
 const log = logger.child({ component: "run-all" });
@@ -197,7 +198,12 @@ export async function runAllStores(): Promise<void> {
     }
   }
 
-  log.info("All stores done");
+  log.info("All stores done — computing set values");
+  try {
+    await updateSetValues();
+  } catch (err) {
+    log.error({ err }, "Set value update failed (non-fatal)");
+  }
 }
 
 // Only run when invoked directly (pnpm scrape:stores), not when imported by index.ts
