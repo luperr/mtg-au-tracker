@@ -1,8 +1,9 @@
 import { searchCards, countCards } from "@/lib/db";
-import { SEARCH_PAGE_SIZE, CACHE_REVALIDATE_HOUR } from "@/lib/config";
+import { SEARCH_PAGE_SIZE } from "@/lib/config";
 import { SearchResults } from "./SearchResults";
 
-export const revalidate = CACHE_REVALIDATE_HOUR;
+// Next.js route segment config — must be a static literal, not an imported variable
+export const revalidate = 3600;
 
 function LandingSearchForm() {
   return (
