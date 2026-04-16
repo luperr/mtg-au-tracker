@@ -34,6 +34,7 @@ import { searchEbayByCardName } from "./browse-client.js";
 import { transformEbayItem } from "./transform.js";
 import type { EbayItemSummary } from "./browse-client.js";
 import { logger } from "../lib/logger.js";
+import { computeMarketStats } from "../market/compute-market-stats.js";
 
 const log = logger.child({ component: "ebay-import" });
 
@@ -335,6 +336,14 @@ export async function runEbayImport(): Promise<void> {
     },
     "eBay import complete",
   );
+
+  // Trigger market stats immediately after eBay data lands — belt-and-suspenders
+  // alongside the 7 AM cron in case eBay finishes early or is re-run manually.
+  try {
+    await computeMarketStats();
+  } catch (err) {
+    log.error({ err }, "Market stats computation failed after eBay import (non-fatal)");
+  }
 }
 
 // ── Run directly ──────────────────────────────────────────────────────────────
