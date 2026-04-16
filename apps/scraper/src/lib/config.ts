@@ -15,6 +15,7 @@ export const CRON_TIMEZONE = "Australia/Sydney";
 export const CRON_SCRYFALL = process.env.SCRAPE_CRON_SCRYFALL ?? "0 3 * * *";
 export const CRON_STORES = process.env.SCRAPE_CRON_STORES ?? "0 5 * * *";
 export const CRON_EBAY = process.env.SCRAPE_CRON_EBAY ?? "0 6 * * *";
+export const CRON_MARKET = process.env.SCRAPE_CRON_MARKET ?? "0 7 * * *"; // fallback after eBay import
 
 // ── Batch processing ─────────────────────────────────────────────────────────
 

@@ -3,7 +3,9 @@
  *
  * Schedules:
  *   3 AM daily → Scryfall bulk import (refreshes card/printing data + USD prices)
- *   5 AM daily → Store scrapers (MTG Mate, Good Games) → writes to store_prices + price_history
+ *   5 AM daily → Store scrapers → writes to store_prices + price_history
+ *   6 AM daily → eBay AU import → writes to store_prices + price_history
+ *   7 AM daily → Market stats computation (scrymarket prices, movers, set values)
  *
  * On startup: if the cards table is empty, runs the Scryfall import immediately
  * so the service is usable without a manual bootstrap step.
@@ -12,10 +14,11 @@
 import cron from "node-cron";
 import { count } from "drizzle-orm";
 import { db, schema } from "./lib/db.js";
-import { CRON_TIMEZONE, CRON_SCRYFALL, CRON_STORES, CRON_EBAY } from "./lib/config.js";
+import { CRON_TIMEZONE, CRON_SCRYFALL, CRON_STORES, CRON_EBAY, CRON_MARKET } from "./lib/config.js";
 import { runScryfallImport } from "./scryfall/bulk-import.js";
 import { runAllStores } from "./stores/run-all.js";
 import { runEbayImport } from "./ebay/ebay-import.js";
+import { computeMarketStats } from "./market/compute-market-stats.js";
 import { logger } from "./lib/logger.js";
 
 const log = logger.child({ component: "scheduler" });
@@ -64,8 +67,17 @@ async function main(): Promise<void> {
     }
   }, cronOptions);
 
+  cron.schedule(CRON_MARKET, async () => {
+    log.info("Market cron — computing market stats");
+    try {
+      await computeMarketStats();
+    } catch (err) {
+      log.error({ err }, "Market stats computation failed");
+    }
+  }, cronOptions);
+
   log.info(
-    { scryfall: CRON_SCRYFALL, stores: CRON_STORES, ebay: CRON_EBAY, tz: CRON_TIMEZONE },
+    { scryfall: CRON_SCRYFALL, stores: CRON_STORES, ebay: CRON_EBAY, market: CRON_MARKET, tz: CRON_TIMEZONE },
     "Cron jobs scheduled. Service running.",
   );
 }

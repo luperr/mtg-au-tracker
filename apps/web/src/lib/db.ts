@@ -1,5 +1,5 @@
 import postgres from "postgres";
-import { SEARCH_PAGE_SIZE, TREND_UP_THRESHOLD, TREND_DOWN_THRESHOLD } from "./config.js";
+import { SEARCH_PAGE_SIZE } from "./config.js";
 
 // Connection is cached at module scope — Next.js may hot-reload in dev,
 // so we attach to globalThis to avoid exhausting the connection pool.
@@ -81,57 +81,12 @@ export async function searchCards(query: string, offset = 0): Promise<CardSearch
         ORDER BY p2.released_at DESC
         LIMIT 1
       ) AS image_uri,
-      (
-        SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY sp2.price_aud::numeric)
-        FROM store_prices sp2
-        WHERE sp2.printing_id = (
-          SELECT p3.id FROM printings p3
-          JOIN store_prices sp3 ON sp3.printing_id = p3.id
-            AND sp3.in_stock = true AND sp3.price_type = 'sell'
-          WHERE p3.card_id = c.id
-          GROUP BY p3.id
-          ORDER BY MIN(sp3.price_aud::numeric) ASC
-          LIMIT 1
-        )
-        AND sp2.in_stock = true AND sp2.price_type = 'sell'
-      ) AS scrymarket_price,
-      (
-        WITH best_p AS (
-          SELECT p3.id AS pid FROM printings p3
-          JOIN store_prices sp3 ON sp3.printing_id = p3.id
-            AND sp3.in_stock = true AND sp3.price_type = 'sell'
-          WHERE p3.card_id = c.id
-          GROUP BY p3.id
-          ORDER BY MIN(sp3.price_aud::numeric) ASC
-          LIMIT 1
-        ),
-        curr AS (
-          SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY sp2.price_aud::numeric) AS price
-          FROM best_p
-          JOIN store_prices sp2 ON sp2.printing_id = best_p.pid
-            AND sp2.in_stock = true AND sp2.price_type = 'sell'
-        ),
-        hist AS (
-          SELECT AVG(ph.price_aud::numeric) AS price
-          FROM best_p
-          JOIN price_history ph ON ph.printing_id = best_p.pid
-            AND ph.price_type = 'sell'
-          WHERE ph.recorded_at = (
-            SELECT MAX(ph2.recorded_at) FROM price_history ph2
-            WHERE ph2.printing_id = best_p.pid AND ph2.price_type = 'sell'
-          )
-        )
-        SELECT CASE
-          WHEN hist.price IS NULL THEN NULL
-          WHEN curr.price > hist.price * ${TREND_UP_THRESHOLD} THEN 'up'
-          WHEN curr.price < hist.price * ${TREND_DOWN_THRESHOLD} THEN 'down'
-          ELSE 'neutral'
-        END FROM curr, hist
-      ) AS trend
+      c.scrymarket_price::text AS scrymarket_price,
+      c.price_trend AS trend
     FROM cards c
     LEFT JOIN printings p ON p.card_id = c.id
     WHERE c.name ILIKE ${"%" + query + "%"}
-    GROUP BY c.id, c.name, c.type_line, c.colors
+    GROUP BY c.id, c.name, c.type_line, c.colors, c.scrymarket_price, c.price_trend
     ORDER BY c.name
     LIMIT ${PAGE_SIZE} OFFSET ${offset}
   `;
@@ -147,32 +102,7 @@ export async function countCards(query: string): Promise<number> {
 
 export async function getCardTrend(cardId: string): Promise<"up" | "down" | "neutral" | null> {
   const rows = await sql<{ trend: string | null }[]>`
-    WITH curr AS (
-      SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY sp.price_aud::numeric) AS price
-      FROM printings p
-      JOIN store_prices sp ON sp.printing_id = p.id AND sp.in_stock = true AND sp.price_type = 'sell'
-      WHERE p.card_id = ${cardId}
-    ),
-    hist AS (
-      SELECT AVG(ph.price_aud::numeric) AS price
-      FROM price_history ph
-      JOIN printings p ON p.id = ph.printing_id
-      WHERE p.card_id = ${cardId}
-        AND ph.price_type = 'sell'
-        AND ph.recorded_at = (
-          SELECT MAX(ph2.recorded_at)
-          FROM price_history ph2
-          JOIN printings p2 ON p2.id = ph2.printing_id
-          WHERE p2.card_id = ${cardId} AND ph2.price_type = 'sell'
-        )
-    )
-    SELECT CASE
-      WHEN hist.price IS NULL OR curr.price IS NULL THEN NULL
-      WHEN curr.price > hist.price * 1.01 THEN 'up'
-      WHEN curr.price < hist.price * 0.99 THEN 'down'
-      ELSE 'neutral'
-    END AS trend
-    FROM curr, hist
+    SELECT price_trend AS trend FROM cards WHERE id = ${cardId}
   `;
   return (rows[0]?.trend ?? null) as "up" | "down" | "neutral" | null;
 }
@@ -307,86 +237,26 @@ export type TopMover = {
 };
 
 /**
- * Top 3 price gainers and top 3 losers globally over the last `days` days.
- * Baseline price ≥ $2 to filter noise. Scans a (days + 14) day lookback window.
+ * Top 3 price gainers and top 3 losers for the given window.
+ * Results are pre-computed nightly by the market stats task — this is a
+ * trivial 18-row lookup on market_movers.
  */
 export async function getTopMovers(days: number): Promise<TopMover[]> {
   return sql<TopMover[]>`
-    WITH baseline AS (
-      SELECT DISTINCT ON (p.card_id)
-        p.card_id,
-        ph.price_aud::numeric AS price
-      FROM price_history ph
-      JOIN printings p ON p.id = ph.printing_id
-      JOIN store_prices sp_check ON sp_check.printing_id = ph.printing_id
-        AND sp_check.store_id = ph.store_id
-        AND sp_check.in_stock = true
-        AND sp_check.price_type = 'sell'
-      WHERE p.is_foil = false
-        AND ph.price_type = 'sell'
-        AND ph.recorded_at >= NOW() - (${days} * INTERVAL '1 day')
-      ORDER BY p.card_id, ph.recorded_at ASC
-    ),
-    current_price AS (
-      SELECT
-        p.card_id,
-        MIN(sp.price_aud::numeric) AS price,
-        (
-          SELECT p2.set_code FROM store_prices sp2
-          JOIN printings p2 ON p2.id = sp2.printing_id
-          WHERE p2.card_id = p.card_id
-            AND p2.is_foil = false
-            AND sp2.in_stock = true
-            AND sp2.price_type = 'sell'
-          ORDER BY sp2.price_aud ASC LIMIT 1
-        ) AS set_code
-      FROM store_prices sp
-      JOIN printings p ON p.id = sp.printing_id
-      WHERE p.is_foil = false
-        AND sp.in_stock = true
-        AND sp.price_type = 'sell'
-      GROUP BY p.card_id
-    ),
-    movers AS (
-      SELECT
-        cp.set_code,
-        b.card_id,
-        b.price AS start_price,
-        cp.price AS current_price,
-        ROUND(((cp.price - b.price) / b.price * 100)::numeric, 1) AS pct_change
-      FROM baseline b
-      JOIN current_price cp ON cp.card_id = b.card_id
-      WHERE b.price >= 2.0
-        AND cp.set_code IS NOT NULL
-        AND cp.price != b.price
-    )
-    (
-      SELECT m.card_id, m.set_code, s.set_name, c.name, c.slug,
-             (SELECT p2.image_uri FROM printings p2
-              WHERE p2.card_id = m.card_id AND p2.image_uri IS NOT NULL AND p2.is_foil = false
-              ORDER BY p2.released_at DESC LIMIT 1) AS image_uri,
-             m.start_price::text, m.current_price::text, m.pct_change::text,
-             'up' AS direction
-      FROM movers m
-      JOIN cards c ON c.id = m.card_id
-      JOIN sets s ON s.set_code = m.set_code
-      WHERE m.pct_change > 0
-      ORDER BY m.pct_change DESC LIMIT 3
-    )
-    UNION ALL
-    (
-      SELECT m.card_id, m.set_code, s.set_name, c.name, c.slug,
-             (SELECT p2.image_uri FROM printings p2
-              WHERE p2.card_id = m.card_id AND p2.image_uri IS NOT NULL AND p2.is_foil = false
-              ORDER BY p2.released_at DESC LIMIT 1) AS image_uri,
-             m.start_price::text, m.current_price::text, m.pct_change::text,
-             'down' AS direction
-      FROM movers m
-      JOIN cards c ON c.id = m.card_id
-      JOIN sets s ON s.set_code = m.set_code
-      WHERE m.pct_change < 0
-      ORDER BY m.pct_change ASC LIMIT 3
-    )
+    SELECT
+      card_id,
+      set_code,
+      set_name,
+      name,
+      slug,
+      image_uri,
+      start_price::text,
+      current_price::text,
+      pct_change::text,
+      direction
+    FROM market_movers
+    WHERE window_days = ${days}
+    ORDER BY direction, rank
   `;
 }
 

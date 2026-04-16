@@ -66,6 +66,8 @@ export const cards = pgTable(
     colorIdentity: text("color_identity").array().notNull().default([]),
     legalities: jsonb("legalities").notNull().default({}),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    scrymarketPrice: numeric("scrymarket_price"),              // pre-computed nightly: median sell price of cheapest printing
+    priceTrend: text("price_trend"),                           // pre-computed nightly: 'up' | 'down' | 'neutral' | null
   },
   (table) => [
     index("cards_name_idx").on(table.name),                // fast name lookups
@@ -221,5 +223,32 @@ export const cardSearches = pgTable(
   (table) => [
     index("card_searches_card_id_idx").on(table.cardId),
     index("card_searches_searched_at_idx").on(table.searchedAt),
+  ]
+);
+
+// ─── Market Movers ────────────────────────────────────────────────────────────
+// Pre-computed top 3 price gainers and losers for 7 / 14 / 30 day windows.
+// Always exactly 18 rows. TRUNCATE + INSERT inside a transaction on each nightly run.
+
+export const marketMovers = pgTable(
+  "market_movers",
+  {
+    id: serial("id").primaryKey(),
+    windowDays: integer("window_days").notNull(),       // 7 | 14 | 30
+    direction: text("direction").notNull(),              // 'up' | 'down'
+    rank: integer("rank").notNull(),                     // 1 | 2 | 3
+    cardId: text("card_id").notNull().references(() => cards.id),
+    setCode: text("set_code").notNull(),
+    setName: text("set_name").notNull(),
+    name: text("name").notNull(),
+    slug: text("slug"),
+    imageUri: text("image_uri"),
+    startPrice: numeric("start_price").notNull(),
+    currentPrice: numeric("current_price").notNull(),
+    pctChange: numeric("pct_change").notNull(),
+    computedAt: timestamp("computed_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("market_movers_unique_idx").on(table.windowDays, table.direction, table.rank),
   ]
 );
