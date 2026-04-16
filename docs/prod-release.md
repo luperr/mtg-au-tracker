@@ -37,6 +37,11 @@ docker compose -f docker-compose.prod.yml logs scraper --tail=50
 Run the migration **before** restarting services. A running web container will
 continue serving the old schema while the migration applies cleanly.
 
+> **Important:** `db:migrate` uses whatever migration files are baked into the
+> running scraper image. If this release **modifies an existing migration file**
+> (not just adds a new one), rebuild the scraper image first so `db:migrate`
+> picks up the fixed files — then proceed as normal.
+
 ```bash
 cd /opt/mtg-au-tracker
 
@@ -140,6 +145,41 @@ docker compose -f docker-compose.prod.yml logs scraper --since 5m | grep -i erro
 ---
 
 ## Specific releases
+
+### Market stats pre-computation (migration 0010)
+
+This adds `scrymarket_price` and `price_trend` to `cards`, and creates the
+`market_movers` table. The `market_movers` table and `cards` columns are NULL
+until `compute:market-stats` runs after deploy.
+
+Because migration 0010 itself was fixed in this release (idempotent SQL +
+corrected journal timestamp), `db:migrate` must be run from the **new** image:
+
+```bash
+# Build first, then migrate
+docker compose -f docker-compose.prod.yml build scraper
+docker compose -f docker-compose.prod.yml run --rm scraper \
+  pnpm --filter @mtg-au/scraper db:migrate
+
+# Then rebuild web and start everything
+docker compose -f docker-compose.prod.yml build web
+docker compose -f docker-compose.prod.yml up -d
+
+# Populate pre-computed market stats immediately
+docker compose -f docker-compose.prod.yml run --rm scraper \
+  pnpm --filter @mtg-au/scraper compute:market-stats
+```
+
+Verify:
+```bash
+docker compose -f docker-compose.prod.yml exec db \
+  psql -U mtg -d mtg_tracker -c \
+  "SELECT COUNT(*) AS cards_with_price FROM cards WHERE scrymarket_price IS NOT NULL;
+   SELECT COUNT(*) AS movers FROM market_movers;"
+# Expected: ~30k cards_with_price, 18 movers
+```
+
+---
 
 ### set_value_aud column (migration 0009)
 
