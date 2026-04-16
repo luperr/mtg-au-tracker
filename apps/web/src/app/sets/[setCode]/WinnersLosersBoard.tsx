@@ -66,7 +66,7 @@ function CardRow({
         <div className="mt-1 h-1 rounded-full bg-subtle/50 overflow-hidden">
           <div
             className={`h-full rounded-full transition-all ${
-              isGainer ? "bg-red-500/70" : "bg-green-500/70"
+              isGainer ? "bg-green-500/70" : "bg-red-500/70"
             }`}
             style={{ width: `${barWidth}%` }}
           />
@@ -76,7 +76,7 @@ function CardRow({
       <div className="text-right shrink-0">
         <div
           className={`text-xs font-bold ${
-            isGainer ? "text-red-400" : "text-green-400"
+            isGainer ? "text-green-400" : "text-red-400"
           }`}
         >
           {pct != null
@@ -133,9 +133,9 @@ export function WinnersLosersBoard({
   return (
     <div className="grid sm:grid-cols-2 gap-4">
       {/* Gainers */}
-      <div className="rounded-xl border border-red-900/30 bg-surface overflow-hidden">
-        <div className="px-3 py-2 border-b border-red-900/20 bg-red-900/10 flex items-center gap-2">
-          <span className="text-red-400 font-bold text-sm">↑</span>
+      <div className="rounded-xl border border-green-900/30 bg-surface overflow-hidden">
+        <div className="px-3 py-2 border-b border-green-900/20 bg-green-900/10 flex items-center gap-2">
+          <span className="text-green-400 font-bold text-sm">↑</span>
           <span className="text-xs font-semibold text-cream">
             Biggest Gainers
           </span>
@@ -157,9 +157,9 @@ export function WinnersLosersBoard({
       </div>
 
       {/* Losers */}
-      <div className="rounded-xl border border-green-900/30 bg-surface overflow-hidden">
-        <div className="px-3 py-2 border-b border-green-900/20 bg-green-900/10 flex items-center gap-2">
-          <span className="text-green-400 font-bold text-sm">↓</span>
+      <div className="rounded-xl border border-red-900/30 bg-surface overflow-hidden">
+        <div className="px-3 py-2 border-b border-red-900/20 bg-red-900/10 flex items-center gap-2">
+          <span className="text-red-400 font-bold text-sm">↓</span>
           <span className="text-xs font-semibold text-cream">
             Biggest Drops
           </span>
