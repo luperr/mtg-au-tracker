@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { TopMover } from "@/lib/db";
 import { cardHref } from "@/lib/utils";
 import { CardThumb } from "@/app/CardThumb";
@@ -72,7 +72,7 @@ function Leaderboard({ movers, direction }: { movers: TopMover[]; direction: "up
   );
 }
 
-function WindowToggle({ value, onChange }: { value: Window; onChange: (w: Window) => void }) {
+function WindowToggle({ value, onChange, loading }: { value: Window; onChange: (w: Window) => void; loading: boolean }) {
   const options: Window[] = [7, 14, 30];
   return (
     <div className="flex items-center rounded-md border border-subtle overflow-hidden">
@@ -80,6 +80,7 @@ function WindowToggle({ value, onChange }: { value: Window; onChange: (w: Window
         <button
           key={w}
           onClick={() => onChange(w)}
+          disabled={loading}
           className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
             value === w
               ? "bg-accent/20 text-accent"
@@ -93,18 +94,36 @@ function WindowToggle({ value, onChange }: { value: Window; onChange: (w: Window
   );
 }
 
-export function MarketPulse({
-  movers7,
-  movers14,
-  movers30,
-}: {
-  movers7: TopMover[];
-  movers14: TopMover[];
-  movers30: TopMover[];
-}) {
+export function MarketPulse({ initialMovers }: { initialMovers: TopMover[] }) {
   const [window, setWindow] = useState<Window>(7);
-  const movers = window === 7 ? movers7 : window === 14 ? movers14 : movers30;
+  const [loading, setLoading] = useState(false);
+  const cache = useRef<Partial<Record<Window, TopMover[]>>>({ 7: initialMovers });
 
+  useEffect(() => {
+    // Prefetch 14d and 30d in the background on mount
+    for (const w of [14, 30] as const) {
+      if (cache.current[w]) continue;
+      fetch(`/api/top-movers?days=${w}`)
+        .then((r) => r.json())
+        .then((data: TopMover[]) => { cache.current[w] = data; })
+        .catch(() => { /* silently ignore — user sees loading state if they switch */ });
+    }
+  }, []);
+
+  async function handleWindowChange(w: Window) {
+    setWindow(w);
+    if (cache.current[w]) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/top-movers?days=${w}`);
+      const data: TopMover[] = await res.json();
+      cache.current[w] = data;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const movers: TopMover[] = cache.current[window] ?? [];
   const up = movers.filter((m) => m.direction === "up");
   const down = movers.filter((m) => m.direction === "down");
   const hasData = up.length > 0 || down.length > 0;
@@ -115,10 +134,12 @@ export function MarketPulse({
         <div>
           <h1 className="text-lg font-bold text-cream">Big movers</h1>
         </div>
-        <WindowToggle value={window} onChange={setWindow} />
+        <WindowToggle value={window} onChange={handleWindowChange} loading={loading} />
       </div>
 
-      {!hasData ? (
+      {loading ? (
+        <div className="py-4 text-center text-cream-dim/40 text-sm">Loading…</div>
+      ) : !hasData ? (
         <p className="text-sm text-cream-dim/40 py-2">
           Not enough price history yet — check back after a few scrape runs.
         </p>

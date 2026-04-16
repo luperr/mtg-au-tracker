@@ -2,6 +2,7 @@ export const revalidate = 3600;
 
 import type { Metadata } from "next";
 import { getSetList, getTopMovers } from "@/lib/db";
+// getTopMovers imported for 7d initial load only; 14d/30d are lazy-fetched client-side
 import { SetsListClient } from "./SetsListClient";
 import { MarketPulse } from "./MarketPulse";
 
@@ -17,17 +18,14 @@ export default async function SetsPage({
 }) {
   const { all } = await searchParams;
   const showAll = all === "1";
-  const sets = await getSetList(showAll ? 20 : 2);
-
-  const [movers7, movers14, movers30] = await Promise.all([
+  const [sets, movers7] = await Promise.all([
+    getSetList(showAll ? 20 : 2),
     getTopMovers(7),
-    getTopMovers(14),
-    getTopMovers(30),
   ]);
 
   return (
     <div className="max-w-4xl mx-auto">
-      <MarketPulse movers7={movers7} movers14={movers14} movers30={movers30} />
+      <MarketPulse initialMovers={movers7} />
 
       {sets.length === 0 ? (
         <div className="text-center py-16 text-cream-dim/40 text-sm">
