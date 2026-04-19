@@ -274,6 +274,7 @@ Phases are gated — nothing from Phase N+1 starts until Phase N exit criteria a
 - [ ] MTG Mate set code cache — save valid codes to `data/mtgmate-valid-sets.json`, weekly full rescan (~30 min → ~3 min)
 - [ ] Live AUD/USD rate (RBA or Open Exchange Rates API) — replace static `AUD_USD_RATE` env var
 - [ ] eBay atomic swap — staging table → `TRUNCATE + INSERT` in transaction, eliminates zero-price window on interrupted runs
+- [ ] Scryfall import streaming — replace `readFile` + `JSON.parse` (peaks at ~2GB heap) with a streaming JSON parser (e.g. `node-json-stream-parser`) so the 300MB bulk file is processed incrementally; workaround is `NODE_OPTIONS=--max-old-space-size=4096` in scraper env
 - [ ] GitHub Actions CI — typecheck + `pnpm audit` + `pnpm test` on PR
 - [ ] Proxmox network hardening — move Docker LXC to vmbr1 (Services VLAN), SSH hardening + fail2ban, 2FA
 

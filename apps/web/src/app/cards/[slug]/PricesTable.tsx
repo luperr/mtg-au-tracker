@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import type { PrintingWithPrices } from "@/lib/db";
 import { useWantList } from "@/app/WantListContext";
 import { fmtAUD } from "@/lib/utils";
@@ -164,6 +164,27 @@ export function PricesTable({
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 10;
 
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleMouseEnter(uri: string | null, uriBack: string | null | undefined) {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => {
+      onHoverImage(uri, uriBack ?? null);
+    }, 500);
+  }
+
+  function handleMouseLeave() {
+    if (hoverTimer.current) {
+      clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
+    // Intentionally no reset — image stays on last-hovered printing
+  }
+
+  useEffect(() => () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+  }, []);
+
   const allStores = useMemo(() => {
     const s = new Set<string>();
     for (const p of printings) for (const pr of p.prices) s.add(pr.storeName);
@@ -238,6 +259,18 @@ export function PricesTable({
       }
     });
   }, [printings, inStockOnly, selectedVariants, selectedStores, selectedSets, sortBy]);
+
+  // When filters change, update the displayed image to the first visible printing
+  // (or defaultImage when no rows match). Depends on the filter state directly so
+  // it fires even when rows stays empty across two different filter combinations.
+  useEffect(() => {
+    const first = rows[0];
+    onHoverImage(
+      first?.printing.imageUri ?? defaultImage,
+      first?.printing.imageUriBack ?? null,
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inStockOnly, sortBy, selectedVariants, selectedStores, selectedSets]);
 
   const filtersNonDefault =
     !inStockOnly || selectedVariants.size > 0 || selectedStores.size > 0 || selectedSets.size > 0;
@@ -355,8 +388,8 @@ export function PricesTable({
                   <div
                     key={`m-${row.printing.id}-${row.storeName}-${i}`}
                     className="px-3 py-2.5 flex flex-col gap-1 hover:bg-muted transition-colors"
-                    onMouseEnter={() => onHoverImage(row.printing.imageUri, row.printing.imageUriBack)}
-                    onMouseLeave={() => onHoverImage(defaultImage, null)}
+                    onMouseEnter={() => handleMouseEnter(row.printing.imageUri, row.printing.imageUriBack)}
+                    onMouseLeave={handleMouseLeave}
                   >
                     {/* Line 1: Store + Price */}
                     <div className="flex items-center justify-between gap-2">
@@ -437,8 +470,8 @@ export function PricesTable({
                       <tr
                         key={`d-${row.printing.id}-${row.storeName}-${i}`}
                         className="border-b border-subtle/60 last:border-0 hover:bg-muted transition-colors cursor-default"
-                        onMouseEnter={() => onHoverImage(row.printing.imageUri, row.printing.imageUriBack)}
-                        onMouseLeave={() => onHoverImage(defaultImage, null)}
+                        onMouseEnter={() => handleMouseEnter(row.printing.imageUri, row.printing.imageUriBack)}
+                        onMouseLeave={handleMouseLeave}
                       >
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-2">
