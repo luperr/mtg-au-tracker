@@ -12,12 +12,22 @@ export function CardBreadcrumb({ cardName }: { cardName: string }) {
   const params = useSearchParams();
   const fromCode = params.get("from");
   const fromName = params.get("fromName");
+  const fromQuery = params.get("q");
 
   if (fromCode) {
     return (
       <Breadcrumb items={[
         { label: "Sets", href: "/sets" },
         { label: fromName ?? fromCode.toUpperCase(), href: `/sets/${fromCode}` },
+        { label: cardName },
+      ]} />
+    );
+  }
+
+  if (fromQuery) {
+    return (
+      <Breadcrumb items={[
+        { label: `"${fromQuery}"`, href: `/?q=${encodeURIComponent(fromQuery)}` },
         { label: cardName },
       ]} />
     );

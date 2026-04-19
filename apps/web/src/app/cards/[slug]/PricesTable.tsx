@@ -306,7 +306,7 @@ export function PricesTable({
         {/* Variant filter */}
         {availableVariants.length > 1 && (
           <Dropdown label={variantChipLabel} active={selectedVariants.size > 0} align="left" rounded>
-            <div className="py-1">
+            <div className="py-1 max-h-48 overflow-y-auto">
               {availableVariants.map((tag) => (
                 <OptionItem
                   key={tag}
@@ -328,7 +328,7 @@ export function PricesTable({
             align="left"
             rounded
           >
-            <div className="py-1">
+            <div className="py-1 max-h-48 overflow-y-auto">
               {allStores.map((store) => (
                 <OptionItem key={store} type="check" label={store} checked={selectedStores.has(store)} onClick={() => toggleInSet(setSelectedStores, store)} />
               ))}

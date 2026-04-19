@@ -11,10 +11,12 @@ export function cardHref(
   cardSlug: string | null | undefined,
   cardId: string,
   fromSet?: { code: string; name: string },
+  fromQuery?: string,
 ): string {
   const base = `/cards/${cardSlug ?? cardId}`;
-  if (!fromSet) return base;
-  return `${base}?from=${fromSet.code}&fromName=${encodeURIComponent(fromSet.name)}`;
+  if (fromSet) return `${base}?from=${fromSet.code}&fromName=${encodeURIComponent(fromSet.name)}`;
+  if (fromQuery) return `${base}?q=${encodeURIComponent(fromQuery)}`;
+  return base;
 }
 
 /**
