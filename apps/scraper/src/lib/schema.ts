@@ -92,6 +92,9 @@ export const printings = pgTable(
     collectorNumber: text("collector_number").notNull(),
     rarity: text("rarity").notNull(),
     isFoil: boolean("is_foil").notNull().default(false),
+    finish: text("finish").notNull().default("nonfoil"),           // "nonfoil" | "foil" | "etched"
+    borderColor: text("border_color"),                             // Scryfall border_color, nullable
+    frameEffects: text("frame_effects").array().notNull().default([]), // e.g. ["showcase"] | ["extendedart"]
     imageUri: text("image_uri"),
     imageUriBack: text("image_uri_back"),                    // back face for DFCs; null for normal cards
     scryfallUri: text("scryfall_uri").notNull(),

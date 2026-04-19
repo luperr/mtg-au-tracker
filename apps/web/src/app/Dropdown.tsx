@@ -7,11 +7,13 @@ export function Dropdown({
   label,
   active,
   align = "left",
+  rounded = false,
   children,
 }: {
   label: string;
   active?: boolean;
   align?: "left" | "right";
+  rounded?: boolean;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -19,15 +21,16 @@ export function Dropdown({
 
   useClickOutside(ref, open, () => setOpen(false));
 
+  const shape = rounded ? "rounded-full" : "rounded-lg";
+  const activeStyle = active
+    ? "border-accent bg-accent/10 text-accent-light"
+    : "border-subtle bg-muted/60 text-cream-dim hover:border-cream-dim/40 hover:text-cream";
+
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative shrink-0">
       <button
         onClick={() => setOpen(!open)}
-        className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
-          active
-            ? "border-accent-border bg-accent-muted text-accent-light"
-            : "border-subtle bg-muted text-cream-dim hover:text-cream hover:border-accent-border"
-        }`}
+        className={`flex items-center gap-1.5 ${shape} border px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${activeStyle}`}
       >
         {label}
         <span className="text-[9px] opacity-50">{open ? "▲" : "▼"}</span>

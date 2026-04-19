@@ -98,7 +98,14 @@ export function shouldSkip(title: string): boolean {
 
 // ── Foil detection ────────────────────────────────────────────────────────────
 
+const ETCHED_FOIL_PATTERN = /\betched\s*foil\b/i;
 const FOIL_PATTERN = /\bfoil\b/i;
+
+export function extractFinish(title: string): "nonfoil" | "foil" | "etched" {
+  if (ETCHED_FOIL_PATTERN.test(title)) return "etched";
+  if (FOIL_PATTERN.test(title)) return "foil";
+  return "nonfoil";
+}
 
 export function extractFoil(title: string): boolean {
   return FOIL_PATTERN.test(title);
@@ -443,7 +450,8 @@ export function transformEbayItem(item: EbayItemSummary): ScrapedCard | null {
   // Safety net: Browse API is already filtered to FIXED_PRICE, but guard here too
   if (!item.buyingOptions?.includes("FIXED_PRICE")) return null;
 
-  const isFoil = extractFoil(item.title);
+  const finish = extractFinish(item.title);
+  const isFoil = finish !== "nonfoil";
   const condition = extractCondition(item.title, item.condition ?? "");
   const setName = extractSetName(item.title);
   const rawName = extractCardName(item.title, setName);
@@ -460,6 +468,7 @@ export function transformEbayItem(item: EbayItemSummary): ScrapedCard | null {
     priceType: "sell",
     condition,
     isFoil,
+    finish,
     inStock: true,         // Active eBay listings are implicitly in stock
     sourceUrl: item.itemWebUrl,
     shippingCost: extractShipping(item),
