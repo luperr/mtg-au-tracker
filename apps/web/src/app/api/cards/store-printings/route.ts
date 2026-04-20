@@ -15,6 +15,9 @@ export async function GET(req: NextRequest) {
     collector_number: string;
     rarity: string;
     is_foil: boolean;
+    finish: string;
+    border_color: string | null;
+    frame_effects: string[];
     image_uri: string | null;
     price_aud: string;
     shipping_aud: string | null;
@@ -30,6 +33,9 @@ export async function GET(req: NextRequest) {
       p.collector_number,
       p.rarity,
       p.is_foil,
+      p.finish,
+      p.border_color,
+      p.frame_effects,
       p.image_uri,
       sp.price_aud,
       sp.shipping_aud,
@@ -54,6 +60,9 @@ export async function GET(req: NextRequest) {
       collectorNumber: r.collector_number,
       rarity: r.rarity,
       isFoil: r.is_foil,
+      finish: r.finish ?? (r.is_foil ? "foil" : "nonfoil"),
+      borderColor: r.border_color ?? null,
+      frameEffects: r.frame_effects ?? [],
       imageUri: r.image_uri,
       priceAud: parseFloat(r.price_aud),
       shippingAud: r.shipping_aud ? parseFloat(r.shipping_aud) : null,

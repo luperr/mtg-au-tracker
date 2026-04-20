@@ -25,6 +25,7 @@ type Listing = {
   setCode: string;
   rarity: string;
   isFoil: boolean;
+  finish: "nonfoil" | "foil" | "etched";
   imageUri: string | null;
 };
 
@@ -42,6 +43,7 @@ export type OptimizeAssignment = {
   setCode: string;
   rarity: string;
   isFoil: boolean;
+  finish: "nonfoil" | "foil" | "etched";
   imageUri: string | null;
 };
 
@@ -231,6 +233,7 @@ export async function POST(request: Request) {
     set_code: string;
     rarity: string;
     is_foil: boolean;
+    finish: string;
     image_uri: string | null;
   }[]>`
     SELECT
@@ -246,6 +249,7 @@ export async function POST(request: Request) {
       p.set_code,
       p.rarity,
       p.is_foil,
+      p.finish,
       p.image_uri
     FROM printings p
     JOIN store_prices sp ON sp.printing_id = p.id
@@ -283,6 +287,7 @@ export async function POST(request: Request) {
       setCode: row.set_code,
       rarity: row.rarity,
       isFoil: row.is_foil,
+      finish: (row.finish as "nonfoil" | "foil" | "etched") ?? (row.is_foil ? "foil" : "nonfoil"),
       imageUri: row.image_uri,
     };
     byCard.get(row.card_id)!.push(listing);
@@ -379,6 +384,7 @@ export async function POST(request: Request) {
       setCode: listing.setCode,
       rarity: listing.rarity,
       isFoil: listing.isFoil,
+      finish: listing.finish,
       imageUri: listing.imageUri,
     };
   });
