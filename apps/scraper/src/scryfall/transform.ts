@@ -29,6 +29,8 @@ export interface ScryfallCard {
   collector_number: string;
   rarity: string;
   finishes: string[];            // e.g. ["nonfoil", "foil"]
+  border_color?: string;         // "black" | "white" | "borderless" | "silver" | "gold"
+  frame_effects?: string[];      // ["showcase"] | ["extendedart"] | ["fullart"] | ...
   image_uris?: { normal?: string };
   card_faces?: Array<{           // double-faced cards store images here
     image_uris?: { normal?: string };
@@ -63,6 +65,9 @@ export interface PrintingRow {
   collectorNumber: string;
   rarity: string;
   isFoil: boolean;
+  finish: "nonfoil" | "foil" | "etched";
+  borderColor: string | null;   // Scryfall border_color: "black" | "borderless" | "white" | ...
+  frameEffects: string[];       // Scryfall frame_effects: ["showcase"] | ["extendedart"] | []
   imageUri: string | null;
   imageUriBack: string | null;  // back face for DFCs; null for normal cards
   scryfallUri: string;
@@ -131,8 +136,9 @@ export function transform(card: ScryfallCard): {
   const { front: imageUri, back: imageUriBack } = getImageUris(card);
   const printingRows: PrintingRow[] = [];
 
-  for (const finish of card.finishes) {
-    const isFoil = finish === "foil" || finish === "etched";
+  for (const f of card.finishes) {
+    const finish = f as "nonfoil" | "foil" | "etched";
+    const isFoil = finish !== "nonfoil";
 
     // Give foil printings a distinct id so they don't collide with nonfoil
     const printingId = isFoil ? `${card.id}_foil` : card.id;
@@ -150,6 +156,9 @@ export function transform(card: ScryfallCard): {
       collectorNumber: card.collector_number,
       rarity: card.rarity,
       isFoil,
+      finish,
+      borderColor: card.border_color ?? null,
+      frameEffects: card.frame_effects ?? [],
       imageUri,
       imageUriBack,
       scryfallUri: card.scryfall_uri,

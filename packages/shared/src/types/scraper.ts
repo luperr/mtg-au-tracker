@@ -12,6 +12,7 @@ export interface ScrapedCard {
   priceType: "sell" | "buylist";
   condition: string | null;      // "NM", "LP", "MP", "HP", "DMG"
   isFoil: boolean;
+  finish?: "nonfoil" | "foil" | "etched"; // more specific than isFoil; undefined = derive from isFoil
   isBorderless?: boolean;        // true if the store listing indicates a borderless printing
   inStock: boolean;
   sourceUrl: string;             // Full URL to the product page

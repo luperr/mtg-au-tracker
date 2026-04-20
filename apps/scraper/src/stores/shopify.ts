@@ -169,6 +169,7 @@ export function parseSkuData(sku: string | null | undefined): SkuData {
 interface ParsedVariant {
   condition: string;
   isFoil: boolean;
+  finish: "nonfoil" | "foil" | "etched";
 }
 
 const FOIL_KEYWORDS = ["foil", "etched foil", "galaxy foil", "gilded foil", "surge foil", "rainbow foil", "textured foil"];
@@ -209,7 +210,7 @@ function parseVariant(variant: ShopifyVariant, options: ShopifyOption[]): Parsed
   // condition options — treat it as NM non-foil (condition is implied by the listing).
   if (!conditionRaw && !foilRaw) {
     if (variant.title === "Default Title" || variant.title === "Default") {
-      return { condition: "NM", isFoil: false };
+      return { condition: "NM", isFoil: false, finish: "nonfoil" };
     }
     const parts = variant.title.split(/\s*\/\s*/);
     if (parts.length >= 1) conditionRaw = parts[0];
@@ -230,8 +231,10 @@ function parseVariant(variant: ShopifyVariant, options: ShopifyOption[]): Parsed
   const isFoil = foilFromCondition || (foilRaw
     ? FOIL_KEYWORDS.some((k) => foilRaw.includes(k)) && !NON_FOIL_KEYWORDS.some((k) => foilRaw.includes(k))
     : false);
+  const finish: "nonfoil" | "foil" | "etched" =
+    isFoil && foilRaw.includes("etched") ? "etched" : isFoil ? "foil" : "nonfoil";
 
-  return { condition, isFoil };
+  return { condition, isFoil, finish };
 }
 
 // ── Stock check ───────────────────────────────────────────────────────────────
@@ -365,11 +368,14 @@ function mapProduct(product: ShopifyProduct, baseUrl: string): ScrapedCard[] {
     const priceNum = parseFloat(variant.price);
     if (isNaN(priceNum) || priceNum <= 0) continue;
 
-    const { condition, isFoil: variantFoil } = parseVariant(variant, product.options);
+    const { condition, isFoil: variantFoil, finish: variantFinish } = parseVariant(variant, product.options);
     if (condition !== "NM") continue;
 
     // Foil priority: SKU finish field > tag > variant option parsing
     const isFoil = skuData.isFoil ?? tagFoil ?? variantFoil;
+    // finish: use etched from variant options if detected; otherwise derive from isFoil
+    const finish: "nonfoil" | "foil" | "etched" =
+      variantFinish === "etched" ? "etched" : isFoil ? "foil" : "nonfoil";
 
     results.push({
       rawName: cardName,
@@ -380,6 +386,7 @@ function mapProduct(product: ShopifyProduct, baseUrl: string): ScrapedCard[] {
       priceType: "sell",
       condition,
       isFoil,
+      finish,
       isBorderless: isBorderless || undefined,
       inStock: isInStock(variant),
       sourceUrl,

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
-    "import:scryfall": "tsx src/scryfall/bulk-import.ts",
+    "import:scryfall": "NODE_OPTIONS=--max-old-space-size=4096 tsx src/scryfall/bulk-import.ts",
     "scrape:stores": "tsx src/stores/run-all.ts",
     "scrape:goodgames": "tsx src/stores/run-store.ts good_games",
     "scrape:mtgmate": "tsx src/stores/run-store.ts mtg_mate",

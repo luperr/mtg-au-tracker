@@ -106,12 +106,12 @@ function SearchViewToggle({ view, onChange }: { view: ViewMode; onChange: (v: Vi
 // ── View 1: Image grid ────────────────────────────────────────────────────────
 // Card art dominant, dynamic responsive grid, name + price + want-list below.
 
-function GridCard({ card }: { card: CardSearchResult }) {
+function GridCard({ card, query }: { card: CardSearchResult; query: string }) {
   return (
     <div className="flex flex-col rounded-lg overflow-hidden border border-subtle bg-surface hover:border-accent transition-colors group">
       {/* Card image — use normal-size image; small (146px) blurs at 4-col grid widths */}
       <a
-        href={cardHref(card.slug, card.id)}
+        href={cardHref(card.slug, card.id, undefined, query)}
         onClick={() => trackEvent("card-click", { card: card.name })}
         className="block w-full overflow-hidden"
       >
@@ -136,7 +136,7 @@ function GridCard({ card }: { card: CardSearchResult }) {
       {/* Footer: name · price · want-list */}
       <div className="px-2 pt-1.5 pb-2 flex flex-col gap-1 bg-surface">
         <a
-          href={cardHref(card.slug, card.id)}
+          href={cardHref(card.slug, card.id, undefined, query)}
           onClick={() => trackEvent("card-click", { card: card.name })}
           className="text-xs font-medium text-cream truncate hover:text-accent-light transition-colors"
         >
@@ -162,11 +162,11 @@ function GridCard({ card }: { card: CardSearchResult }) {
 
 // ── View 2: Card rows (thumbnail + info) ──────────────────────────────────────
 
-function CardRow({ card }: { card: CardSearchResult }) {
+function CardRow({ card, query }: { card: CardSearchResult; query: string }) {
   return (
     <div className="relative flex items-center rounded-lg border border-subtle bg-surface hover:border-accent hover:bg-muted transition-colors overflow-hidden">
       <a
-        href={cardHref(card.slug, card.id)}
+        href={cardHref(card.slug, card.id, undefined, query)}
         onClick={() => trackEvent("card-click", { card: card.name })}
         className="flex flex-1 items-center gap-3 min-w-0 pr-14"
       >
@@ -215,11 +215,11 @@ function CardRow({ card }: { card: CardSearchResult }) {
 
 // ── View 3: Text rows (minimal, no images) ────────────────────────────────────
 
-function TextRow({ card }: { card: CardSearchResult }) {
+function TextRow({ card, query }: { card: CardSearchResult; query: string }) {
   return (
     <div className="relative flex items-center rounded-lg border border-subtle bg-surface hover:border-accent hover:bg-muted transition-colors">
       <a
-        href={cardHref(card.slug, card.id)}
+        href={cardHref(card.slug, card.id, undefined, query)}
         onClick={() => trackEvent("card-click", { card: card.name })}
         className="flex flex-1 items-center gap-3 px-3 py-2 min-w-0 pr-12"
       >
@@ -312,7 +312,7 @@ export function SearchResults({ initialResults, query, initialHasMore, totalCoun
       {view === "grid" && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {cards.map((card) => (
-            <GridCard key={card.id} card={card} />
+            <GridCard key={card.id} card={card} query={query} />
           ))}
         </div>
       )}
@@ -321,7 +321,7 @@ export function SearchResults({ initialResults, query, initialHasMore, totalCoun
       {view === "card" && (
         <div className="space-y-1.5">
           {cards.map((card) => (
-            <CardRow key={card.id} card={card} />
+            <CardRow key={card.id} card={card} query={query} />
           ))}
         </div>
       )}
@@ -330,7 +330,7 @@ export function SearchResults({ initialResults, query, initialHasMore, totalCoun
       {view === "text" && (
         <div className="space-y-1">
           {cards.map((card) => (
-            <TextRow key={card.id} card={card} />
+            <TextRow key={card.id} card={card} query={query} />
           ))}
         </div>
       )}

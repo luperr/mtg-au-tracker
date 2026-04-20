@@ -41,6 +41,7 @@ interface IndexEntry {
   setCode: string;
   collectorNumber: string;
   isFoil: boolean;
+  finish: "nonfoil" | "foil" | "etched";
 }
 
 export class CardMatcher {
@@ -75,6 +76,7 @@ export class CardMatcher {
         setName: schema.printings.setName,
         collectorNumber: schema.printings.collectorNumber,
         isFoil: schema.printings.isFoil,
+        finish: schema.printings.finish,
         cardName: schema.cards.name,
       })
       .from(schema.printings)
@@ -96,6 +98,7 @@ export class CardMatcher {
         setCode: row.setCode,
         collectorNumber: row.collectorNumber,
         isFoil: row.isFoil,
+        finish: (row.finish as "nonfoil" | "foil" | "etched") ?? (row.isFoil ? "foil" : "nonfoil"),
       };
       const existing = this.nameIndex.get(nameKey) ?? [];
       existing.push(entry);
@@ -138,6 +141,7 @@ export class CardMatcher {
     setName: string;
     collectorNumber: string;
     isFoil: boolean;
+    finish?: "nonfoil" | "foil" | "etched";
     cardName: string;
   }[]): void {
     for (const row of entries) {
@@ -152,6 +156,7 @@ export class CardMatcher {
         setCode: row.setCode,
         collectorNumber: row.collectorNumber,
         isFoil: row.isFoil,
+        finish: row.finish ?? (row.isFoil ? "foil" : "nonfoil"),
       };
       const existing = this.nameIndex.get(nameKey) ?? [];
       existing.push(entry);
@@ -219,23 +224,26 @@ export class CardMatcher {
           })
         : candidates;
 
-      // ── Level 1: name + set code + foil ──────────────────────────────────
+      // ── Level 1: name + set code + finish/foil ───────────────────────────
       // Ambiguous if the set has multiple variants (e.g. extended art, borderless).
       if (resolvedSetCode) {
-        const bySetFoil = ordered.filter(
-          (c) => c.setCode === resolvedSetCode && c.isFoil === card.isFoil,
-        );
-        if (bySetFoil.length === 1) {
-          return { printingId: bySetFoil[0].printingId, matchType: "exact", confidence: 1.0 };
+        // Prefer finish-specific match when the scraper provides it (e.g. "etched")
+        const bySetFinish = card.finish
+          ? ordered.filter((c) => c.setCode === resolvedSetCode && c.finish === card.finish)
+          : ordered.filter((c) => c.setCode === resolvedSetCode && c.isFoil === card.isFoil);
+        if (bySetFinish.length === 1) {
+          return { printingId: bySetFinish[0].printingId, matchType: "exact", confidence: 1.0 };
         }
-        if (bySetFoil.length > 1) {
+        if (bySetFinish.length > 1) {
           // Multiple variants in the same set — pick first, flag lower confidence
-          return { printingId: bySetFoil[0].printingId, matchType: "exact", confidence: 0.8 };
+          return { printingId: bySetFinish[0].printingId, matchType: "exact", confidence: 0.8 };
         }
       }
 
-      // ── Level 2: name + foil (ignore set) ────────────────────────────────
-      const byFoil = ordered.filter((c) => c.isFoil === card.isFoil);
+      // ── Level 2: name + finish/foil (ignore set) ──────────────────────────
+      const byFoil = card.finish
+        ? ordered.filter((c) => c.finish === card.finish)
+        : ordered.filter((c) => c.isFoil === card.isFoil);
       if (byFoil.length === 1) {
         return { printingId: byFoil[0].printingId, matchType: "name_foil", confidence: 0.85 };
       }
@@ -256,7 +264,9 @@ export class CardMatcher {
     // e.g. store lists "Delver of Secrets" for the full DFC card.
     const frontFaceCandidates = this.frontFaceIndex.get(normalizedName);
     if (frontFaceCandidates) {
-      const byFoil = frontFaceCandidates.filter((c) => c.isFoil === card.isFoil);
+      const byFoil = card.finish
+        ? frontFaceCandidates.filter((c) => c.finish === card.finish)
+        : frontFaceCandidates.filter((c) => c.isFoil === card.isFoil);
       const match = byFoil[0] ?? frontFaceCandidates[0];
       const confidence = frontFaceCandidates.length === 1 ? 0.65 : 0.5;
       return { printingId: match.printingId, matchType: "front_face", confidence };
@@ -277,7 +287,9 @@ export class CardMatcher {
     }
 
     if (bestCandidates) {
-      const byFoil = bestCandidates.filter((c) => c.isFoil === card.isFoil);
+      const byFoil = card.finish
+        ? bestCandidates.filter((c) => c.finish === card.finish)
+        : bestCandidates.filter((c) => c.isFoil === card.isFoil);
       const match = byFoil[0] ?? bestCandidates[0];
       const confidence = Math.max(0.5, 1 - bestDist * 0.2);
       return { printingId: match.printingId, matchType: "fuzzy", confidence };

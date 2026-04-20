@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import type { PrintingWithPrices } from "@/lib/db";
 import { useWantList } from "@/app/WantListContext";
 import { fmtAUD } from "@/lib/utils";
@@ -8,8 +8,8 @@ import { Dropdown, OptionItem } from "@/app/Dropdown";
 import { SetSymbol } from "@/app/SetSymbol";
 import { BuyLink } from "@/app/BuyLink";
 
-type FoilFilter = "all" | "nonfoil" | "foil";
 type SortBy = "price_asc" | "price_desc" | "total_asc" | "total_desc" | "newest" | "oldest";
+type VariantTag = "standard" | "foil" | "etched" | "borderless" | "borderless-foil" | "showcase" | "extendedart" | "fullart";
 
 const SORT_LABELS: Record<SortBy, string> = {
   price_asc: "Price: Low → High",
@@ -19,6 +19,50 @@ const SORT_LABELS: Record<SortBy, string> = {
   newest: "Newest Set First",
   oldest: "Oldest Set First",
 };
+
+const VARIANT_LABELS: Record<VariantTag, string> = {
+  standard: "Standard",
+  foil: "Foil",
+  etched: "Etched",
+  borderless: "Borderless",
+  "borderless-foil": "Borderless Foil",
+  showcase: "Showcase",
+  extendedart: "Extended Art",
+  fullart: "Full Art",
+};
+
+const VARIANT_ORDER: VariantTag[] = ["standard", "foil", "etched", "borderless", "borderless-foil", "showcase", "extendedart", "fullart"];
+
+function getVariantTags(p: PrintingWithPrices): Set<VariantTag> {
+  const tags = new Set<VariantTag>();
+  const isBorderless = p.borderColor === "borderless";
+  const isSpecialFrame =
+    p.frameEffects.includes("showcase") ||
+    p.frameEffects.includes("extendedart") ||
+    p.frameEffects.includes("fullart");
+
+  if (p.frameEffects.includes("showcase"))    tags.add("showcase");
+  if (p.frameEffects.includes("extendedart")) tags.add("extendedart");
+  if (p.frameEffects.includes("fullart"))     tags.add("fullart");
+  if (isBorderless && p.finish !== "nonfoil") tags.add("borderless-foil");
+  else if (isBorderless)                      tags.add("borderless");
+  if (p.finish === "etched")                  tags.add("etched");
+  if (p.finish === "foil" && !isBorderless && !isSpecialFrame) tags.add("foil");
+  if (p.finish === "nonfoil" && !isBorderless && !isSpecialFrame) tags.add("standard");
+  return tags;
+}
+
+function variantBadge(p: PrintingWithPrices): string | null {
+  const tags = getVariantTags(p);
+  if (tags.has("borderless-foil")) return "Borderless Foil";
+  if (tags.has("borderless")) return "Borderless";
+  if (tags.has("etched")) return "Etched";
+  if (tags.has("showcase")) return p.finish !== "nonfoil" ? "Showcase Foil" : "Showcase";
+  if (tags.has("extendedart")) return p.finish !== "nonfoil" ? "Extended Art Foil" : "Extended Art";
+  if (tags.has("fullart")) return p.finish !== "nonfoil" ? "Full Art Foil" : "Full Art";
+  if (tags.has("foil")) return null; // shown via ✦ symbol instead
+  return null;
+}
 
 interface Row {
   printing: PrintingWithPrices;
@@ -31,19 +75,32 @@ interface Row {
   url: string | null;
 }
 
-const toggleBtnCls = (active: boolean) =>
-  `rounded border px-2.5 py-1 text-xs font-medium transition-colors ${
+const chipCls = (active: boolean) =>
+  `rounded-full border px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${
     active
-      ? "border-accent-border bg-accent-muted text-accent-light"
-      : "border-subtle bg-muted text-cream-dim hover:text-cream"
+      ? "border-accent bg-accent/10 text-accent-light"
+      : "border-subtle bg-muted/60 text-cream-dim hover:border-cream-dim/40 hover:text-cream"
   }`;
 
 // ── Want list button ───────────────────────────────────────────────────────────
 
-function WantListButton({ row, cardId, cardSlug, cardName }: { row: Row; cardId: string; cardSlug: string; cardName: string }) {
+function WantListButton({
+  row,
+  cardId,
+  cardSlug,
+  cardName,
+  size = "sm",
+}: {
+  row: Row;
+  cardId: string;
+  cardSlug: string;
+  cardName: string;
+  size?: "sm" | "md";
+}) {
   const { addItem, removeItem, hasItem } = useWantList();
   const itemId = `${row.printing.id}-${row.storeId}-${row.url ?? ""}`;
   const inList = hasItem(itemId);
+  const cls = size === "md" ? "w-8 h-8" : "w-6 h-6";
   return (
     <button
       onClick={() => {
@@ -71,7 +128,7 @@ function WantListButton({ row, cardId, cardSlug, cardName }: { row: Row; cardId:
         }
       }}
       title={inList ? "Remove from want list" : "Add to want list"}
-      className={`w-6 h-6 rounded flex items-center justify-center text-sm transition-colors ${
+      className={`${cls} rounded flex items-center justify-center text-sm transition-colors ${
         inList
           ? "bg-price/20 text-price hover:bg-price/10"
           : "bg-muted text-cream-dim/40 hover:bg-price/20 hover:text-price"
@@ -100,13 +157,33 @@ export function PricesTable({
   cardName: string;
 }) {
   const [inStockOnly, setInStockOnly] = useState(true);
-  const [foilFilter, setFoilFilter] = useState<FoilFilter>("all");
+  const [selectedVariants, setSelectedVariants] = useState<Set<VariantTag>>(new Set());
   const [selectedStores, setSelectedStores] = useState<Set<string>>(new Set());
   const [selectedSets, setSelectedSets] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<SortBy>("price_asc");
   const [page, setPage] = useState(0);
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const PAGE_SIZE = 10;
+
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleMouseEnter(uri: string | null, uriBack: string | null | undefined) {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => {
+      onHoverImage(uri, uriBack ?? null);
+    }, 500);
+  }
+
+  function handleMouseLeave() {
+    if (hoverTimer.current) {
+      clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
+    // Intentionally no reset — image stays on last-hovered printing
+  }
+
+  useEffect(() => () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+  }, []);
 
   const allStores = useMemo(() => {
     const s = new Set<string>();
@@ -122,6 +199,21 @@ export function PricesTable({
       .map(([name]) => name);
   }, [printings]);
 
+  const availableVariants = useMemo(() => {
+    const tags = new Set<VariantTag>();
+    for (const p of printings) for (const t of getVariantTags(p)) tags.add(t);
+    return VARIANT_ORDER.filter((t) => tags.has(t));
+  }, [printings]);
+
+  function toggleVariant(tag: VariantTag) {
+    setPage(0);
+    setSelectedVariants((prev) => {
+      const next = new Set(prev);
+      next.has(tag) ? next.delete(tag) : next.add(tag);
+      return next;
+    });
+  }
+
   function toggleInSet(setter: React.Dispatch<React.SetStateAction<Set<string>>>, value: string) {
     setPage(0);
     setter((prev) => {
@@ -134,8 +226,10 @@ export function PricesTable({
   const rows = useMemo<Row[]>(() => {
     const flat: Row[] = [];
     for (const printing of printings) {
-      if (foilFilter === "nonfoil" && printing.isFoil) continue;
-      if (foilFilter === "foil" && !printing.isFoil) continue;
+      if (selectedVariants.size > 0) {
+        const tags = getVariantTags(printing);
+        if (![...selectedVariants].some((v) => tags.has(v))) continue;
+      }
       if (selectedSets.size > 0 && !selectedSets.has(printing.setName)) continue;
       for (const price of printing.prices) {
         if (inStockOnly && !price.inStock) continue;
@@ -164,275 +258,287 @@ export function PricesTable({
         case "oldest":       return String(a.printing.releasedAt ?? "").localeCompare(String(b.printing.releasedAt ?? ""));
       }
     });
-  }, [printings, inStockOnly, foilFilter, selectedStores, selectedSets, sortBy]);
+  }, [printings, inStockOnly, selectedVariants, selectedStores, selectedSets, sortBy]);
 
-  // Non-default = anything diverging from initial state (inStockOnly=true, foilFilter="all", no selections)
+  // When filters change, update the displayed image to the first visible printing
+  // (or defaultImage when no rows match). Depends on the filter state directly so
+  // it fires even when rows stays empty across two different filter combinations.
+  useEffect(() => {
+    const first = rows[0];
+    onHoverImage(
+      first?.printing.imageUri ?? defaultImage,
+      first?.printing.imageUriBack ?? null,
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inStockOnly, sortBy, selectedVariants, selectedStores, selectedSets]);
+
   const filtersNonDefault =
-    !inStockOnly || foilFilter !== "all" || selectedStores.size > 0 || selectedSets.size > 0;
+    !inStockOnly || selectedVariants.size > 0 || selectedStores.size > 0 || selectedSets.size > 0;
 
   const clearFilters = () => {
     setInStockOnly(true);
-    setFoilFilter("all");
+    setSelectedVariants(new Set());
     setSelectedStores(new Set());
     setSelectedSets(new Set());
     setPage(0);
-    setMobileFiltersOpen(false);
   };
 
   const totalPages = Math.ceil(rows.length / PAGE_SIZE);
   const pageRows = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
+  // Build variant chip label
+  const variantChipLabel =
+    selectedVariants.size === 0
+      ? "Variant"
+      : selectedVariants.size === 1
+        ? VARIANT_LABELS[[...selectedVariants][0]]
+        : `Variant (${selectedVariants.size})`;
+
   return (
     <div>
-      {/* Toolbar */}
-      <div className="mb-3">
-        {/* Always-visible row: mobile toggle + sort */}
-        <div className="flex items-center gap-2">
-          {/* Mobile: Filters toggle button */}
-          <button
-            onClick={() => setMobileFiltersOpen((o) => !o)}
-            className={`sm:hidden flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-              filtersNonDefault
-                ? "border-accent-border bg-accent-muted text-accent-light"
-                : "border-subtle bg-muted text-cream-dim"
-            }`}
-          >
-            Filters
-            {filtersNonDefault && (
-              <span className="flex items-center justify-center w-4 h-4 rounded-full bg-accent text-bg text-[10px] font-bold">
-                {(!inStockOnly ? 1 : 0) + (foilFilter !== "all" ? 1 : 0) + selectedStores.size + selectedSets.size}
-              </span>
-            )}
-            <span className="text-[9px] opacity-50">{mobileFiltersOpen ? "▲" : "▼"}</span>
-          </button>
+      {/* ── Filter bar — always visible, horizontally scrollable ── */}
+      <div className="flex items-center gap-2 mb-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* In Stock toggle */}
+        <button onClick={() => { setInStockOnly(!inStockOnly); setPage(0); }} className={chipCls(inStockOnly)}>
+          In stock
+        </button>
 
-          {/* Desktop: inline filter controls */}
-          <div className="hidden sm:flex flex-wrap items-center gap-2">
-            {/* Foil toggle group */}
-            <div className="flex gap-1">
-              {(["all", "nonfoil", "foil"] as FoilFilter[]).map((f) => (
-                <button
-                  key={f}
-                  onClick={() => { setFoilFilter(f); setPage(0); }}
-                  className={toggleBtnCls(foilFilter === f)}
-                >
-                  {f === "all" ? "All" : f === "nonfoil" ? "Non-foil" : "✦ Foil"}
-                </button>
+        {/* Variant filter */}
+        {availableVariants.length > 1 && (
+          <Dropdown label={variantChipLabel} active={selectedVariants.size > 0} align="left" rounded>
+            <div className="py-1 max-h-48 overflow-y-auto">
+              {availableVariants.map((tag) => (
+                <OptionItem
+                  key={tag}
+                  type="check"
+                  label={VARIANT_LABELS[tag]}
+                  checked={selectedVariants.has(tag)}
+                  onClick={() => toggleVariant(tag)}
+                />
               ))}
             </div>
-
-            {/* Stock toggle */}
-            <button
-              onClick={() => { setInStockOnly(!inStockOnly); setPage(0); }}
-              className={toggleBtnCls(inStockOnly)}
-            >
-              In stock
-            </button>
-
-            {/* Store dropdown */}
-            {allStores.length > 1 && (
-              <Dropdown label="Store" active={selectedStores.size > 0} align="left">
-                <div className="py-1">
-                  {allStores.map((store) => (
-                    <OptionItem key={store} type="check" label={store} checked={selectedStores.has(store)} onClick={() => toggleInSet(setSelectedStores, store)} />
-                  ))}
-                </div>
-              </Dropdown>
-            )}
-
-            {/* Set dropdown */}
-            {allSets.length > 1 && (
-              <Dropdown label="Set" active={selectedSets.size > 0} align="left">
-                <div className="py-1 max-h-48 overflow-y-auto">
-                  {allSets.map((set) => (
-                    <OptionItem key={set} type="check" label={set} checked={selectedSets.has(set)} onClick={() => toggleInSet(setSelectedSets, set)} />
-                  ))}
-                </div>
-              </Dropdown>
-            )}
-
-            {filtersNonDefault && (
-              <button onClick={clearFilters} className="px-2 text-[10px] text-cream-dim/40 hover:text-cream-dim transition-colors">
-                Reset
-              </button>
-            )}
-          </div>
-
-          {/* Right: count + sort */}
-          <div className="flex items-center gap-2 ml-auto shrink-0">
-            <span className="text-[10px] text-cream-dim/30">{rows.length}</span>
-            <Dropdown label="Sort" active={sortBy !== "price_asc"} align="right">
-              <div className="py-1">
-                {(Object.entries(SORT_LABELS) as [SortBy, string][]).map(([key, label]) => (
-                  <OptionItem key={key} label={label} checked={sortBy === key} onClick={() => { setSortBy(key); setPage(0); }} />
-                ))}
-              </div>
-            </Dropdown>
-          </div>
-        </div>
-
-        {/* Mobile: collapsible filter panel */}
-        {mobileFiltersOpen && (
-          <div className="sm:hidden mt-2 flex flex-wrap gap-2 p-3 rounded-lg border border-subtle bg-surface">
-            {/* Foil */}
-            <div className="w-full">
-              <p className="text-[10px] text-cream-dim/50 uppercase tracking-wide mb-1.5">Foil</p>
-              <div className="flex gap-1">
-                {(["all", "nonfoil", "foil"] as FoilFilter[]).map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => { setFoilFilter(f); setPage(0); }}
-                    className={toggleBtnCls(foilFilter === f)}
-                  >
-                    {f === "all" ? "All" : f === "nonfoil" ? "Non-foil" : "✦ Foil"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Stock */}
-            <div className="w-full">
-              <p className="text-[10px] text-cream-dim/50 uppercase tracking-wide mb-1.5">Stock</p>
-              <div className="flex gap-1">
-                {([true, false] as const).map((val) => (
-                  <button
-                    key={String(val)}
-                    onClick={() => { setInStockOnly(val); setPage(0); }}
-                    className={toggleBtnCls(inStockOnly === val)}
-                  >
-                    {val ? "In stock" : "All"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Store */}
-            {allStores.length > 1 && (
-              <div className="w-full">
-                <p className="text-[10px] text-cream-dim/50 uppercase tracking-wide mb-1">Store</p>
-                {allStores.map((store) => (
-                  <OptionItem key={store} type="check" label={store} checked={selectedStores.has(store)} onClick={() => toggleInSet(setSelectedStores, store)} />
-                ))}
-              </div>
-            )}
-
-            {/* Set */}
-            {allSets.length > 1 && (
-              <div className="w-full">
-                <p className="text-[10px] text-cream-dim/50 uppercase tracking-wide mb-1">Set</p>
-                <div className="max-h-48 overflow-y-auto">
-                  {allSets.map((set) => (
-                    <OptionItem key={set} type="check" label={set} checked={selectedSets.has(set)} onClick={() => toggleInSet(setSelectedSets, set)} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {filtersNonDefault && (
-              <button onClick={clearFilters} className="text-[10px] text-cream-dim/40 hover:text-cream-dim transition-colors">
-                Reset filters
-              </button>
-            )}
-          </div>
+          </Dropdown>
         )}
+
+        {/* Store filter */}
+        {allStores.length > 1 && (
+          <Dropdown
+            label={selectedStores.size > 0 ? `Store (${selectedStores.size})` : "Store"}
+            active={selectedStores.size > 0}
+            align="left"
+            rounded
+          >
+            <div className="py-1 max-h-48 overflow-y-auto">
+              {allStores.map((store) => (
+                <OptionItem key={store} type="check" label={store} checked={selectedStores.has(store)} onClick={() => toggleInSet(setSelectedStores, store)} />
+              ))}
+            </div>
+          </Dropdown>
+        )}
+
+        {/* Set filter */}
+        {allSets.length > 1 && (
+          <Dropdown
+            label={selectedSets.size > 0 ? `Set (${selectedSets.size})` : "Set"}
+            active={selectedSets.size > 0}
+            align="left"
+            rounded
+          >
+            <div className="py-1 max-h-48 overflow-y-auto">
+              {allSets.map((set) => (
+                <OptionItem key={set} type="check" label={set} checked={selectedSets.has(set)} onClick={() => toggleInSet(setSelectedSets, set)} />
+              ))}
+            </div>
+          </Dropdown>
+        )}
+
+        {/* Reset */}
+        {filtersNonDefault && (
+          <button onClick={clearFilters} className="shrink-0 px-2 text-[10px] text-cream-dim/40 hover:text-cream-dim transition-colors">
+            Reset
+          </button>
+        )}
+
+        {/* Sort + count — pushed right */}
+        <div className="flex items-center gap-2 ml-auto shrink-0">
+          <span className="text-[10px] text-cream-dim/30">{rows.length}</span>
+          <Dropdown label="Sort" active={sortBy !== "price_asc"} align="right" rounded>
+            <div className="py-1">
+              {(Object.entries(SORT_LABELS) as [SortBy, string][]).map(([key, label]) => (
+                <OptionItem key={key} label={label} checked={sortBy === key} onClick={() => { setSortBy(key); setPage(0); }} />
+              ))}
+            </div>
+          </Dropdown>
+        </div>
       </div>
 
-      {/* Table */}
+      {/* ── Price list ── */}
       <div className="rounded-lg border border-subtle bg-surface overflow-hidden">
         {rows.length === 0 ? (
           <div className="px-4 py-8 text-center text-cream-dim/50">
             {filtersNonDefault ? "No prices match the current filters" : "No prices available"}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[360px]">
-              <colgroup>
-                {/* Set */}<col className="w-[180px] sm:w-[220px]" />
-                {/* Store */}<col className="w-[110px] sm:w-[140px]" />
-                {/* Price */}<col className="w-auto" />
-                {/* Stock */}<col className="w-[68px]" />
-                {/* Buy link */}<col className="w-[52px]" />
-                {/* Want button */}<col className="w-[40px]" />
-              </colgroup>
-              <thead>
-                <tr className="text-xs bg-cream-muted border-b border-subtle">
-                  <th className="px-4 py-2 text-left font-medium text-cream-dim">Set</th>
-                  <th className="px-3 py-2 text-left font-medium text-cream-dim">Store</th>
-                  <th className="px-3 py-2 text-right font-medium text-cream-dim">Price AUD <span className="font-normal text-cream-dim/50">(postage)</span></th>
-                  <th className="px-3 py-2 text-center font-medium text-cream-dim">Stock</th>
-                  <th className="px-3 py-2" />
-                  <th className="px-3 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {pageRows.map((row, i) => (
-                  <tr
-                    key={`${row.printing.id}-${row.storeName}-${i}`}
-                    className="border-b border-subtle/60 last:border-0 hover:bg-muted transition-colors cursor-default"
-                    onMouseEnter={() => onHoverImage(row.printing.imageUri, row.printing.imageUriBack)}
-                    onMouseLeave={() => onHoverImage(defaultImage, null)}
+          <>
+            {/* Mobile card list (< sm) */}
+            <div className="sm:hidden flex flex-col divide-y divide-subtle/60">
+              {pageRows.map((row, i) => {
+                const badge = variantBadge(row.printing);
+                return (
+                  <div
+                    key={`m-${row.printing.id}-${row.storeName}-${i}`}
+                    className="px-3 py-2.5 flex flex-col gap-1 hover:bg-muted transition-colors"
+                    onMouseEnter={() => handleMouseEnter(row.printing.imageUri, row.printing.imageUriBack)}
+                    onMouseLeave={handleMouseLeave}
                   >
-                    {/* Set symbol + name */}
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center gap-2">
+                    {/* Line 1: Store + Price */}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-cream font-medium text-sm truncate">{row.storeName}</span>
+                      <span className="text-price font-semibold shrink-0 text-sm">
+                        {fmtAUD(row.priceAud)}
+                        {row.shippingAud !== null && (
+                          <span className="ml-1 text-xs font-normal text-cream-dim/60">
+                            (+{row.shippingAud === 0 ? "free" : fmtAUD(row.shippingAud)})
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    {/* Line 2: Set info + stock + actions */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0 text-xs text-cream-dim">
                         <SetSymbol
                           setCode={row.printing.setCode}
                           setName={row.printing.setName}
                           rarity={row.printing.rarity}
                         />
-                        <span className="text-cream truncate max-w-[160px] hidden sm:inline">
-                          {row.printing.setName}
-                        </span>
-                        {row.printing.isFoil && (
+                        <span className="truncate">{row.printing.setName}</span>
+                        {row.printing.isFoil && !badge && (
                           <span className="text-[10px] text-accent shrink-0">✦</span>
                         )}
-                      </div>
-                    </td>
-
-                    <td className="px-3 py-2.5 text-cream font-medium">{row.storeName}</td>
-
-                    <td className="px-3 py-2.5 text-right text-price font-semibold">
-                      {fmtAUD(row.priceAud)}
-                      {row.shippingAud !== null && (
-                        <span className="ml-1 text-xs font-normal text-cream-dim/60">
-                          (+{row.shippingAud === 0 ? "free" : fmtAUD(row.shippingAud)})
+                        {badge && (
+                          <span className="text-[10px] text-accent shrink-0 font-medium">{badge}</span>
+                        )}
+                        <span className={`shrink-0 ${row.inStock ? "text-green-400" : "text-red-400"}`}>
+                          {row.inStock ? "In stock" : "Out"}
                         </span>
-                      )}
-                    </td>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {row.url && (
+                          <BuyLink
+                            href={row.url}
+                            storeId={row.storeId}
+                            card={cardName}
+                            price={row.priceAud}
+                            source="card-detail"
+                          />
+                        )}
+                        {row.inStock && (
+                          <WantListButton row={row} cardId={cardId} cardSlug={cardSlug} cardName={cardName} size="md" />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
 
-                    <td className="px-3 py-2.5 text-center">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                          row.inStock
-                            ? "bg-green-900/50 text-green-400"
-                            : "bg-red-900/50 text-red-400"
-                        }`}
-                      >
-                        {row.inStock ? "In stock" : "Out"}
-                      </span>
-                    </td>
-
-                    <td className="px-3 py-2.5 text-right">
-                      {row.url && (
-                        <BuyLink
-                          href={row.url}
-                          storeId={row.storeId}
-                          card={cardName}
-                          price={row.priceAud}
-                          source="card-detail"
-                        />
-                      )}
-                    </td>
-
-                    <td className="px-2 py-2.5 text-right">
-                      {row.inStock && (
-                        <WantListButton row={row} cardId={cardId} cardSlug={cardSlug} cardName={cardName} />
-                      )}
-                    </td>
+            {/* Desktop table (sm+) */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-sm min-w-[360px]">
+                <colgroup>
+                  <col className="w-[180px] sm:w-[220px]" />
+                  <col className="w-[110px] sm:w-[140px]" />
+                  <col className="w-auto" />
+                  <col className="w-[68px]" />
+                  <col className="w-[52px]" />
+                  <col className="w-[40px]" />
+                </colgroup>
+                <thead>
+                  <tr className="text-xs bg-cream-muted border-b border-subtle">
+                    <th className="px-4 py-2 text-left font-medium text-cream-dim">Set</th>
+                    <th className="px-3 py-2 text-left font-medium text-cream-dim">Store</th>
+                    <th className="px-3 py-2 text-right font-medium text-cream-dim">Price AUD <span className="font-normal text-cream-dim/50">(postage)</span></th>
+                    <th className="px-3 py-2 text-center font-medium text-cream-dim">Stock</th>
+                    <th className="px-3 py-2" />
+                    <th className="px-3 py-2" />
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {pageRows.map((row, i) => {
+                    const badge = variantBadge(row.printing);
+                    return (
+                      <tr
+                        key={`d-${row.printing.id}-${row.storeName}-${i}`}
+                        className="border-b border-subtle/60 last:border-0 hover:bg-muted transition-colors cursor-default"
+                        onMouseEnter={() => handleMouseEnter(row.printing.imageUri, row.printing.imageUriBack)}
+                        onMouseLeave={handleMouseLeave}
+                      >
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <SetSymbol
+                              setCode={row.printing.setCode}
+                              setName={row.printing.setName}
+                              rarity={row.printing.rarity}
+                            />
+                            <span className="text-cream truncate max-w-[160px] hidden sm:inline">
+                              {row.printing.setName}
+                            </span>
+                            {row.printing.isFoil && !badge && (
+                              <span className="text-[10px] text-accent shrink-0">✦</span>
+                            )}
+                            {badge && (
+                              <span className="text-[10px] text-accent shrink-0 font-medium">{badge}</span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="px-3 py-2.5 text-cream font-medium">{row.storeName}</td>
+
+                        <td className="px-3 py-2.5 text-right text-price font-semibold">
+                          {fmtAUD(row.priceAud)}
+                          {row.shippingAud !== null && (
+                            <span className="ml-1 text-xs font-normal text-cream-dim/60">
+                              (+{row.shippingAud === 0 ? "free" : fmtAUD(row.shippingAud)})
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="px-3 py-2.5 text-center">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                              row.inStock
+                                ? "bg-green-900/50 text-green-400"
+                                : "bg-red-900/50 text-red-400"
+                            }`}
+                          >
+                            {row.inStock ? "In stock" : "Out"}
+                          </span>
+                        </td>
+
+                        <td className="px-3 py-2.5 text-right">
+                          {row.url && (
+                            <BuyLink
+                              href={row.url}
+                              storeId={row.storeId}
+                              card={cardName}
+                              price={row.priceAud}
+                              source="card-detail"
+                            />
+                          )}
+                        </td>
+
+                        <td className="px-2 py-2.5 text-right">
+                          {row.inStock && (
+                            <WantListButton row={row} cardId={cardId} cardSlug={cardSlug} cardName={cardName} />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
             {totalPages > 1 && (
               <div className="flex items-center justify-between px-4 py-2 border-t border-subtle bg-cream-muted text-xs text-cream-dim/60">
                 <button
@@ -454,7 +560,7 @@ export function PricesTable({
                 </button>
               </div>
             )}
-          </div>
+          </>
         )}
       </div>
     </div>
