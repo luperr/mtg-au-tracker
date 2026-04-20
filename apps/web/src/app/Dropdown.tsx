@@ -48,7 +48,8 @@ export function Dropdown({
       const top = rect.bottom + window.scrollY + 4;
       const style: React.CSSProperties = { top };
       if (align === "right") {
-        style.left = rect.right + window.scrollX - 190;
+        const panelWidth = panelRef.current?.offsetWidth ?? 190;
+        style.left = rect.right + window.scrollX - panelWidth;
       } else {
         style.left = rect.left + window.scrollX;
       }
@@ -80,7 +81,6 @@ export function Dropdown({
         <span className="text-[9px] opacity-50">{open ? "▲" : "▼"}</span>
       </button>
       {open &&
-        typeof document !== "undefined" &&
         createPortal(
           <div
             ref={panelRef}
