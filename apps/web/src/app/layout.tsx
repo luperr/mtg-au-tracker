@@ -53,14 +53,19 @@ export default function RootLayout({
           <DragDropSearch />
           <header className="border-b border-subtle px-4 py-3 header-gradient">
             <div className="mx-auto max-w-5xl w-full flex items-center gap-4">
-              {/* Left: logo */}
-              <a
-                href="/"
-                className={`${bitcount.className} text-2xl logo-gradient shrink-0`}
-              >
-                <span className="hidden sm:inline">SCRYMARKET</span>
-                <span className="sm:hidden">SM</span>
-              </a>
+              {/* Left: logo + beta badge */}
+              <div className="flex items-center gap-2 shrink-0">
+                <a
+                  href="/"
+                  className={`${bitcount.className} text-2xl logo-gradient`}
+                >
+                  <span className="hidden sm:inline">SCRYMARKET</span>
+                  <span className="sm:hidden">SM</span>
+                </a>
+                <span className="hidden sm:inline text-[10px] font-bold tracking-widest px-1.5 py-0.5 bg-price text-bg uppercase">
+                  beta
+                </span>
+              </div>
               {/* Centre: search (hidden on landing page via client component) */}
               <div className="flex-1 flex justify-center">
                 <Suspense fallback={<div className="flex-1" />}>
