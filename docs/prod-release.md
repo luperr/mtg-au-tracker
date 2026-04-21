@@ -146,6 +146,55 @@ docker compose -f docker-compose.prod.yml logs scraper --since 5m | grep -i erro
 
 ## Specific releases
 
+### Card page variant filtering — finish / border_color / frame_effects (migration 0011)
+
+This adds `finish`, `border_color`, `frame_effects` to `printings`, and reworks the Scryfall import to produce separate printing rows per finish (`UUID` for nonfoil, `UUID_foil` for foil). The Variant filter on the card detail page needs these columns populated to show Borderless, Showcase, Extended Art etc. — until the Scryfall import runs it will only show Standard / Foil.
+
+Because the migration touches `printings` (large table), run it before rebuilding so the web container keeps serving the old schema while migration applies.
+
+```bash
+cd /opt/mtg-au-tracker
+
+# 1. Pull latest (ensure on main after merge)
+git pull
+
+# 2. DB backup before touching printings
+docker compose -f docker-compose.prod.yml exec db \
+  pg_dump -U mtg mtg_tracker > mtg_tracker_backup_$(date +%Y%m%d_%H%M).sql
+
+# 3. Migrate (run from current scraper image — no rebuild needed first,
+#    0011 is a pure ADD COLUMN with defaults, safe against live traffic)
+docker compose -f docker-compose.prod.yml run --rm scraper \
+  pnpm --filter @mtg-au/scraper db:migrate
+
+# 4. Confirm columns exist
+docker compose -f docker-compose.prod.yml exec db \
+  psql -U mtg -d mtg_tracker -c \
+  "\d printings" | grep -E "finish|border_color|frame_effects"
+# Expected: three rows — finish text not null default 'nonfoil', border_color text, frame_effects text[]
+
+# 5. Rebuild and restart
+docker compose -f docker-compose.prod.yml build web scraper
+docker compose -f docker-compose.prod.yml up -d
+
+# 6. Run Scryfall import to populate border_color + frame_effects
+#    (~10-15 min, runs in foreground)
+docker compose -f docker-compose.prod.yml run --rm scraper \
+  pnpm --filter @mtg-au/scraper import:scryfall
+
+# 7. Verify
+docker compose -f docker-compose.prod.yml exec db \
+  psql -U mtg -d mtg_tracker -c \
+  "SELECT finish, COUNT(*) FROM printings GROUP BY finish ORDER BY 2 DESC;
+   SELECT COUNT(*) FILTER (WHERE border_color IS NOT NULL AND border_color != '') AS has_border_color,
+          COUNT(*) FILTER (WHERE frame_effects != '{}') AS has_frame_effects FROM printings;"
+# Expected: nonfoil ~83k, foil ~60k; has_border_color + has_frame_effects both > 0
+```
+
+> **Note on OOM:** the Scryfall import is memory-hungry (~2GB heap peak). `NODE_OPTIONS=--max-old-space-size=4096` is already set in the scraper's prod environment — no extra steps needed.
+
+---
+
 ### Market stats pre-computation (migration 0010)
 
 This adds `scrymarket_price` and `price_trend` to `cards`, and creates the

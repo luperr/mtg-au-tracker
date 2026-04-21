@@ -53,14 +53,27 @@ export default function RootLayout({
           <DragDropSearch />
           <header className="border-b border-subtle px-4 py-3 header-gradient">
             <div className="mx-auto max-w-5xl w-full flex items-center gap-4">
-              {/* Left: logo */}
-              <a
-                href="/"
-                className={`${bitcount.className} text-2xl logo-gradient shrink-0`}
-              >
-                <span className="hidden sm:inline">SCRYMARKET</span>
-                <span className="sm:hidden">SM</span>
-              </a>
+              {/* Left: logo + beta badge */}
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Desktop: SCRYMARKET + beta beside */}
+                <div className="hidden sm:flex items-center gap-2">
+                  <a href="/" className={`${bitcount.className} text-2xl logo-gradient`}>
+                    SCRYMARKET
+                  </a>
+                  <span className="text-[10px] font-bold tracking-widest px-1.5 py-0.5 bg-price text-bg uppercase rounded">
+                    beta
+                  </span>
+                </div>
+                {/* Mobile: SM with beta overlapping slightly below */}
+                <div className="sm:hidden inline-flex flex-col items-center leading-none">
+                  <a href="/" className={`${bitcount.className} text-2xl logo-gradient`}>
+                    SM
+                  </a>
+                  <span className="text-[9px] font-bold px-1.5 py-px bg-price text-bg uppercase rounded -mt-1" style={{ fontFamily: "sans-serif", letterSpacing: "0.1em" }}>
+                    beta
+                  </span>
+                </div>
+              </div>
               {/* Centre: search (hidden on landing page via client component) */}
               <div className="flex-1 flex justify-center">
                 <Suspense fallback={<div className="flex-1" />}>
