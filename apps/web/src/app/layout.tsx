@@ -62,7 +62,7 @@ export default function RootLayout({
                   <span className="hidden sm:inline">SCRYMARKET</span>
                   <span className="sm:hidden">SM</span>
                 </a>
-                <span className="hidden sm:inline text-[10px] font-bold tracking-widest px-1.5 py-0.5 bg-price text-bg uppercase">
+                <span className="inline text-[10px] font-bold tracking-widest px-1.5 py-0.5 bg-price text-bg uppercase rounded">
                   beta
                 </span>
               </div>
