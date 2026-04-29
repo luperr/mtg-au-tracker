@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRateLimiter } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request";
+import { withErrorHandler } from "@/lib/api-helpers";
+import { logger } from "@/lib/utils";
 import { RATE_LIMIT_CONTACT_PER_HOUR, GITHUB_REPO_OWNER, GITHUB_REPO_NAME, GITHUB_API_URL } from "@/lib/config";
+
+const log = logger.child({ component: "api-contact" });
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
@@ -103,7 +107,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (!GITHUB_TOKEN) {
-    console.error("[contact] GITHUB_TOKEN env var not set");
+    log.error("GITHUB_TOKEN env var not set — contact form unconfigured");
     return NextResponse.json({ error: "Contact form is not configured" }, { status: 500 });
   }
 
@@ -118,30 +122,32 @@ export async function POST(req: NextRequest) {
     email: email?.trim(),
   });
 
-  const ghRes = await fetch(
-    `${GITHUB_API_URL}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/issues`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${GITHUB_TOKEN}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "Content-Type": "application/json",
-        "User-Agent": "Scrymarket/1.0",
-      },
-      body: JSON.stringify({
-        title,
-        body: issueBody,
-        labels: [LABEL_MAP[type]],
-      }),
+  return withErrorHandler(async () => {
+    const ghRes = await fetch(
+      `${GITHUB_API_URL}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/issues`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${GITHUB_TOKEN!}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+          "Content-Type": "application/json",
+          "User-Agent": "Scrymarket/1.0",
+        },
+        body: JSON.stringify({
+          title,
+          body: issueBody,
+          labels: [LABEL_MAP[type]],
+        }),
+      }
+    );
+
+    if (!ghRes.ok) {
+      const text = await ghRes.text();
+      log.error({ status: ghRes.status, body: text }, "GitHub API error creating issue");
+      return NextResponse.json({ error: "Failed to submit report" }, { status: 500 });
     }
-  );
 
-  if (!ghRes.ok) {
-    const text = await ghRes.text();
-    console.error(`[contact] GitHub API ${ghRes.status}:`, text);
-    return NextResponse.json({ error: "Failed to submit report" }, { status: 500 });
-  }
-
-  return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true });
+  }, "contact");
 }

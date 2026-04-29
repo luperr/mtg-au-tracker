@@ -23,12 +23,9 @@ import { sql } from "drizzle-orm";
 import { db } from "../lib/db.js";
 import { logger } from "../lib/logger.js";
 import { updateSetValues } from "../stores/update-set-values.js";
+import { TREND_UP_THRESHOLD, TREND_DOWN_THRESHOLD } from "@mtg-au/shared";
 
 const log = logger.child({ component: "compute-market-stats" });
-
-// Mirror of the web app's trend thresholds (apps/web/src/lib/config.ts)
-const TREND_UP_THRESHOLD = 1.01;
-const TREND_DOWN_THRESHOLD = 0.99;
 
 // ─── Scrymarket prices ────────────────────────────────────────────────────────
 
@@ -137,10 +134,6 @@ async function computeMarketMovers(): Promise<void> {
             ph.price_aud::numeric AS price
           FROM price_history ph
           JOIN printings p ON p.id = ph.printing_id
-          JOIN store_prices sp_check ON sp_check.printing_id = ph.printing_id
-            AND sp_check.store_id = ph.store_id
-            AND sp_check.in_stock = true
-            AND sp_check.price_type = 'sell'
           WHERE p.is_foil = false
             AND ph.price_type = 'sell'
             AND ph.recorded_at >= NOW() - (${days} * INTERVAL '1 day')
@@ -217,10 +210,6 @@ async function computeMarketMovers(): Promise<void> {
             ph.price_aud::numeric AS price
           FROM price_history ph
           JOIN printings p ON p.id = ph.printing_id
-          JOIN store_prices sp_check ON sp_check.printing_id = ph.printing_id
-            AND sp_check.store_id = ph.store_id
-            AND sp_check.in_stock = true
-            AND sp_check.price_type = 'sell'
           WHERE p.is_foil = false
             AND ph.price_type = 'sell'
             AND ph.recorded_at >= NOW() - (${days} * INTERVAL '1 day')

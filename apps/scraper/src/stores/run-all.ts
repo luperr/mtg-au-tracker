@@ -108,6 +108,10 @@ export async function runStore(
     await db.insert(schema.unmatchedCards).values(unmatchedBatch);
   }
 
+  if (matched === 0 && total === 0) {
+    log.error({ store: storeId }, "Store produced zero prices — possible scraper config error");
+  }
+
   log.info(
     { store: storeId, total, matched, unmatched, match_rate: matchRate(matched, total) },
     "Store scrape complete",

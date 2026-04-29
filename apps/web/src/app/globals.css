@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+/*
+ * Design token system — Tailwind 4 @theme block
+ *
+ * All custom colours are defined here and exposed as CSS custom properties
+ * (--color-*). Tailwind 4 reads @theme at build time so every token is
+ * available as a utility class at runtime (bg-surface, text-cream, etc.).
+ *
+ * Consumers:
+ *   • Tailwind utility classes (bg-surface, text-cream, border-subtle …)
+ *     — use in JSX/TSX className props
+ *   • Chart components (Recharts can't accept class names) — use
+ *     "var(--color-*)" inline style strings; fallback hex must match this file
+ *   • tailwind.config.ts — mirrors token names for IDE autocomplete only,
+ *     never edit it as a source of truth; edit here instead
+ */
+
 @theme {
   /* ── Backgrounds — desaturated warm darks ───────────────────────────── */
   --color-bg:      #191817;  /* page background — near-neutral dark        */

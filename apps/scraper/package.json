@@ -52,6 +52,8 @@
     "scrape:area52": "tsx src/stores/run-store.ts area52",
     "compute:set-values": "tsx src/stores/compute-set-values.ts",
     "compute:market-stats": "tsx src/market/compute-market-stats.ts",
+    "validate:all-stores": "tsx src/tools/validate-stores.ts",
+    "suggest:aliases": "tsx src/tools/suggest-improvements.ts",
     "test": "vitest run"
   },
   "dependencies": {
