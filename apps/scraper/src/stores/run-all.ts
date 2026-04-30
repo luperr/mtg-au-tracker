@@ -42,11 +42,18 @@ export const SCRAPERS: Record<string, () => BaseScraper> = {
 
 // ── Per-store run ─────────────────────────────────────────────────────────────
 
+type StoreHealth = {
+  storeId: string;
+  total: number;
+  matched: number;
+  issue: "ok" | "zero_products" | "zero_matched" | "low_match_rate" | "error";
+};
+
 export async function runStore(
   storeId: string,
   scraper: BaseScraper,
   matcher: CardMatcher,
-): Promise<void> {
+): Promise<StoreHealth> {
   const today = todayISO();
 
   log.info({ store: storeId }, "Starting store scrape");
@@ -108,14 +115,23 @@ export async function runStore(
     await db.insert(schema.unmatchedCards).values(unmatchedBatch);
   }
 
-  if (matched === 0 && total === 0) {
-    log.error({ store: storeId }, "Store produced zero prices — possible scraper config error");
+  const rate = matchRate(matched, total);
+  const issue: StoreHealth["issue"] =
+    total === 0 ? "zero_products"
+    : matched === 0 ? "zero_matched"
+    : rate < 0.5 ? "low_match_rate"
+    : "ok";
+
+  if (issue !== "ok") {
+    log.error({ store: storeId, total, matched, match_rate: rate, issue }, "Store health check failed");
   }
 
   log.info(
-    { store: storeId, total, matched, unmatched, match_rate: matchRate(matched, total) },
+    { store: storeId, total, matched, unmatched, match_rate: rate },
     "Store scrape complete",
   );
+
+  return { storeId, total, matched, issue };
 }
 
 // ── Row builders ──────────────────────────────────────────────────────────────
@@ -184,24 +200,32 @@ export async function runAllStores(): Promise<void> {
 
   log.info({ stores: enabledStores.map((s) => s.id) }, "Starting store scrapes");
 
+  const health: StoreHealth[] = [];
+
   for (const store of enabledStores) {
     const factory = SCRAPERS[store.id];
     if (!factory) {
       log.warn({ store: store.id }, "No scraper registered for store — skipping");
+      health.push({ storeId: store.id, total: 0, matched: 0, issue: "error" });
       continue;
     }
 
     const scraper = factory();
     try {
-      await runStore(store.id, scraper, matcher);
+      health.push(await runStore(store.id, scraper, matcher));
     } catch (err) {
       log.error({ err, store: store.id }, "Fatal error scraping store");
+      health.push({ storeId: store.id, total: 0, matched: 0, issue: "error" });
     } finally {
       await scraper.close();
     }
   }
 
-  log.info("All stores done");
+  const unhealthy = health.filter((h) => h.issue !== "ok");
+  log.info(
+    { total_stores: health.length, unhealthy_count: unhealthy.length, unhealthy: unhealthy.map((h) => ({ store: h.storeId, issue: h.issue })) },
+    "All stores done",
+  );
 }
 
 // Only run when invoked directly (pnpm scrape:stores), not when imported by index.ts
