@@ -8,7 +8,6 @@ import { RATE_LIMIT_OPTIMIZE_PER_MINUTE } from "@/lib/config";
 import { branchAndBound, evaluateSubset } from "./algorithm";
 import type { OptimizeItem, Listing } from "./algorithm";
 
-export { branchAndBound, evaluateSubset };
 export type { OptimizeItem };
 
 const log = logger.child({ component: "api-optimize" });

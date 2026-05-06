@@ -129,7 +129,7 @@ describe("branchAndBound", () => {
     ]);
     const allPool = new Set(["store-a", "store-b"]);
     const flatRates = { "store-a": 5, "store-b": 12 };
-    const best = { cost: Infinity, assignments: null as Map<string, typeof listing> | null };
+    const best = { cost: Infinity, assignments: null as Map<string, Listing> | null };
 
     branchAndBound(
       ["store-a", "store-b"],
@@ -157,7 +157,7 @@ describe("branchAndBound", () => {
     ]);
     const allPool = new Set(["store-a", "store-b"]);
     const flatRates = { "store-a": 3, "store-b": 3 };
-    const best = { cost: Infinity, assignments: null as Map<string, typeof listing> | null };
+    const best = { cost: Infinity, assignments: null as Map<string, Listing> | null };
 
     branchAndBound(
       ["store-a", "store-b"],
@@ -184,7 +184,7 @@ describe("branchAndBound", () => {
     ]);
     const allPool = new Set(["store-a"]);
     const flatRates = { "store-a": 5 };
-    const best = { cost: Infinity, assignments: null as Map<string, typeof listing> | null };
+    const best = { cost: Infinity, assignments: null as Map<string, Listing> | null };
 
     branchAndBound(
       ["store-a"],
