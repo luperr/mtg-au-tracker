@@ -319,7 +319,7 @@ function extractLotRStyleName(cardName: string, setName: string | null): { rawNa
 
 // ── Product → ScrapedCard[] ───────────────────────────────────────────────────
 
-function mapProduct(product: ShopifyProduct, baseUrl: string): ScrapedCard[] {
+export function mapProduct(product: ShopifyProduct, baseUrl: string): ScrapedCard[] {
   if (isTokenOrEmblem(product)) return [];
 
   // Parse set code + collector number + foil from the first variant's SKU.
@@ -455,6 +455,18 @@ export class ShopifyScraper extends BaseScraper {
       }
 
       page++;
+    }
+
+    if (totalProducts === 0) {
+      this.log.error(
+        { store: this.config.id, likely_cause: "endpoint_404_or_empty_collection" },
+        "Store returned zero products — check collection handle or store availability",
+      );
+    } else if (totalCards === 0) {
+      this.log.error(
+        { store: this.config.id, total_products: totalProducts, likely_cause: "handle_returns_wrong_product_type" },
+        "Store returned products but zero cards were parsed — collection handle may point to wrong product type",
+      );
     }
 
     this.log.info({ total_products: totalProducts, total_cards: totalCards }, "Shopify scrape complete");

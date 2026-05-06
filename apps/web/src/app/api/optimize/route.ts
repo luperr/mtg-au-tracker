@@ -1,32 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import sql from "@/lib/db";
 import { STORE_FLAT_SHIPPING_AUD } from "@/lib/store-shipping";
 import { logger } from "@/lib/utils";
+import { createRateLimiter } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/request";
+import { RATE_LIMIT_OPTIMIZE_PER_MINUTE } from "@/lib/config";
+import { branchAndBound, evaluateSubset } from "./algorithm";
+import type { OptimizeItem, Listing } from "./algorithm";
+
+export type { OptimizeItem };
 
 const log = logger.child({ component: "api-optimize" });
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-type OptimizeItem = {
-  cardId: string;
-  cardName: string;
-  printingId: string; // current printing in want list (used for locked constraint)
-};
-
-type Listing = {
-  printingId: string;
-  storeId: string;
-  storeName: string;
-  priceAud: number;
-  shippingAud: number | null;
-  condition: string | null;
-  url: string | null;
-  setName: string;
-  setCode: string;
-  rarity: string;
-  isFoil: boolean;
-  imageUri: string | null;
-};
+const checkRateLimit = createRateLimiter(RATE_LIMIT_OPTIMIZE_PER_MINUTE, 60 * 1000);
 
 export type OptimizeAssignment = {
   cardId: string;
@@ -61,136 +46,14 @@ export type OptimizeResult = {
   unavailable: string[]; // card names with no listings
 };
 
-// ── Optimization logic ────────────────────────────────────────────────────────
-
-/**
- * Branch-and-bound over the set of pool stores to activate.
- *
- * At each node we compute an optimistic lower bound by opening all undecided
- * stores at $0 flat fee. If that bound cannot beat the current best we prune
- * the entire subtree. The active Set is mutated in-place and restored on
- * backtrack to avoid O(S) allocation per node.
- *
- * Stores should be sorted cheapest-flat-rate-first before calling so that
- * free/cheap stores are explored early, producing tight bounds quickly.
- */
-function branchAndBound(
-  stores: string[],
-  idx: number,
-  active: Set<string>,
-  available: OptimizeItem[],
-  byCard: Map<string, Listing[]>,
-  allPoolStoreIds: Set<string>,
-  flatRates: Record<string, number | null>,
-  best: { cost: number; assignments: Map<string, Listing> | null }
-): void {
-  // Build optimistic lower bound: open every undecided store at $0 flat fee.
-  const optimisticActive = new Set(active);
-  const optimisticRates: Record<string, number | null> = { ...flatRates };
-  for (let i = idx; i < stores.length; i++) {
-    optimisticActive.add(stores[i]);
-    optimisticRates[stores[i]] = 0;
-  }
-  const lb = evaluateSubset(available, byCard, optimisticActive, allPoolStoreIds, optimisticRates);
-  if (!lb || lb.cost >= best.cost) return; // prune
-
-  if (idx === stores.length) {
-    // Leaf: no undecided stores remain, so optimisticRates === flatRates and the
-    // bound is the exact cost for this active set.
-    best.cost = lb.cost;
-    best.assignments = lb.assignments;
-    return;
-  }
-
-  const storeId = stores[idx];
-
-  // Include branch first — cheaper stores (sorted first) tend to produce tight
-  // upper bounds early, maximising pruning on subsequent branches.
-  active.add(storeId);
-  branchAndBound(stores, idx + 1, active, available, byCard, allPoolStoreIds, flatRates, best);
-  active.delete(storeId);
-
-  // Exclude branch
-  branchAndBound(stores, idx + 1, active, available, byCard, allPoolStoreIds, flatRates, best);
-}
-
-/**
- * Evaluate one combination of active pool stores.
- *
- * Pool stores (Good Games, MTG Mate, etc.) charge a flat shipping fee per order.
- * Non-pool stores (eBay AU) charge per-listing shipping.
- *
- * Pool stores NOT in activePoolStoreIds are excluded from consideration —
- * if a store isn't activated, we're not paying its flat fee so we can't use it.
- * Flat shipping is added once per used active pool store at the end.
- */
-function evaluateSubset(
-  items: OptimizeItem[],
-  byCard: Map<string, Listing[]>,
-  activePoolStoreIds: Set<string>,
-  allPoolStoreIds: Set<string>,
-  flatRates: Record<string, number | null>
-): { cost: number; assignments: Map<string, Listing> } | null {
-  const assignments = new Map<string, Listing>(); // cardId → chosen listing
-
-  for (const item of items) {
-    const listings = byCard.get(item.cardId);
-    if (!listings || listings.length === 0) return null; // unavailable
-
-    let best: Listing | null = null;
-    let bestCost = Infinity;
-
-    for (const l of listings) {
-      // Pool stores not in the active set are off-limits — we won't pay their
-      // flat shipping fee so we can't buy from them in this subset.
-      if (allPoolStoreIds.has(l.storeId) && !activePoolStoreIds.has(l.storeId)) continue;
-
-      // Marginal cost: active pool store items don't pay per-card shipping
-      // (the flat fee is amortised across the whole order, added below).
-      const effectiveCost = activePoolStoreIds.has(l.storeId)
-        ? l.priceAud
-        : l.priceAud + (l.shippingAud ?? 0);
-
-      // Tie-break on flat rate: equal card prices should prefer the store with
-      // lower flat fee so we don't trigger an $80 flat fee when a $6.50 store
-      // has the same card at the same price.
-      const flatL = activePoolStoreIds.has(l.storeId) ? (flatRates[l.storeId] ?? 0) : 0;
-      const flatBest = best && activePoolStoreIds.has(best.storeId) ? (flatRates[best.storeId] ?? 0) : 0;
-
-      if (effectiveCost < bestCost || (effectiveCost === bestCost && flatL < flatBest)) {
-        bestCost = effectiveCost;
-        best = l;
-      }
-    }
-
-    if (!best) return null; // no valid listing for this card in this subset
-    assignments.set(item.cardId, best);
-  }
-
-  // Calculate true total: card prices + per-listing shipping + flat fees
-  const usedPoolStores = new Set<string>();
-  let totalCost = 0;
-
-  for (const listing of assignments.values()) {
-    totalCost += listing.priceAud;
-    if (activePoolStoreIds.has(listing.storeId)) {
-      usedPoolStores.add(listing.storeId);
-    } else {
-      totalCost += listing.shippingAud ?? 0;
-    }
-  }
-
-  for (const storeId of usedPoolStores) {
-    const flat = flatRates[storeId];
-    totalCost += flat ?? 0;
-  }
-
-  return { cost: totalCost, assignments };
-}
-
 // ── Route handler ─────────────────────────────────────────────────────────────
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const ip = getClientIp(request);
+  if (process.env.NODE_ENV !== "development" && !checkRateLimit(ip)) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+
   let body: unknown;
   try {
     body = await request.json();

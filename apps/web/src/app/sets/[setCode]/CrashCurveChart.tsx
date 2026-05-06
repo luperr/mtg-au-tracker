@@ -19,14 +19,14 @@ function formatDate(dateStr: string) {
 }
 
 const tooltipStyle = {
-  backgroundColor: "var(--color-surface, #1a1a1a)",
-  border: "1px solid var(--color-subtle, #333)",
+  backgroundColor: "var(--color-surface, #201f1d)",
+  border: "1px solid var(--color-subtle, #3d3a33)",
   borderRadius: 6,
   fontSize: 11,
-  color: "var(--color-cream, #f0e8d8)",
+  color: "var(--color-cream, #E8DECE)",
 };
 const tickStyle = {
-  fill: "var(--color-cream-dim, #a09880)",
+  fill: "var(--color-cream-dim, #a89d8a)",
   fontSize: 9,
   opacity: 0.6,
 };

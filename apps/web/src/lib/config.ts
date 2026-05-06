@@ -9,6 +9,9 @@
 
 export const RATE_LIMIT_SEARCH_PER_MINUTE = 60;
 export const RATE_LIMIT_CONTACT_PER_HOUR = 3;
+export const RATE_LIMIT_BULK_LOOKUP_PER_MINUTE = 10;
+export const RATE_LIMIT_OPTIMIZE_PER_MINUTE = 5;
+export const RATE_LIMIT_READ_PER_MINUTE = 120;
 
 // ── Pagination ───────────────────────────────────────────────────────────────
 
@@ -19,10 +22,7 @@ export const MAX_CARD_QTY = 99;
 
 // ── Price trends ─────────────────────────────────────────────────────────────
 
-/** Current price must be > hist * TREND_UP to show ↑ */
-export const TREND_UP_THRESHOLD = 1.01;
-/** Current price must be < hist * TREND_DOWN to show ↓ */
-export const TREND_DOWN_THRESHOLD = 0.99;
+export { TREND_UP_THRESHOLD, TREND_DOWN_THRESHOLD } from "@mtg-au/shared";
 
 // ── Cache durations (seconds) ────────────────────────────────────────────────
 
