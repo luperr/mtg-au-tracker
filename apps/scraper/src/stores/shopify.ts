@@ -66,20 +66,6 @@ interface ProductsResponse {
   products: ShopifyProduct[];
 }
 
-// ── Game-name prefix stripping ────────────────────────────────────────────────
-// Some Shopify stores prefix ALL product titles with the game name, e.g.:
-//   "MTG - Lightning Bolt - Magic 2011"
-//   "Magic: The Gathering - Lightning Bolt"
-// The dash-based parseProductTitle regex is non-greedy, so it extracts "MTG" or
-// "Magic: The Gathering" as the card name and puts the real card name in setName,
-// causing 0 matches across the entire store.
-
-const GAME_NAME_PREFIX_RE = /^(?:magic(?:[:\s]+the\s+gathering)?|mtg)\s*[-–—]\s*/i;
-
-export function stripGameNamePrefix(title: string): string {
-  return title.replace(GAME_NAME_PREFIX_RE, "").trim();
-}
-
 // ── Product title parsing ─────────────────────────────────────────────────────
 // Strip common set-suffix patterns to get the clean card name.
 // Examples:
@@ -367,9 +353,6 @@ export function mapProduct(product: ShopifyProduct, baseUrl: string): ScrapedCar
   if (collectorMatch) cleanTitle = cleanTitle.replace(collectorMatch[0], "");
   if (isBorderless) cleanTitle = cleanTitle.replace(BORDERLESS_WORD, "");
   cleanTitle = cleanTitle.replace(/\s{2,}/g, " ").trim();
-  // Strip game-name prefix (e.g. "MTG - " or "Magic: The Gathering - ") before
-  // parsing card name — some stores prefix every title with the game name.
-  cleanTitle = stripGameNamePrefix(cleanTitle);
 
   const { cardName: parsedCardName, setName: titleSetName } = parseProductTitle(cleanTitle);
   const tagSetName = extractSetFromTags(product.tags);
