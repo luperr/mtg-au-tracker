@@ -4,6 +4,7 @@ import {
   parseSkuData,
   parseProductTitle,
   isSkippedVariant,
+  stripGameNamePrefix,
 } from "./shopify.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -163,6 +164,54 @@ describe("parseProductTitle", () => {
       cardName: "Urza's Saga",
       setName: "Legacy",
     });
+  });
+});
+
+// ─── stripGameNamePrefix ──────────────────────────────────────────────────────
+
+describe("stripGameNamePrefix", () => {
+  it("strips 'MTG - ' prefix", () => {
+    expect(stripGameNamePrefix("MTG - Lightning Bolt")).toBe("Lightning Bolt");
+  });
+
+  it("strips 'MTG – ' (en-dash) prefix", () => {
+    expect(stripGameNamePrefix("MTG – Lightning Bolt")).toBe("Lightning Bolt");
+  });
+
+  it("strips 'Magic - ' prefix", () => {
+    expect(stripGameNamePrefix("Magic - Lightning Bolt")).toBe("Lightning Bolt");
+  });
+
+  it("strips 'Magic: The Gathering - ' prefix", () => {
+    expect(stripGameNamePrefix("Magic: The Gathering - Lightning Bolt")).toBe("Lightning Bolt");
+  });
+
+  it("strips 'Magic: The Gathering – ' (en-dash) prefix", () => {
+    expect(stripGameNamePrefix("Magic: The Gathering – Lightning Bolt")).toBe("Lightning Bolt");
+  });
+
+  it("strips prefix and preserves set suffix", () => {
+    expect(stripGameNamePrefix("MTG - Lightning Bolt - Magic 2011")).toBe("Lightning Bolt - Magic 2011");
+  });
+
+  it("is case-insensitive", () => {
+    expect(stripGameNamePrefix("magic: the gathering - Lightning Bolt")).toBe("Lightning Bolt");
+    expect(stripGameNamePrefix("mtg - Lightning Bolt")).toBe("Lightning Bolt");
+  });
+
+  it("handles 'Magic The Gathering - ' (no colon)", () => {
+    expect(stripGameNamePrefix("Magic The Gathering - Lightning Bolt")).toBe("Lightning Bolt");
+  });
+
+  it("does not strip titles without a game-name prefix", () => {
+    expect(stripGameNamePrefix("Lightning Bolt - Magic 2010")).toBe("Lightning Bolt - Magic 2010");
+    expect(stripGameNamePrefix("Dark Confidant")).toBe("Dark Confidant");
+  });
+
+  it("does not strip when 'Magic' is part of the card name (card name follows space, not dash)", () => {
+    expect(stripGameNamePrefix("Magic Word - Conspiracy: Take the Crown")).toBe(
+      "Magic Word - Conspiracy: Take the Crown",
+    );
   });
 });
 
