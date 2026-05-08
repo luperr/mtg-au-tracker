@@ -46,7 +46,7 @@ async function main() {
         );
       }
 
-      const scraped = mapProduct(p, CONFIG.baseUrl);
+      const scraped = mapProduct(p, CONFIG);
       if (scraped.length > 0) {
         const c = scraped[0];
         console.log(
