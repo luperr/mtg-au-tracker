@@ -176,4 +176,9 @@ export const SHOPIFY_STORES: ShopifyStoreConfig[] = [
     baseUrl: "https://area52.com.au",
     collectionHandle: "mtg-singles-instock",
   },
+    {   
+    id: "shuffled_and_cut_games",
+    baseUrl: "https://shuffledandcutgames.com",
+    collectionHandle: "mtg-singles",
+  },
 ];

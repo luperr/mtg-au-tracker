@@ -37,5 +37,6 @@ export const STORE_FLAT_SHIPPING_AUD: Record<string, number | null> = {
   the_card_hub_australia: 6.50,
   that_game_store: 6.50,
   area52: 6.50,
+  shuffled_and_cut_games: 6.50,
   ebay_au: null,    // per-seller — handled as per-item shipping, not flat rate
 };
