@@ -177,8 +177,8 @@ export const SHOPIFY_STORES: ShopifyStoreConfig[] = [
     collectionHandle: "mtg-singles-instock",
   },
     {   
-    id: "shuffled_and_cut_games",
-    baseUrl: "https://shuffledandcutgames.com",
+    id: "shuffle_and_cut_games",
+    baseUrl: "https://shuffleandcutgames.com",
     collectionHandle: "mtg-singles",
   },
 ];
