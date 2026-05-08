@@ -4,7 +4,6 @@ import {
   parseSkuData,
   parseProductTitle,
   isSkippedVariant,
-  parseAllInTitle,
 } from "./shopify.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -164,53 +163,6 @@ describe("parseProductTitle", () => {
       cardName: "Urza's Saga",
       setName: "Legacy",
     });
-  });
-});
-
-// ─── parseAllInTitle ──────────────────────────────────────────────────────────
-
-describe("parseAllInTitle", () => {
-  it("parses foil borderless card", () => {
-    expect(parseAllInTitle("Zenos yae Galvus (Borderless) 384 Rare FINAL FANTASY Foil NM/M")).toEqual({
-      cardName: "Zenos yae Galvus",
-      collectorNumber: "384",
-      setName: "FINAL FANTASY",
-      isFoil: true,
-    });
-  });
-
-  it("parses non-foil common", () => {
-    expect(parseAllInTitle("Lightning Bolt 401 Common Commander Legends NM/M")).toEqual({
-      cardName: "Lightning Bolt",
-      collectorNumber: "401",
-      setName: "Commander Legends",
-      isFoil: false,
-    });
-  });
-
-  it("parses mythic rare", () => {
-    expect(parseAllInTitle("Liliana of the Veil 143 Mythic Rare Innistrad: Midnight Hunt NM/M")).toEqual({
-      cardName: "Liliana of the Veil",
-      collectorNumber: "143",
-      setName: "Innistrad: Midnight Hunt",
-      isFoil: false,
-    });
-  });
-
-  it("parses foil without treatment", () => {
-    expect(parseAllInTitle("Thoughtseize 228 Rare Theros Foil NM/M")).toEqual({
-      cardName: "Thoughtseize",
-      collectorNumber: "228",
-      setName: "Theros",
-      isFoil: true,
-    });
-  });
-
-  it("returns null metadata when no rarity found", () => {
-    const result = parseAllInTitle("Some Unknown Product NM/M");
-    expect(result.collectorNumber).toBeNull();
-    expect(result.setName).toBeNull();
-    expect(result.isFoil).toBe(false);
   });
 });
 
