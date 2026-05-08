@@ -21,7 +21,8 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
 
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install
+      - run: git diff --exit-code pnpm-lock.yaml || (echo "pnpm-lock.yaml is out of date — run pnpm install and commit it" && exit 1)
 
       # shared has no tsconfig — its types are covered transitively by scraper + web
       - run: pnpm --filter @mtg-au/scraper exec tsc --noEmit
@@ -42,7 +43,8 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
 
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install
+      - run: git diff --exit-code pnpm-lock.yaml || (echo "pnpm-lock.yaml is out of date — run pnpm install and commit it" && exit 1)
 
       - run: pnpm test
 
