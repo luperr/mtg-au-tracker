@@ -319,47 +319,70 @@ function extractLotRStyleName(cardName: string, setName: string | null): { rawNa
 
 // ── Product → ScrapedCard[] ───────────────────────────────────────────────────
 
-export function mapProduct(product: ShopifyProduct, baseUrl: string): ScrapedCard[] {
+const ALL_IN_TITLE_RARITY_RE = /\b(Mythic Rare|Mythic|Common|Uncommon|Rare|Special|Basic Land)\b/i;
+
+export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig): ScrapedCard[] {
+  const baseUrl = config.baseUrl;
   if (isTokenOrEmblem(product)) return [];
 
-  // Parse set code + collector number + foil from the first variant's SKU.
-  // These are more reliable than title parsing and allow us to match special
-  // treatments (showcase, extended art, etc.) that would otherwise be skipped.
-  const skuData = parseSkuData(product.variants[0]?.sku);
-  const hasSkuMatch = skuData.setCode !== null && skuData.collectorNumber !== null;
+  // Some stores bake all metadata into the title with a single "Default Title"
+  // variant: "{Name} [({Treatment})] {Collector#} {Rarity} {Set} [Foil] {Condition}"
+  // e.g. "Zenos yae Galvus (Borderless) 384 Rare FINAL FANTASY Foil NM/M"
+  // Use the rarity word as an anchor to split out the card name, collector
+  // number, set name, and foil flag, feeding them into Level 0 matching.
+  let cardName: string;
+  let collectorNumber: string | null;
+  let setName: string | null;
+  let setCode: string | null = null;
+  let titleFoil: boolean | null = null;  // non-null overrides variant foil detection
+  let skuFoil: boolean | null = null;
 
-  // Only skip variant keywords (showcase, extended art, etc.) when we don't
-  // have a precise SKU match — without set+collector we can't reliably identify
-  // which specific printing it is.
-  if (!hasSkuMatch && isSkippedVariant(product.title)) return [];
+  if (config.titleFormat === "all-in-title") {
+    const rm = ALL_IN_TITLE_RARITY_RE.exec(product.title);
+    if (rm) {
+      const before = product.title.slice(0, rm.index).trim();
+      let after = product.title.slice(rm.index + rm[0].length).trim();
+      titleFoil = /\bFoil\b/i.test(after);
+      after = after.replace(/\bNM\s*\/\s*M\b|\bNM\b|\bLP\b|\bMP\b|\bHP\b|\bDMG\b/gi, "")
+                   .replace(/\bFoil\b/gi, "").replace(/\s{2,}/g, " ").trim();
+      setName = after || null;
+      const cm = before.match(/\s+(\d{1,4}[a-z]?)\s*$/i);
+      collectorNumber = cm ? cm[1] : null;
+      const namePart = cm ? before.slice(0, before.length - cm[0].length).trim() : before;
+      // Strip trailing treatment annotation e.g. "(Borderless)"
+      cardName = namePart.replace(/\s*\([^)]*\)\s*$/, "").trim() || namePart;
+    } else {
+      // No rarity found — fall back to raw title, no collector/set
+      cardName = product.title.trim();
+      collectorNumber = null;
+      setName = null;
+    }
+  } else {
+    // ── Standard SKU + title parsing ─────────────────────────────────────────
+    const skuData = parseSkuData(product.variants[0]?.sku);
+    const hasSkuMatch = skuData.setCode !== null && skuData.collectorNumber !== null;
+    if (!hasSkuMatch && isSkippedVariant(product.title)) return [];
 
-  // Foil from tags (e.g. Gameology's "Printing_Non-Foil" / "Printing_Foil").
-  // Used as fallback when the SKU format doesn't encode finish.
+    setCode = skuData.setCode;
+    skuFoil = skuData.isFoil;
+
+    const collectorMatch = COLLECTOR_NUM_RE.exec(product.title);
+    collectorNumber = skuData.collectorNumber ?? (collectorMatch ? String(parseInt(collectorMatch[1], 10)) : null);
+
+    let cleanTitle = product.title;
+    if (collectorMatch) cleanTitle = cleanTitle.replace(collectorMatch[0], "");
+    if (BORDERLESS_WORD.test(product.title)) cleanTitle = cleanTitle.replace(BORDERLESS_WORD, "");
+    cleanTitle = cleanTitle.replace(/\s{2,}/g, " ").trim();
+
+    const { cardName: parsedCardName, setName: titleSetName } = parseProductTitle(cleanTitle);
+    const rawSetName = extractSetFromTags(product.tags) ?? titleSetName;
+    const resolved = extractLotRStyleName(parsedCardName, rawSetName);
+    cardName = resolved.rawName;
+    setName = resolved.resolvedSetName;
+  }
+
   const tagFoil = extractFoilFromTags(product.tags);
-
   const isBorderless = BORDERLESS_WORD.test(product.title);
-
-  // Title-based collector number extraction (4-digit zero-padded pattern).
-  // Used as fallback when SKU doesn't provide a collector number.
-  const collectorMatch = COLLECTOR_NUM_RE.exec(product.title);
-  const titleCollectorNumber = collectorMatch ? String(parseInt(collectorMatch[1], 10)) : null;
-
-  const collectorNumber = skuData.collectorNumber ?? titleCollectorNumber;
-  const setCode = skuData.setCode;
-
-  // Build a clean title for card name / set name parsing:
-  // remove the zero-padded collector number and "Borderless" word.
-  let cleanTitle = product.title;
-  if (collectorMatch) cleanTitle = cleanTitle.replace(collectorMatch[0], "");
-  if (isBorderless) cleanTitle = cleanTitle.replace(BORDERLESS_WORD, "");
-  cleanTitle = cleanTitle.replace(/\s{2,}/g, " ").trim();
-
-  const { cardName: parsedCardName, setName: titleSetName } = parseProductTitle(cleanTitle);
-  const tagSetName = extractSetFromTags(product.tags);
-  const rawSetName = tagSetName ?? titleSetName;
-
-  // Resolve LotR-style "DisplayName - RealCardName [Set]" product titles
-  const { rawName: cardName, resolvedSetName: setName } = extractLotRStyleName(parsedCardName, rawSetName);
 
   const sourceUrl = `${baseUrl}/products/${product.handle}`;
   const results: ScrapedCard[] = [];
@@ -371,9 +394,7 @@ export function mapProduct(product: ShopifyProduct, baseUrl: string): ScrapedCar
     const { condition, isFoil: variantFoil, finish: variantFinish } = parseVariant(variant, product.options);
     if (condition !== "NM") continue;
 
-    // Foil priority: SKU finish field > tag > variant option parsing
-    const isFoil = skuData.isFoil ?? tagFoil ?? variantFoil;
-    // finish: use etched from variant options if detected; otherwise derive from isFoil
+    const isFoil = titleFoil ?? (skuFoil ?? tagFoil ?? variantFoil);
     const finish: "nonfoil" | "foil" | "etched" =
       variantFinish === "etched" ? "etched" : isFoil ? "foil" : "nonfoil";
 
@@ -440,7 +461,7 @@ export class ShopifyScraper extends BaseScraper {
       totalProducts += products.length;
 
       for (const product of products) {
-        const cards = mapProduct(product, this.config.baseUrl);
+        const cards = mapProduct(product, this.config);
         totalCards += cards.length;
         for (const card of cards) {
           yield card;
