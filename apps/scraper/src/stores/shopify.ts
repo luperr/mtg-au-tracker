@@ -26,7 +26,7 @@
  *   - Only NM variants are emitted (same behaviour as original Good Games scraper).
  */
 
-import { type ScrapedCard, normaliseCondition } from "@mtg-au/shared";
+import { type ScrapedCard, normaliseCondition, stripVariant } from "@mtg-au/shared";
 import { BaseScraper } from "./base-scraper.js";
 import type { ShopifyStoreConfig } from "./shopify-stores.config.js";
 import { logger } from "../lib/logger.js";
@@ -321,15 +321,41 @@ function extractLotRStyleName(cardName: string, setName: string | null): { rawNa
 
 const ALL_IN_TITLE_RARITY_RE = /\b(Mythic Rare|Mythic|Common|Uncommon|Rare|Special|Basic Land)\b/i;
 
+// Single-letter rarity abbreviations used in Raptor Games Format 2 titles,
+// plus the word "Land" for basic lands that skip the single-letter abbreviation.
+// S = Special rarity (e.g. Time Spiral Remastered timeshifted cards).
+// P = Promo (store championships, FNM, Grand Prix, etc.).
+const RARITY_LETTER_RE = /\b([MRUCLSP]|Land)\b/g;
+
+/**
+ * Strip store-specific prefixes/suffixes from a set name extracted from a Raptor
+ * Games product title. Scryfall doesn't use the "Universes Beyond:" category prefix,
+ * and some listings append a parenthetical set-code hint like "(M14)".
+ */
+function normalizeRaptorSetName(raw: string): string | null {
+  const s = raw
+    .replace(/^Universes Beyond:\s*/i, "")
+    .replace(/\s*\([^)]*\)\s*$/, "")
+    .trim();
+  return s || null;
+}
+
 export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig): ScrapedCard[] {
   const baseUrl = config.baseUrl;
   if (isTokenOrEmblem(product)) return [];
 
-  // Some stores bake all metadata into the title with a single "Default Title"
-  // variant: "{Name} [({Treatment})] {Collector#} {Rarity} {Set} [Foil] {Condition}"
-  // e.g. "Zenos yae Galvus (Borderless) 384 Rare FINAL FANTASY Foil NM/M"
-  // Use the rarity word as an anchor to split out the card name, collector
-  // number, set name, and foil flag, feeding them into Level 0 matching.
+  // Raptor Games bakes all metadata into the product title with a single
+  // "Default Title" variant. Two title formats are used:
+  //
+  //   Format 1 (ends with NM/M):
+  //     "{Name} [{Treatments}] {Collector#} [{Rarity}] {Set} [Foil] NM/M"
+  //     e.g. "Wooded Foothills 236 Rare Modern Horizons 3 NM/M"
+  //
+  //   Format 2 (ends with NM only):
+  //     "{Name} [{Treatments}] {M|R|U|C|L} {Set} {Collector#} NM"
+  //     e.g. "Shadow of the Second Sun M Modern Horizons 3 70 NM"
+  //
+  // Both are detected by the "all-in-title" titleFormat config flag.
   let cardName: string;
   let collectorNumber: string | null;
   let setName: string | null;
@@ -338,25 +364,104 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
   let skuFoil: boolean | null = null;
 
   if (config.titleFormat === "all-in-title") {
-    const rm = ALL_IN_TITLE_RARITY_RE.exec(product.title);
-    if (rm) {
-      const before = product.title.slice(0, rm.index).trim();
-      let after = product.title.slice(rm.index + rm[0].length).trim();
-      titleFoil = /\bFoil\b/i.test(after);
-      after = after.replace(/\bNM\s*\/\s*M\b|\bNM\b|\bLP\b|\bMP\b|\bHP\b|\bDMG\b/gi, "")
-                   .replace(/\bFoil\b/gi, "").replace(/\s{2,}/g, " ").trim();
-      setName = after || null;
-      const cm = before.match(/\s+(\d{1,4}[a-z]?)\s*$/i);
-      collectorNumber = cm ? cm[1] : null;
-      const namePart = cm ? before.slice(0, before.length - cm[0].length).trim() : before;
-      // Strip trailing treatment annotation e.g. "(Borderless)"
-      cardName = namePart.replace(/\s*\([^)]*\)\s*$/, "").trim() || namePart;
-    } else {
-      // No rarity found — fall back to raw title, no collector/set
-      cardName = product.title.trim();
+    // Secret Lair individual card format: "MTG Brand | Secret Lair Name | Card Name [Foil Edition]"
+    // Detect by 2+ pipe separators → 3+ segments; last segment is the card name.
+    // Single-pipe listings are bundle/pack products (not individual singles) — leave them
+    // to fall through as unmatched rather than emitting garbage card names.
+    const pipeParts = product.title.split(" | ");
+    if (pipeParts.length >= 3) {
+      const lastPart = pipeParts[pipeParts.length - 1].trim();
+      titleFoil = /\bFoil\b/i.test(lastPart);
+      cardName = lastPart.replace(/\s+Foil\s+Edition\s*$/i, "").trim();
       collectorNumber = null;
       setName = null;
+    } else {
+
+    const isFmt2 = /\s+NM\s*$/.test(product.title) && !/NM\/M/i.test(product.title);
+
+    if (isFmt2) {
+      // ── Format 2 ────────────────────────────────────────────────────────────
+      let working = product.title.replace(/\s+NM\s*$/, "").trim();
+
+      // Collector# is the last standalone integer before NM (absent for some
+      // "The List Reprints" style listings that use fraction notation instead).
+      const cm2 = /\s+(\d{1,4}[a-z]?)\s*$/.exec(working);
+      if (cm2) {
+        collectorNumber = String(parseInt(cm2[1], 10));
+        working = working.slice(0, working.length - cm2[0].length).trim();
+      } else {
+        collectorNumber = null;
+      }
+
+      titleFoil = /\bFoil\b/i.test(working);
+
+      // The rarity letter (or "Land") separates the card name+treatments from
+      // the set name. Use the LAST occurrence to handle edge cases where a
+      // number (pre-rarity collector#) sits between name and rarity.
+      const rarityMatches = [...working.matchAll(RARITY_LETTER_RE)];
+      const rarityMatch = rarityMatches.at(-1);
+      if (rarityMatch !== undefined && rarityMatch.index !== undefined) {
+        let nameRaw = working.slice(0, rarityMatch.index).trim();
+        const afterRarity = working.slice(rarityMatch.index + rarityMatch[0].length).trim();
+        setName = normalizeRaptorSetName(afterRarity);
+
+        // If no trailing collector# was found, the number may sit between the
+        // card name and the rarity letter (Format 2b edge case, e.g. basic lands
+        // or "The List Reprints" with inline collector numbers).
+        if (!collectorNumber) {
+          const innerCm = /\s+(\d{1,4}[a-z]?)\s*$/.exec(nameRaw);
+          if (innerCm) {
+            collectorNumber = String(parseInt(innerCm[1], 10));
+            nameRaw = nameRaw.slice(0, nameRaw.length - innerCm[0].length).trim();
+          }
+        }
+
+        cardName = stripVariant(nameRaw) || nameRaw;
+      } else {
+        // No rarity letter — try first standalone number as name/set split
+        const fallbackCm = /(?:^|\s)(\d{1,4}[a-z]?)(?=\s|$)/i.exec(working);
+        if (fallbackCm && fallbackCm.index !== undefined) {
+          const beforeNum = working.slice(0, fallbackCm.index).trim();
+          const afterNum = working.slice(fallbackCm.index + fallbackCm[0].length).trim();
+          cardName = stripVariant(beforeNum) || beforeNum;
+          setName = normalizeRaptorSetName(afterNum);
+          if (!collectorNumber) collectorNumber = String(parseInt(fallbackCm[1], 10));
+        } else {
+          cardName = stripVariant(working) || working;
+          setName = null;
+        }
+      }
+    } else {
+      // ── Format 1 ────────────────────────────────────────────────────────────
+      let working = product.title.replace(/\s+NM\s*\/\s*M\s*$/i, "").trim();
+
+      titleFoil = /\bFoil\b/i.test(working);
+
+      // Strip words that aren't part of the name, set, or collector#
+      working = working
+        .replace(ALL_IN_TITLE_RARITY_RE, "")
+        .replace(/\bFoil\b/gi, "")
+        .replace(/\b(NM|LP|MP|HP|DMG)\b/gi, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+
+      // Collector# is the first standalone integer not inside parentheses.
+      // Raptor zero-pads some collector numbers to 4 digits (e.g. "0216" for
+      // TMNT borderless variants); strip leading zeros to match Scryfall's format.
+      const cm1 = /(?:^|\s)(\d{1,4}[a-z]?)(?=\s|$)/i.exec(working);
+      if (cm1 && cm1.index !== undefined) {
+        collectorNumber = String(parseInt(cm1[1], 10));
+        const beforeNum = working.slice(0, cm1.index).trim();
+        const afterNum = working.slice(cm1.index + cm1[0].length).trim();
+        setName = normalizeRaptorSetName(afterNum);
+        cardName = stripVariant(beforeNum) || beforeNum || product.title;
+      } else {
+        cardName = stripVariant(product.title) || product.title;
+        collectorNumber = null;
+        setName = null;
+      }
     }
+    } // closes the `else` branch of the pipe-separator check
   } else {
     // ── Standard SKU + title parsing ─────────────────────────────────────────
     const skuData = parseSkuData(product.variants[0]?.sku);
@@ -395,8 +500,12 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
     if (condition !== "NM") continue;
 
     const isFoil = titleFoil ?? (skuFoil ?? tagFoil ?? variantFoil);
+    // For all-in-title stores, etched finish is declared in the title via
+    // "(Foil Etched)" treatment rather than a variant option.
+    const titleEtched = config.titleFormat === "all-in-title" &&
+      /\bFoil\s+Etched\b|\bEtched\s+Foil\b/i.test(product.title);
     const finish: "nonfoil" | "foil" | "etched" =
-      variantFinish === "etched" ? "etched" : isFoil ? "foil" : "nonfoil";
+      titleEtched ? "etched" : (variantFinish === "etched" ? "etched" : isFoil ? "foil" : "nonfoil");
 
     results.push({
       rawName: cardName,
