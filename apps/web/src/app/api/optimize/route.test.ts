@@ -1,23 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { branchAndBound, evaluateSubset } from "./algorithm";
-import type { OptimizeItem } from "./algorithm";
+import type { OptimizeItem, Listing } from "./algorithm";
 
 // ── Test fixtures ─────────────────────────────────────────────────────────────
-
-type Listing = {
-  printingId: string;
-  storeId: string;
-  storeName: string;
-  priceAud: number;
-  shippingAud: number | null;
-  condition: string | null;
-  url: string | null;
-  setName: string;
-  setCode: string;
-  rarity: string;
-  isFoil: boolean;
-  imageUri: string | null;
-};
 
 function listing(storeId: string, priceAud: number, shippingAud: number | null = null): Listing {
   return {
@@ -32,6 +17,9 @@ function listing(storeId: string, priceAud: number, shippingAud: number | null =
     setCode: "tst",
     rarity: "common",
     isFoil: false,
+    finish: "nonfoil",
+    borderColor: null,
+    frameEffects: [],
     imageUri: null,
   };
 }
