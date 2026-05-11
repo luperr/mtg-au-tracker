@@ -18,6 +18,10 @@ export interface ShopifyStoreConfig {
   id: string;               // matches stores.id in DB (e.g. "good_games")
   baseUrl: string;          // e.g. "https://tcg.goodgames.com.au"
   collectionHandle: string; // Shopify collection slug (e.g. "mtg-singles-all-products")
+  // "all-in-title": store bakes card name + collector# + set + foil + condition
+  // all into the product title with a single "Default Title" variant.
+  // e.g. "Zenos yae Galvus (Borderless) 384 Rare FINAL FANTASY Foil NM/M"
+  titleFormat?: "all-in-title";
 }
 
 export const SHOPIFY_STORES: ShopifyStoreConfig[] = [
@@ -150,6 +154,7 @@ export const SHOPIFY_STORES: ShopifyStoreConfig[] = [
     id: "raptor_games",
     baseUrl: "https://raptorgames.com",
     collectionHandle: "magic-the-gathering-singles",
+    titleFormat: "all-in-title",
   },
   {
     id: "kastle_cards_and_games",
@@ -175,5 +180,10 @@ export const SHOPIFY_STORES: ShopifyStoreConfig[] = [
     id: "area52",
     baseUrl: "https://area52.com.au",
     collectionHandle: "mtg-singles-instock",
+  },
+    {   
+    id: "shuffle_and_cut_games",
+    baseUrl: "https://shuffleandcutgames.com",
+    collectionHandle: "mtg-singles",
   },
 ];

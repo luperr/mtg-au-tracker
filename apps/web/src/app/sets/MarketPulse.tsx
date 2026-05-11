@@ -2,14 +2,10 @@
 
 import { useState, useRef, useEffect } from "react";
 import type { TopMover } from "@/lib/db";
-import { cardHref } from "@/lib/utils";
+import { cardHref, fmtAUD } from "@/lib/utils";
 import { CardThumb } from "@/app/CardThumb";
 
 type Window = 7 | 14 | 30;
-
-function fmtAUD(n: number) {
-  return `$${n.toFixed(2)}`;
-}
 
 function MoverRow({ m, rank }: { m: TopMover; rank: number }) {
   const pct = parseFloat(m.pct_change);

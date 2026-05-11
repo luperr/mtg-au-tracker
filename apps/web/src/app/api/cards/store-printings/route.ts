@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import sql from "@/lib/db";
+import { withErrorHandler } from "@/lib/api-helpers";
+import { createRateLimiter } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/request";
+import { RATE_LIMIT_READ_PER_MINUTE } from "@/lib/config";
+
+const checkRateLimit = createRateLimiter(RATE_LIMIT_READ_PER_MINUTE, 60 * 1000);
 
 export async function GET(req: NextRequest) {
   const cardId = req.nextUrl.searchParams.get("cardId");
@@ -8,6 +14,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "cardId required" }, { status: 400 });
   }
 
+  const ip = getClientIp(req);
+  if (process.env.NODE_ENV !== "development" && !checkRateLimit(ip)) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+
+  return withErrorHandler(async () => {
   const rows = await sql<{
     id: string;
     set_name: string;
@@ -73,4 +85,5 @@ export async function GET(req: NextRequest) {
     })),
     { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120" } }
   );
+  }, "store-printings");
 }

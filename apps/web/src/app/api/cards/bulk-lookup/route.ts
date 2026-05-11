@@ -1,6 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import sql from "@/lib/db";
-import { MAX_BULK_CARDS, MAX_CARD_QTY } from "@/lib/config";
+import { withErrorHandler } from "@/lib/api-helpers";
+import { createRateLimiter } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/request";
+import { MAX_BULK_CARDS, MAX_CARD_QTY, RATE_LIMIT_BULK_LOOKUP_PER_MINUTE } from "@/lib/config";
+
+const checkRateLimit = createRateLimiter(RATE_LIMIT_BULK_LOOKUP_PER_MINUTE, 60 * 1000);
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -166,7 +171,12 @@ async function lookupByName(inputName: string, qty: number): Promise<BulkLookupR
 
 // ── Route handler ─────────────────────────────────────────────────────────────
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const ip = getClientIp(request);
+  if (process.env.NODE_ENV !== "development" && !checkRateLimit(ip)) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -193,15 +203,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ results: [] });
   }
 
-  const results: BulkLookupResult[] = await Promise.all(
-    cards.map((card) => {
-      const qty = Math.max(1, Math.min(card.qty ?? 1, MAX_CARD_QTY));
-      if (card.setCode && card.collectorNumber) {
-        return lookupBySetCollector(card.name, qty, card.setCode, card.collectorNumber);
-      }
-      return lookupByName(card.name, qty);
-    })
-  );
-
-  return NextResponse.json({ results });
+  return withErrorHandler(async () => {
+    const results: BulkLookupResult[] = await Promise.all(
+      cards.map((card) => {
+        const qty = Math.max(1, Math.min(card.qty ?? 1, MAX_CARD_QTY));
+        if (card.setCode && card.collectorNumber) {
+          return lookupBySetCollector(card.name, qty, card.setCode, card.collectorNumber);
+        }
+        return lookupByName(card.name, qty);
+      })
+    );
+    return NextResponse.json({ results });
+  }, "bulk-lookup");
 }

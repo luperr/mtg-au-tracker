@@ -22,7 +22,7 @@ export default defineWorkspace([
     test: {
       name: "web",
       environment: "node",
-      include: ["apps/web/src/lib/**/*.test.ts"],
+      include: ["apps/web/src/**/*.test.ts"],
     },
   },
 ]);

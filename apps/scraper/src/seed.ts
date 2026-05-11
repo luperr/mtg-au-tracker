@@ -78,6 +78,7 @@ const STORES = [
   { id: "area52", name: "Area52", baseUrl: "https://area52.com.au", scraperEnabled: true, logoUrl: null },
   { id: "mtg_singles_aus", name: "MTG Singles Australia", baseUrl: "https://www.mtgsinglesaustralia.com.au", scraperEnabled: false, logoUrl: null },
   { id: "ebay_au", name: "eBay AU", baseUrl: "https://www.ebay.com.au", scraperEnabled: true, logoUrl: null },
+  { id: "shuffle_and_cut_games", name: "Shuffle and Cut Games", baseUrl: "https://shuffleandcutgames.com", scraperEnabled: true, logoUrl: null },
 ];
 
 export async function seedStores(): Promise<void> {
