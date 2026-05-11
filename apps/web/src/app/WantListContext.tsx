@@ -12,6 +12,9 @@ export interface WantListItem {
   setCode: string;
   rarity: string;
   isFoil: boolean;
+  finish?: "nonfoil" | "foil" | "etched";   // optional: older localStorage items won't have this
+  borderColor?: string | null;               // for variant badge display
+  frameEffects?: string[];                   // for variant badge display
   storeId: string;
   storeName: string;
   priceAud: number;

@@ -7,9 +7,9 @@ import { fmtAUD } from "@/lib/utils";
 import { Dropdown, OptionItem } from "@/app/Dropdown";
 import { SetSymbol } from "@/app/SetSymbol";
 import { BuyLink } from "@/app/BuyLink";
+import { getVariantTags, variantBadge, VARIANT_LABELS, VARIANT_ORDER, type VariantTag } from "@/lib/variant-utils";
 
 type SortBy = "price_asc" | "price_desc" | "total_asc" | "total_desc" | "newest" | "oldest";
-type VariantTag = "standard" | "foil" | "etched" | "borderless" | "borderless-foil" | "showcase" | "extendedart" | "fullart";
 
 const SORT_LABELS: Record<SortBy, string> = {
   price_asc: "Price: Low → High",
@@ -19,50 +19,6 @@ const SORT_LABELS: Record<SortBy, string> = {
   newest: "Newest Set First",
   oldest: "Oldest Set First",
 };
-
-const VARIANT_LABELS: Record<VariantTag, string> = {
-  standard: "Standard",
-  foil: "Foil",
-  etched: "Etched",
-  borderless: "Borderless",
-  "borderless-foil": "Borderless Foil",
-  showcase: "Showcase",
-  extendedart: "Extended Art",
-  fullart: "Full Art",
-};
-
-const VARIANT_ORDER: VariantTag[] = ["standard", "foil", "etched", "borderless", "borderless-foil", "showcase", "extendedart", "fullart"];
-
-function getVariantTags(p: PrintingWithPrices): Set<VariantTag> {
-  const tags = new Set<VariantTag>();
-  const isBorderless = p.borderColor === "borderless";
-  const isSpecialFrame =
-    p.frameEffects.includes("showcase") ||
-    p.frameEffects.includes("extendedart") ||
-    p.frameEffects.includes("fullart");
-
-  if (p.frameEffects.includes("showcase"))    tags.add("showcase");
-  if (p.frameEffects.includes("extendedart")) tags.add("extendedart");
-  if (p.frameEffects.includes("fullart"))     tags.add("fullart");
-  if (isBorderless && p.finish !== "nonfoil") tags.add("borderless-foil");
-  else if (isBorderless)                      tags.add("borderless");
-  if (p.finish === "etched")                  tags.add("etched");
-  if (p.finish === "foil" && !isBorderless && !isSpecialFrame) tags.add("foil");
-  if (p.finish === "nonfoil" && !isBorderless && !isSpecialFrame) tags.add("standard");
-  return tags;
-}
-
-function variantBadge(p: PrintingWithPrices): string | null {
-  const tags = getVariantTags(p);
-  if (tags.has("borderless-foil")) return "Borderless Foil";
-  if (tags.has("borderless")) return "Borderless";
-  if (tags.has("etched")) return "Etched";
-  if (tags.has("showcase")) return p.finish !== "nonfoil" ? "Showcase Foil" : "Showcase";
-  if (tags.has("extendedart")) return p.finish !== "nonfoil" ? "Extended Art Foil" : "Extended Art";
-  if (tags.has("fullart")) return p.finish !== "nonfoil" ? "Full Art Foil" : "Full Art";
-  if (tags.has("foil")) return null; // shown via ✦ symbol instead
-  return null;
-}
 
 interface Row {
   printing: PrintingWithPrices;
@@ -117,6 +73,9 @@ function WantListButton({
             setCode: row.printing.setCode,
             rarity: row.printing.rarity,
             isFoil: row.printing.isFoil,
+            finish: row.printing.finish,
+            borderColor: row.printing.borderColor,
+            frameEffects: row.printing.frameEffects,
             storeId: row.storeId,
             storeName: row.storeName,
             priceAud: row.priceAud,

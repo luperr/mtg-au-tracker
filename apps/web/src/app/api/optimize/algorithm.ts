@@ -19,6 +19,9 @@ export type Listing = {
   setCode: string;
   rarity: string;
   isFoil: boolean;
+  finish: "nonfoil" | "foil" | "etched";
+  borderColor: string | null;
+  frameEffects: string[];
   imageUri: string | null;
 };
 

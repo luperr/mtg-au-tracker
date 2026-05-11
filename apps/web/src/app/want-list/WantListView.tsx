@@ -10,6 +10,7 @@ import { BuyLink } from "@/app/BuyLink";
 import { ImportCards } from "./ImportCards";
 import type { OptimizeResult } from "@/app/api/optimize/route";
 import { cardHref } from "@/lib/utils";
+import { variantBadge } from "@/lib/variant-utils";
 
 // ── Printing selector ─────────────────────────────────────────────────────────
 
@@ -20,6 +21,9 @@ type StorePrinting = {
   collectorNumber: string;
   rarity: string;
   isFoil: boolean;
+  finish: string;
+  borderColor: string | null;
+  frameEffects: string[];
   imageUri: string | null;
   priceAud: number;
   shippingAud: number | null;
@@ -78,7 +82,7 @@ function PrintingSelector({
     <div ref={ref} className="relative inline-block">
       <button
         onClick={() => setOpen(!open)}
-        title={`${item.setName}${item.isFoil ? " (Foil)" : ""} — click to change printing or store`}
+        title={`${item.setName}${(() => { const v = variantBadge({ finish: item.finish ?? "nonfoil", borderColor: item.borderColor ?? null, frameEffects: item.frameEffects ?? [] }) ?? (item.finish === "foil" ? "Foil" : null); return v ? ` (${v})` : ""; })()} — click to change printing or store`}
         className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
       >
         <SetSymbol setCode={item.setCode} setName={item.setName} rarity={item.rarity} />
@@ -119,7 +123,13 @@ function PrintingSelector({
                   >
                     <SetSymbol setCode={p.setCode} setName={p.setName} rarity={p.rarity} />
                     <span className="flex-1 truncate">
-                      {p.setName} #{p.collectorNumber}{p.isFoil ? " ✦" : ""}
+                      {p.setName} #{p.collectorNumber}
+                      {(() => {
+                        const badge = variantBadge({ finish: p.finish, borderColor: p.borderColor, frameEffects: p.frameEffects });
+                        if (badge) return <span className="ml-1 text-accent/80">· {badge}</span>;
+                        if (p.isFoil) return <span className="ml-1 text-accent/80">✦</span>;
+                        return null;
+                      })()}
                     </span>
                     <span className="text-cream-dim/40 text-[10px] shrink-0">{p.storeName}</span>
                     <span className="text-price font-semibold whitespace-nowrap">{fmtAUD(p.priceAud)}</span>
@@ -406,10 +416,10 @@ function OptimiseModal({
                               <span className="text-cream-dim/30">locked · {cur.storeName}</span>
                             ) : (
                               <>
-                                {cur.storeName}{printingChanged && <> · {cur.setName}</>}
+                                {cur.storeName}{printingChanged && <> · {cur.setName}{(() => { const v = variantBadge({ finish: cur.finish ?? "nonfoil", borderColor: cur.borderColor ?? null, frameEffects: cur.frameEffects ?? [] }) ?? (cur.finish === "foil" ? "Foil" : null); return v ? <> · {v}</> : ""; })()}</>}
                                 <span className="mx-1">→</span>
                                 <span className="text-cream-dim/70">{a.storeName}</span>
-                                {printingChanged && <span className="text-cream-dim/70"> · {a.setName}</span>}
+                                {printingChanged && <span className="text-cream-dim/70"> · {a.setName}{(() => { const v = variantBadge({ finish: a.finish, borderColor: a.borderColor, frameEffects: a.frameEffects }) ?? (a.finish === "foil" ? "Foil" : null); return v ? ` · ${v}` : ""; })()}</span>}
                               </>
                             )}
                           </div>
@@ -647,6 +657,9 @@ export function WantListView() {
         setCode: a.setCode,
         rarity: a.rarity,
         isFoil: a.isFoil,
+        finish: a.finish,
+        borderColor: a.borderColor,
+        frameEffects: a.frameEffects,
         imageUri: a.imageUri,
       });
     }
@@ -682,6 +695,9 @@ export function WantListView() {
       setCode: p.setCode,
       rarity: p.rarity,
       isFoil: p.isFoil,
+      finish: p.finish as "nonfoil" | "foil" | "etched",
+      borderColor: p.borderColor,
+      frameEffects: p.frameEffects,
       storeId: p.storeId,
       storeName: p.storeName,
       priceAud: p.priceAud,
