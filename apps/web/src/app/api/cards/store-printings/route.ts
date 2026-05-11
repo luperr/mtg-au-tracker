@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
       collectorNumber: r.collector_number,
       rarity: r.rarity,
       isFoil: r.is_foil,
-      finish: r.finish ?? (r.is_foil ? "foil" : "nonfoil"),
+      finish: (r.finish ?? (r.is_foil ? "foil" : "nonfoil")) as "nonfoil" | "foil" | "etched",
       borderColor: r.border_color ?? null,
       frameEffects: r.frame_effects ?? [],
       imageUri: r.image_uri,

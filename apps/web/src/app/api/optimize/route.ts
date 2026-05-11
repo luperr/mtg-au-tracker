@@ -28,6 +28,8 @@ export type OptimizeAssignment = {
   rarity: string;
   isFoil: boolean;
   finish: "nonfoil" | "foil" | "etched";
+  borderColor: string | null;
+  frameEffects: string[];
   imageUri: string | null;
 };
 
@@ -96,6 +98,8 @@ export async function POST(request: NextRequest) {
     rarity: string;
     is_foil: boolean;
     finish: string;
+    border_color: string | null;
+    frame_effects: string[];
     image_uri: string | null;
   }[]>`
     SELECT
@@ -112,6 +116,8 @@ export async function POST(request: NextRequest) {
       p.rarity,
       p.is_foil,
       p.finish,
+      p.border_color,
+      p.frame_effects,
       p.image_uri
     FROM printings p
     JOIN store_prices sp ON sp.printing_id = p.id
@@ -149,7 +155,9 @@ export async function POST(request: NextRequest) {
       setCode: row.set_code,
       rarity: row.rarity,
       isFoil: row.is_foil,
-      finish: (row.finish as "nonfoil" | "foil" | "etched") ?? (row.is_foil ? "foil" : "nonfoil"),
+      finish: (row.finish ?? (row.is_foil ? "foil" : "nonfoil")) as "nonfoil" | "foil" | "etched",
+      borderColor: row.border_color ?? null,
+      frameEffects: row.frame_effects ?? [],
       imageUri: row.image_uri,
     };
     byCard.get(row.card_id)!.push(listing);
@@ -247,6 +255,8 @@ export async function POST(request: NextRequest) {
       rarity: listing.rarity,
       isFoil: listing.isFoil,
       finish: listing.finish,
+      borderColor: listing.borderColor,
+      frameEffects: listing.frameEffects,
       imageUri: listing.imageUri,
     };
   });

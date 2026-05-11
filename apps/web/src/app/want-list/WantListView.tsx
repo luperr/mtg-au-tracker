@@ -82,7 +82,7 @@ function PrintingSelector({
     <div ref={ref} className="relative inline-block">
       <button
         onClick={() => setOpen(!open)}
-        title={`${item.setName}${item.finish === "etched" ? " (Etched)" : item.isFoil ? " (Foil)" : ""} — click to change printing or store`}
+        title={`${item.setName}${(() => { const v = variantBadge({ finish: item.finish ?? "nonfoil", borderColor: item.borderColor ?? null, frameEffects: item.frameEffects ?? [] }) ?? (item.finish === "foil" ? "Foil" : null); return v ? ` (${v})` : ""; })()} — click to change printing or store`}
         className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
       >
         <SetSymbol setCode={item.setCode} setName={item.setName} rarity={item.rarity} />
@@ -416,10 +416,10 @@ function OptimiseModal({
                               <span className="text-cream-dim/30">locked · {cur.storeName}</span>
                             ) : (
                               <>
-                                {cur.storeName}{printingChanged && <> · {cur.setName}{cur.finish && cur.finish !== "nonfoil" ? <> · {cur.finish === "etched" ? "Etched" : "Foil"}</> : ""}</>}
+                                {cur.storeName}{printingChanged && <> · {cur.setName}{(() => { const v = variantBadge({ finish: cur.finish ?? "nonfoil", borderColor: cur.borderColor ?? null, frameEffects: cur.frameEffects ?? [] }) ?? (cur.finish === "foil" ? "Foil" : null); return v ? <> · {v}</> : ""; })()}</>}
                                 <span className="mx-1">→</span>
                                 <span className="text-cream-dim/70">{a.storeName}</span>
-                                {printingChanged && <span className="text-cream-dim/70"> · {a.setName}{a.finish && a.finish !== "nonfoil" ? ` · ${a.finish === "etched" ? "Etched" : "Foil"}` : ""}</span>}
+                                {printingChanged && <span className="text-cream-dim/70"> · {a.setName}{(() => { const v = variantBadge({ finish: a.finish, borderColor: a.borderColor, frameEffects: a.frameEffects }) ?? (a.finish === "foil" ? "Foil" : null); return v ? ` · ${v}` : ""; })()}</span>}
                               </>
                             )}
                           </div>
@@ -658,6 +658,8 @@ export function WantListView() {
         rarity: a.rarity,
         isFoil: a.isFoil,
         finish: a.finish,
+        borderColor: a.borderColor,
+        frameEffects: a.frameEffects,
         imageUri: a.imageUri,
       });
     }
