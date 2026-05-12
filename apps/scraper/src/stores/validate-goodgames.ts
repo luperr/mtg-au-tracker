@@ -82,7 +82,7 @@ async function main() {
 
   // Look up Scryfall URIs for borderless and low-confidence matches
   const needsLookup = results.filter(
-    (r) => r.result.printingId && (r.card.isBorderless || r.result.confidence < LOW_CONF_THRESHOLD),
+    (r) => r.result.printingId && (r.card.treatment === "borderless" || r.result.confidence < LOW_CONF_THRESHOLD),
   );
   for (const r of needsLookup) {
     if (!r.result.printingId) continue;
@@ -95,7 +95,7 @@ async function main() {
   }
 
   // ── Borderless matches ────────────────────────────────────────────────────
-  const borderless = results.filter((r) => r.card.isBorderless);
+  const borderless = results.filter((r) => r.card.treatment === "borderless");
   if (borderless.length > 0) {
     console.log(`\n${"═".repeat(80)}`);
     console.log(`BORDERLESS MATCHES (${borderless.length}) — verify Scryfall URI shows borderless art`);
@@ -112,7 +112,7 @@ async function main() {
 
   // ── Low confidence matches ────────────────────────────────────────────────
   const lowConf = results.filter(
-    (r) => r.result.printingId && r.result.confidence < LOW_CONF_THRESHOLD && !r.card.isBorderless,
+    (r) => r.result.printingId && r.result.confidence < LOW_CONF_THRESHOLD && r.card.treatment !== "borderless",
   );
   if (lowConf.length > 0) {
     console.log(`\n${"═".repeat(80)}`);

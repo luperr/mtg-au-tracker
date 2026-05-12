@@ -85,49 +85,17 @@ export class CardMatcher {
       .innerJoin(schema.cards, eq(schema.printings.cardId, schema.cards.id));
 
     for (const row of rows) {
-      // Primary: set + collector + finish → exact printing (finish string avoids etched/foil collision)
-      const finish = (row.finish as string) ?? (row.isFoil ? "foil" : "nonfoil");
-      const setKey = `${row.setCode}:${row.collectorNumber}:${finish}`;
-      this.setCollectorIndex.set(setKey, row.id);
-
-      // Set name → code (e.g. "FINAL FANTASY" → "fin")
-      // Last writer wins — fine since each setCode maps to one canonical setName.
-      this.setNameIndex.set(normalizeSetName(row.setName), row.setCode);
-
-      // Fallback: name → candidates
-      const nameKey = normalizeName(row.cardName);
-      const entry: IndexEntry = {
-        printingId: row.id,
-        setCode: row.setCode,
-        collectorNumber: row.collectorNumber,
-        isFoil: row.isFoil,
-        finish: (row.finish as "nonfoil" | "foil" | "etched") ?? (row.isFoil ? "foil" : "nonfoil"),
-        borderColor: row.borderColor,
-        frameEffects: row.frameEffects,
-      };
-      const existing = this.nameIndex.get(nameKey) ?? [];
-      existing.push(entry);
-      // Keep sorted by collector number ascending so regular printings
-      // (low collector numbers) are always preferred over borderless/showcase/
-      // extended-art variants (which Scryfall assigns high collector numbers).
-      existing.sort((a, b) => {
-        const an = parseInt(a.collectorNumber, 10);
-        const bn = parseInt(b.collectorNumber, 10);
-        if (isNaN(an) && isNaN(bn)) return 0;
-        if (isNaN(an)) return 1;
-        if (isNaN(bn)) return -1;
-        return an - bn;
-      });
-      this.nameIndex.set(nameKey, existing);
-
-      // Front-face index: for DFC cards, also index by front face name alone.
-      // e.g. "Delver of Secrets // Insectile Aberration" → key "delver of secrets"
-      if (row.cardName.includes(" // ")) {
-        const frontKey = normalizeName(row.cardName.split(" // ")[0]);
-        const frontExisting = this.frontFaceIndex.get(frontKey) ?? [];
-        frontExisting.push(entry);
-        this.frontFaceIndex.set(frontKey, frontExisting);
-      }
+      this.addEntry(
+        row.id,
+        row.setCode,
+        row.setName,
+        row.collectorNumber,
+        row.isFoil,
+        (row.finish as "nonfoil" | "foil" | "etched" | null) ?? null,
+        row.borderColor,
+        row.frameEffects,
+        row.cardName,
+      );
     }
 
     log.info(
@@ -152,40 +120,66 @@ export class CardMatcher {
     cardName: string;
   }[]): void {
     for (const row of entries) {
-      const finish = row.finish ?? (row.isFoil ? "foil" : "nonfoil");
-      const setKey = `${row.setCode}:${row.collectorNumber}:${finish}`;
-      this.setCollectorIndex.set(setKey, row.id);
+      this.addEntry(
+        row.id,
+        row.setCode,
+        row.setName,
+        row.collectorNumber,
+        row.isFoil,
+        row.finish ?? null,
+        row.borderColor ?? null,
+        row.frameEffects ?? [],
+        row.cardName,
+      );
+    }
+  }
 
-      this.setNameIndex.set(normalizeSetName(row.setName), row.setCode);
+  private addEntry(
+    id: string,
+    setCode: string,
+    setName: string,
+    collectorNumber: string,
+    isFoil: boolean,
+    finish: "nonfoil" | "foil" | "etched" | null,
+    borderColor: string | null,
+    frameEffects: string[],
+    cardName: string,
+  ): void {
+    const resolvedFinish = finish ?? (isFoil ? "foil" : "nonfoil");
 
-      const nameKey = normalizeName(row.cardName);
-      const entry: IndexEntry = {
-        printingId: row.id,
-        setCode: row.setCode,
-        collectorNumber: row.collectorNumber,
-        isFoil: row.isFoil,
-        finish,
-        borderColor: row.borderColor ?? null,
-        frameEffects: row.frameEffects ?? [],
-      };
-      const existing = this.nameIndex.get(nameKey) ?? [];
-      existing.push(entry);
-      existing.sort((a, b) => {
-        const an = parseInt(a.collectorNumber, 10);
-        const bn = parseInt(b.collectorNumber, 10);
-        if (isNaN(an) && isNaN(bn)) return 0;
-        if (isNaN(an)) return 1;
-        if (isNaN(bn)) return -1;
-        return an - bn;
-      });
-      this.nameIndex.set(nameKey, existing);
+    // Primary: set + collector + finish → exact printing (finish string avoids etched/foil collision)
+    this.setCollectorIndex.set(`${setCode}:${collectorNumber}:${resolvedFinish}`, id);
 
-      if (row.cardName.includes(" // ")) {
-        const frontKey = normalizeName(row.cardName.split(" // ")[0]);
-        const frontExisting = this.frontFaceIndex.get(frontKey) ?? [];
-        frontExisting.push(entry);
-        this.frontFaceIndex.set(frontKey, frontExisting);
-      }
+    // Set name → code (e.g. "FINAL FANTASY" → "fin")
+    // Last writer wins — fine since each setCode maps to one canonical setName.
+    this.setNameIndex.set(normalizeSetName(setName), setCode);
+
+    const entry: IndexEntry = {
+      printingId: id,
+      setCode,
+      collectorNumber,
+      isFoil,
+      finish: resolvedFinish,
+      borderColor,
+      frameEffects,
+    };
+
+    // Name → candidates list, sorted by collector number ascending so regular
+    // printings (low numbers) are preferred over borderless/showcase/extended-art
+    // variants (which Scryfall assigns high collector numbers).
+    const nameKey = normalizeName(cardName);
+    const byName = this.nameIndex.get(nameKey) ?? [];
+    byName.push(entry);
+    byName.sort(byCollectorNumber);
+    this.nameIndex.set(nameKey, byName);
+
+    // Front-face index: DFC cards also indexed by front face name alone.
+    // e.g. "Delver of Secrets // Insectile Aberration" → key "delver of secrets"
+    if (cardName.includes(" // ")) {
+      const frontKey = normalizeName(cardName.split(" // ")[0]);
+      const byFront = this.frontFaceIndex.get(frontKey) ?? [];
+      byFront.push(entry);
+      this.frontFaceIndex.set(frontKey, byFront);
     }
   }
 
@@ -275,7 +269,7 @@ export class CardMatcher {
     );
 
     // 3. Narrow by treatment (borderless / showcase / extendedart / fullart)
-    const treatment = card.treatment ?? (card.isBorderless ? "borderless" : undefined);
+    const treatment = card.treatment;
     if (treatment) {
       pool = narrow(pool, byTreatment(treatment));
     }
@@ -289,6 +283,15 @@ export class CardMatcher {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function byCollectorNumber(a: IndexEntry, b: IndexEntry): number {
+  const an = parseInt(a.collectorNumber, 10);
+  const bn = parseInt(b.collectorNumber, 10);
+  if (isNaN(an) && isNaN(bn)) return 0;
+  if (isNaN(an)) return 1;
+  if (isNaN(bn)) return -1;
+  return an - bn;
+}
 
 /**
  * Apply filter to candidates — if the result would be empty, return the

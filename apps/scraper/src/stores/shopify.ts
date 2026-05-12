@@ -487,7 +487,6 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
   }
 
   const tagFoil = extractFoilFromTags(product.tags);
-  const isBorderless = BORDERLESS_WORD.test(product.title);
   const treatment = extractTreatment(product.title);
 
   const sourceUrl = `${baseUrl}/products/${product.handle}`;
@@ -518,7 +517,6 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
       condition,
       isFoil,
       finish,
-      isBorderless: isBorderless || undefined,
       treatment,
       inStock: isInStock(variant),
       sourceUrl,

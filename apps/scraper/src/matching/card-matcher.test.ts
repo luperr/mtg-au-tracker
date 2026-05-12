@@ -457,13 +457,13 @@ describe("treatment filtering", () => {
     expect(result.confidence).toBe(1.0); // set + treatment narrowed to 1
   });
 
-  it("filters to borderless via isBorderless flag when treatment not set", () => {
+  it("filters to borderless via treatment field", () => {
     const result = matcher.match({
       rawName: "Tarmogoyf",
       setCode: "fst",
       collectorNumber: null,
       isFoil: false,
-      isBorderless: true,
+      treatment: "borderless",
       price: "80.00",
       priceType: "sell",
       condition: "NM",
