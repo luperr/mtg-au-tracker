@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeName, stripVariant, levenshteinDistance, normalizeSetName } from "./matching.js";
+import { normalizeName, stripVariant, levenshteinDistance, normalizeSetName, extractTreatment } from "./matching.js";
 
 // ─── normalizeName ────────────────────────────────────────────────────────────
 
@@ -169,5 +169,45 @@ describe("normalizeSetName", () => {
     const input = "Wilds of Eldraine";
     const { normalizeName: nn } = { normalizeName };
     expect(normalizeSetName(input)).toBe(normalizeName(input));
+  });
+});
+
+// ─── extractTreatment ─────────────────────────────────────────────────────────
+
+describe("extractTreatment", () => {
+  it("detects extended art", () => {
+    expect(extractTreatment("Tarmogoyf (Extended Art)")).toBe("extendedart");
+  });
+
+  it("detects extended art with hyphen", () => {
+    expect(extractTreatment("Tarmogoyf Extended-Art NM")).toBe("extendedart");
+  });
+
+  it("detects showcase", () => {
+    expect(extractTreatment("Delver of Secrets (Showcase) Foil")).toBe("showcase");
+  });
+
+  it("detects borderless", () => {
+    expect(extractTreatment("Black Lotus (Borderless)")).toBe("borderless");
+  });
+
+  it("detects full art", () => {
+    expect(extractTreatment("Plains (Full Art)")).toBe("fullart");
+  });
+
+  it("detects full art with hyphen", () => {
+    expect(extractTreatment("Forest Full-Art")).toBe("fullart");
+  });
+
+  it("prefers extendedart over borderless when both appear", () => {
+    expect(extractTreatment("Card (Borderless Extended Art)")).toBe("extendedart");
+  });
+
+  it("returns undefined for plain card names", () => {
+    expect(extractTreatment("Lightning Bolt NM")).toBeUndefined();
+  });
+
+  it("returns undefined for foil-only annotations", () => {
+    expect(extractTreatment("Sol Ring Foil NM")).toBeUndefined();
   });
 });

@@ -1,22 +1,20 @@
 /**
  * CardMatcher — matches scraped store listings to Scryfall printings in the DB.
  *
- * Strategy (in order of precision):
- *   0. Set+collector  — set code + collector number + foil          (confidence 1.0)
- *        The most precise match. (set_code, collector_number) is a unique key
- *        in Scryfall's data model, so this uniquely identifies the exact printing.
- *        Used when the store provides a collector number (e.g. MTG Mate via link_path).
+ * Strategy:
+ *   0. Set+collector — set code + collector number + finish (confidence 1.0)
+ *        Uniquely identifies a Scryfall printing. Used whenever the store provides
+ *        a collector number (e.g. MTG Mate, Gameology, Good Games via SKU).
  *
- *   1. Exact name    — normalised name + set code + foil            (confidence 1.0)
- *        Falls back to this when collector number is unavailable.
- *        Note: if a set has multiple printings of the same name (borderless, extended
- *        art, etc.) this will match the first one found — ambiguous.
+ *   1–3. Elimination pipeline — gather all candidates by name, then narrow:
+ *        a. by set code  (never zeros out — only applies if result is non-empty)
+ *        b. by finish/foil
+ *        c. by treatment (borderless / showcase / extendedart / fullart)
+ *        Confidence is scored by how many candidates remain after narrowing.
  *
- *   2. Name+foil     — normalised name + foil flag, ignores set     (confidence 0.85 → 0.7)
- *   3. Name-only     — normalised name, ignores set and foil        (confidence 0.7  → 0.6)
- *   4. Front-face    — DFC front face name only (e.g. "Delver of Secrets") (confidence 0.65 → 0.5)
- *   5. Fuzzy         — Levenshtein distance ≤ 2 on normalised name  (confidence 0.5+)
- *   6. Unmatched     — saved to unmatched_cards table for review
+ *   4. Front-face — DFC front face name (e.g. "Delver of Secrets") (confidence 0.65→0.5)
+ *   5. Fuzzy      — Levenshtein distance ≤ 2 on normalised name    (confidence 0.5+)
+ *   6. Unmatched  — saved to unmatched_cards table for review
  *
  * Build the index once per scrape run (loads all printings from DB into memory),
  * then call match() for each scraped card — no further DB queries.
@@ -42,6 +40,8 @@ interface IndexEntry {
   collectorNumber: string;
   isFoil: boolean;
   finish: "nonfoil" | "foil" | "etched";
+  borderColor: string | null;
+  frameEffects: string[];
 }
 
 export class CardMatcher {
@@ -77,14 +77,17 @@ export class CardMatcher {
         collectorNumber: schema.printings.collectorNumber,
         isFoil: schema.printings.isFoil,
         finish: schema.printings.finish,
+        borderColor: schema.printings.borderColor,
+        frameEffects: schema.printings.frameEffects,
         cardName: schema.cards.name,
       })
       .from(schema.printings)
       .innerJoin(schema.cards, eq(schema.printings.cardId, schema.cards.id));
 
     for (const row of rows) {
-      // Primary: set + collector + foil → exact printing
-      const setKey = `${row.setCode}:${row.collectorNumber}:${row.isFoil}`;
+      // Primary: set + collector + finish → exact printing (finish string avoids etched/foil collision)
+      const finish = (row.finish as string) ?? (row.isFoil ? "foil" : "nonfoil");
+      const setKey = `${row.setCode}:${row.collectorNumber}:${finish}`;
       this.setCollectorIndex.set(setKey, row.id);
 
       // Set name → code (e.g. "FINAL FANTASY" → "fin")
@@ -99,6 +102,8 @@ export class CardMatcher {
         collectorNumber: row.collectorNumber,
         isFoil: row.isFoil,
         finish: (row.finish as "nonfoil" | "foil" | "etched") ?? (row.isFoil ? "foil" : "nonfoil"),
+        borderColor: row.borderColor,
+        frameEffects: row.frameEffects,
       };
       const existing = this.nameIndex.get(nameKey) ?? [];
       existing.push(entry);
@@ -142,10 +147,13 @@ export class CardMatcher {
     collectorNumber: string;
     isFoil: boolean;
     finish?: "nonfoil" | "foil" | "etched";
+    borderColor?: string | null;
+    frameEffects?: string[];
     cardName: string;
   }[]): void {
     for (const row of entries) {
-      const setKey = `${row.setCode}:${row.collectorNumber}:${row.isFoil}`;
+      const finish = row.finish ?? (row.isFoil ? "foil" : "nonfoil");
+      const setKey = `${row.setCode}:${row.collectorNumber}:${finish}`;
       this.setCollectorIndex.set(setKey, row.id);
 
       this.setNameIndex.set(normalizeSetName(row.setName), row.setCode);
@@ -156,7 +164,9 @@ export class CardMatcher {
         setCode: row.setCode,
         collectorNumber: row.collectorNumber,
         isFoil: row.isFoil,
-        finish: row.finish ?? (row.isFoil ? "foil" : "nonfoil"),
+        finish,
+        borderColor: row.borderColor ?? null,
+        frameEffects: row.frameEffects ?? [],
       };
       const existing = this.nameIndex.get(nameKey) ?? [];
       existing.push(entry);
@@ -184,99 +194,38 @@ export class CardMatcher {
    * Returns the best match found, or { printingId: null, matchType: "unmatched" }.
    */
   match(card: ScrapedCard): MatchResult {
-    // Resolve setCode once — use the store-provided code directly, or look up
-    // the set name in the index built from Scryfall data (e.g. Good Games gives
-    // "FINAL FANTASY" not "fin").
     const resolvedSetCode = card.setCode
       ?? (card.setName ? (this.setNameIndex.get(normalizeSetName(card.setName)) ?? null) : null);
 
-    // ── Level 0: set code + collector number + foil ─────────────────────────
-    // This is the most precise match — (set, collector#, foil) uniquely identifies
-    // a Scryfall printing with no ambiguity. Use it whenever the store provides one.
+    // ── L0: set + collector + finish ─────────────────────────────────────────
     if (resolvedSetCode && card.collectorNumber) {
-      const setKey = `${resolvedSetCode}:${card.collectorNumber}:${card.isFoil}`;
+      const cardFinish = card.finish ?? (card.isFoil ? "foil" : "nonfoil");
+      const setKey = `${resolvedSetCode}:${card.collectorNumber}:${cardFinish}`;
       const printingId = this.setCollectorIndex.get(setKey);
       if (printingId) {
         return { printingId, matchType: "set_collector", confidence: 1.0 };
       }
     }
 
-    // ── Name-based fallbacks ─────────────────────────────────────────────────
-    // Strip store-specific variant suffixes before normalising.
-    // "Ajani, Outland Chaperone (Borderless 284)" → "Ajani, Outland Chaperone"
+    // ── Name lookup ───────────────────────────────────────────────────────────
     const baseName = stripVariant(card.rawName);
     const normalizedName = normalizeName(baseName);
 
-    const candidates = this.nameIndex.get(normalizedName);
+    const byName = this.nameIndex.get(normalizedName);
 
-    if (candidates) {
-      // When the scraper signals a borderless printing, sort candidates by collector
-      // number DESC so we prefer the high-numbered borderless variants that Scryfall
-      // assigns to special treatments. The index default is ASC (regular printings first).
-      const ordered = card.isBorderless
-        ? [...candidates].sort((a, b) => {
-            const an = parseInt(a.collectorNumber, 10);
-            const bn = parseInt(b.collectorNumber, 10);
-            if (isNaN(an) && isNaN(bn)) return 0;
-            if (isNaN(an)) return -1;
-            if (isNaN(bn)) return 1;
-            return bn - an; // DESC
-          })
-        : candidates;
-
-      // ── Level 1: name + set code + finish/foil ───────────────────────────
-      // Ambiguous if the set has multiple variants (e.g. extended art, borderless).
-      if (resolvedSetCode) {
-        // Prefer finish-specific match when the scraper provides it (e.g. "etched")
-        const bySetFinish = card.finish
-          ? ordered.filter((c) => c.setCode === resolvedSetCode && c.finish === card.finish)
-          : ordered.filter((c) => c.setCode === resolvedSetCode && c.isFoil === card.isFoil);
-        if (bySetFinish.length === 1) {
-          return { printingId: bySetFinish[0].printingId, matchType: "exact", confidence: 1.0 };
-        }
-        if (bySetFinish.length > 1) {
-          // Multiple variants in the same set — pick first, flag lower confidence
-          return { printingId: bySetFinish[0].printingId, matchType: "exact", confidence: 0.8 };
-        }
-      }
-
-      // ── Level 2: name + finish/foil (ignore set) ──────────────────────────
-      const byFoil = card.finish
-        ? ordered.filter((c) => c.finish === card.finish)
-        : ordered.filter((c) => c.isFoil === card.isFoil);
-      if (byFoil.length === 1) {
-        return { printingId: byFoil[0].printingId, matchType: "name_foil", confidence: 0.85 };
-      }
-      if (byFoil.length > 1) {
-        return { printingId: byFoil[0].printingId, matchType: "name_foil", confidence: 0.7 };
-      }
-
-      // ── Level 3: name only (ignore set and foil) ──────────────────────────
-      if (ordered.length === 1) {
-        return { printingId: ordered[0].printingId, matchType: "name_only", confidence: 0.7 };
-      }
-      if (ordered.length > 1) {
-        return { printingId: ordered[0].printingId, matchType: "name_only", confidence: 0.6 };
-      }
+    if (byName) {
+      return this.eliminationMatch(byName, card, resolvedSetCode, "exact", "name_foil");
     }
 
-    // ── Level 4: front-face name (DFC stores that omit the back face) ────────
-    // e.g. store lists "Delver of Secrets" for the full DFC card.
-    const frontFaceCandidates = this.frontFaceIndex.get(normalizedName);
-    if (frontFaceCandidates) {
-      const byFoil = card.finish
-        ? frontFaceCandidates.filter((c) => c.finish === card.finish)
-        : frontFaceCandidates.filter((c) => c.isFoil === card.isFoil);
-      const match = byFoil[0] ?? frontFaceCandidates[0];
-      const confidence = frontFaceCandidates.length === 1 ? 0.65 : 0.5;
-      return { printingId: match.printingId, matchType: "front_face", confidence };
+    // ── Front-face fallback (DFC) ─────────────────────────────────────────────
+    const byFrontFace = this.frontFaceIndex.get(normalizedName);
+    if (byFrontFace) {
+      return this.eliminationMatch(byFrontFace, card, resolvedSetCode, "front_face", "front_face");
     }
 
-    // ── Level 5: fuzzy (Levenshtein ≤ 2) ─────────────────────────────────────
-    // O(n) scan — only reaches here for genuinely unrecognised names.
+    // ── Fuzzy fallback (Levenshtein ≤ 2) ─────────────────────────────────────
     let bestDist = 3;
     let bestCandidates: IndexEntry[] | null = null;
-
     for (const [key, entries] of this.nameIndex) {
       if (Math.abs(key.length - normalizedName.length) >= bestDist) continue;
       const dist = levenshteinDistance(normalizedName, key);
@@ -285,16 +234,101 @@ export class CardMatcher {
         bestCandidates = entries;
       }
     }
-
     if (bestCandidates) {
       const byFoil = card.finish
         ? bestCandidates.filter((c) => c.finish === card.finish)
         : bestCandidates.filter((c) => c.isFoil === card.isFoil);
       const match = byFoil[0] ?? bestCandidates[0];
-      const confidence = Math.max(0.5, 1 - bestDist * 0.2);
-      return { printingId: match.printingId, matchType: "fuzzy", confidence };
+      return { printingId: match.printingId, matchType: "fuzzy", confidence: Math.max(0.5, 1 - bestDist * 0.2) };
     }
 
     return { printingId: null, matchType: "unmatched", confidence: 0 };
   }
+
+  /**
+   * Elimination pipeline: narrow a candidate pool using every available signal,
+   * never zeroing out. Returns the best match with a confidence score.
+   *
+   * matchTypeWithSet / matchTypeWithoutSet control what matchType is reported
+   * so callers can distinguish exact (name+set) from front_face paths.
+   */
+  private eliminationMatch(
+    candidates: IndexEntry[],
+    card: ScrapedCard,
+    resolvedSetCode: string | null,
+    matchTypeWithSet: MatchResult["matchType"],
+    matchTypeWithoutSet: MatchResult["matchType"],
+  ): MatchResult {
+    const initial = candidates.length;
+    let pool = candidates;
+
+    // 1. Narrow by set
+    const setApplied = resolvedSetCode !== null;
+    if (setApplied) {
+      pool = narrow(pool, (e) => e.setCode === resolvedSetCode);
+    }
+
+    // 2. Narrow by finish/foil
+    pool = narrow(pool, card.finish
+      ? (e) => e.finish === card.finish
+      : (e) => e.isFoil === card.isFoil,
+    );
+
+    // 3. Narrow by treatment (borderless / showcase / extendedart / fullart)
+    const treatment = card.treatment ?? (card.isBorderless ? "borderless" : undefined);
+    if (treatment) {
+      pool = narrow(pool, byTreatment(treatment));
+    }
+
+    const final = pool.length;
+    const matchType = setApplied ? matchTypeWithSet : matchTypeWithoutSet === "front_face" ? "front_face" : (final === 1 ? "name_foil" : "name_only");
+    const confidence = scoreConfidence(initial, final, { set: setApplied, treatment: treatment !== undefined });
+
+    return { printingId: pool[0].printingId, matchType, confidence };
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Apply filter to candidates — if the result would be empty, return the
+ * original pool unchanged. This ensures we never zero out by over-filtering.
+ */
+function narrow(candidates: IndexEntry[], filter: (e: IndexEntry) => boolean): IndexEntry[] {
+  const filtered = candidates.filter(filter);
+  return filtered.length > 0 ? filtered : candidates;
+}
+
+/**
+ * Returns a filter that matches a printing's visual treatment against a
+ * canonical treatment tag extracted from the store title.
+ */
+function byTreatment(treatment: string): (e: IndexEntry) => boolean {
+  return (e: IndexEntry) => {
+    if (treatment === "borderless")  return e.borderColor === "borderless";
+    if (treatment === "showcase")    return e.frameEffects.includes("showcase");
+    if (treatment === "extendedart") return e.frameEffects.includes("extendedart");
+    if (treatment === "fullart")     return e.frameEffects.includes("fullart");
+    return true; // unknown treatment → don't filter
+  };
+}
+
+/**
+ * Confidence score based on how many candidates remain after elimination
+ * and which signals were available.
+ */
+function scoreConfidence(
+  initial: number,
+  final: number,
+  signals: { set: boolean; treatment: boolean },
+): number {
+  if (final === 1) {
+    if (signals.set) return 1.0;   // set+finish narrowed to a unique printing — unambiguous
+    if (signals.treatment) return 0.95; // treatment alone narrowed without set
+    return 0.85; // name + finish uniquely identified one printing, no set signal
+  }
+  // Multiple candidates remain — grade by reduction and signals used
+  if (signals.set) return final <= 3 ? 0.75 : 0.65;
+  const reduction = 1 - final / initial;
+  return Math.max(0.5, 0.6 + reduction * 0.1);
 }

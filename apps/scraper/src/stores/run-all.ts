@@ -74,6 +74,8 @@ export async function runStore(
   let matched = 0;
   let unmatched = 0;
   let total = 0;
+  let totalConfidence = 0;
+  const byMatchType: Record<string, number> = {};
 
   async function flushPrices(): Promise<void> {
     if (priceBatch.length === 0) return;
@@ -90,6 +92,9 @@ export async function runStore(
   for await (const card of scraper.scrapeAll()) {
     total++;
     const result = matcher.match(card);
+
+    totalConfidence += result.confidence;
+    byMatchType[result.matchType] = (byMatchType[result.matchType] ?? 0) + 1;
 
     if (result.printingId) {
       priceBatch.push(buildPriceRow(storeId, card, result.printingId));
@@ -127,7 +132,11 @@ export async function runStore(
   }
 
   log.info(
-    { store: storeId, total, matched, unmatched, match_rate: rate },
+    {
+      store: storeId, total, matched, unmatched, match_rate: rate,
+      avg_confidence: total > 0 ? +(totalConfidence / total).toFixed(3) : 0,
+      by_match_type: byMatchType,
+    },
     "Store scrape complete",
   );
 

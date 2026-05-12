@@ -38,6 +38,8 @@ const TARMOGOYF_FST_NF = {
   setName: "Future Sight",
   collectorNumber: "153",
   isFoil: false,
+  borderColor: null,
+  frameEffects: [] as string[],
   cardName: "Tarmogoyf",
 };
 const TARMOGOYF_FST_BORDERLESS = {
@@ -46,6 +48,8 @@ const TARMOGOYF_FST_BORDERLESS = {
   setName: "Future Sight",
   collectorNumber: "310",
   isFoil: false,
+  borderColor: "borderless",   // enables byTreatment("borderless") filter
+  frameEffects: [] as string[],
   cardName: "Tarmogoyf",
 };
 // DFC card
@@ -143,7 +147,7 @@ describe("Level 0 — set_collector", () => {
 // ─── Level 1 — exact (name + set + foil) ──────────────────────────────────────
 
 describe("Level 1 — exact", () => {
-  it("matches single candidate in set at confidence 1.0", () => {
+  it("returns confidence 0.75 when multiple candidates remain after set+finish narrowing", () => {
     const result = matcher.match({
       rawName: "Tarmogoyf",
       setCode: "fst",
@@ -156,11 +160,11 @@ describe("Level 1 — exact", () => {
       sourceUrl: "https://example.com",
       setName: null,
     });
-    // Two candidates in fst: col 153 and col 310 — both match set+foil
-    // Multiple candidates → confidence 0.8, picks lowest collector number
+    // Two candidates in fst: col 153 (regular) and col 310 (borderless) — both nonfoil.
+    // No treatment signal → pool stays at 2 after elimination → confidence 0.75.
     expect(result.matchType).toBe("exact");
-    expect(result.confidence).toBe(0.8);
-    expect(result.printingId).toBe("tgoyf-fst-nf"); // col 153, the regular printing
+    expect(result.confidence).toBe(0.75);
+    expect(result.printingId).toBe("tgoyf-fst-nf"); // col 153, lowest collector number first
   });
 
   it("resolves set from set name index when setCode not provided", () => {
@@ -205,8 +209,9 @@ describe("Level 2 — name_foil", () => {
     expect(result.confidence).toBe(0.85);
   });
 
-  it("returns confidence 0.7 when multiple foil candidates exist", () => {
-    // Add a second foil Lightning Bolt to test this path
+  it("falls to name_only at confidence 0.6 when multiple foil candidates remain", () => {
+    // Two foil Lightning Bolts, no set signal → pool stays at 2 after finish narrowing.
+    // With no set and multiple remaining, matchType degrades to name_only.
     const matcher2 = new CardMatcher();
     matcher2.buildForTesting([
       LIGHTNING_BOLT_M10_F,
@@ -224,8 +229,8 @@ describe("Level 2 — name_foil", () => {
       sourceUrl: "https://example.com",
       setName: null,
     });
-    expect(result.matchType).toBe("name_foil");
-    expect(result.confidence).toBe(0.7);
+    expect(result.matchType).toBe("name_only");
+    expect(result.confidence).toBe(0.6);
   });
 });
 
@@ -273,8 +278,7 @@ describe("Level 3 — name_only", () => {
 // ─── Level 4 — front-face DFC ─────────────────────────────────────────────────
 
 describe("Level 4 — front_face", () => {
-  it("matches DFC by front face name alone at confidence 0.65 when single printing", () => {
-    // Use a fresh matcher with only ONE DFC entry so confidence is 0.65
+  it("matches DFC by front face name alone at confidence 0.85 when single printing", () => {
     const singleMatcher = new CardMatcher();
     singleMatcher.buildForTesting([DELVER_ISD_NF]);
     const result = singleMatcher.match({
@@ -291,12 +295,12 @@ describe("Level 4 — front_face", () => {
     });
     expect(result.matchType).toBe("front_face");
     expect(result.printingId).toBe("delver-isd-nf");
-    expect(result.confidence).toBe(0.65);
+    expect(result.confidence).toBe(0.85);
   });
 
-  it("returns confidence 0.5 when index has both foil and nonfoil for same DFC", () => {
-    // The shared ALL_ENTRIES fixture has both DELVER_ISD_NF and DELVER_ISD_F
-    // → 2 entries in frontFaceIndex → confidence 0.5
+  it("narrows to correct printing via finish when both foil and nonfoil DFC exist", () => {
+    // ALL_ENTRIES has DELVER_ISD_NF and DELVER_ISD_F.
+    // Finish narrowing resolves to 1 → confidence 0.85.
     const result = matcher.match({
       rawName: "Delver of Secrets",
       setCode: null,
@@ -310,7 +314,8 @@ describe("Level 4 — front_face", () => {
       setName: null,
     });
     expect(result.matchType).toBe("front_face");
-    expect(result.confidence).toBe(0.5);
+    expect(result.printingId).toBe("delver-isd-nf");
+    expect(result.confidence).toBe(0.85);
   });
 
   it("prefers foil DFC when isFoil matches", () => {
@@ -330,7 +335,8 @@ describe("Level 4 — front_face", () => {
     expect(result.printingId).toBe("delver-isd-f");
   });
 
-  it("returns confidence 0.5 when multiple DFCs share a front face name", () => {
+  it("returns confidence 0.6 when multiple DFCs share a front face name", () => {
+    // Two nonfoil printings, finish can't narrow further → pool stays at 2.
     const matcher2 = new CardMatcher();
     matcher2.buildForTesting([
       DELVER_ISD_NF,
@@ -349,7 +355,7 @@ describe("Level 4 — front_face", () => {
       setName: null,
     });
     expect(result.matchType).toBe("front_face");
-    expect(result.confidence).toBe(0.5);
+    expect(result.confidence).toBe(0.6);
   });
 });
 
@@ -413,16 +419,15 @@ describe("Level 6 — unmatched", () => {
   });
 });
 
-// ─── Borderless sort behaviour ────────────────────────────────────────────────
+// ─── Treatment filtering ──────────────────────────────────────────────────────
 
-describe("borderless sort", () => {
-  it("prefers low collector number (regular printing) when isBorderless is false", () => {
+describe("treatment filtering", () => {
+  it("picks regular printing when no treatment signal provided", () => {
     const result = matcher.match({
       rawName: "Tarmogoyf",
       setCode: "fst",
       collectorNumber: null,
       isFoil: false,
-      isBorderless: false,
       price: "50.00",
       priceType: "sell",
       condition: "NM",
@@ -430,10 +435,29 @@ describe("borderless sort", () => {
       sourceUrl: "https://example.com",
       setName: null,
     });
-    expect(result.printingId).toBe("tgoyf-fst-nf"); // collector 153, not 310
+    expect(result.printingId).toBe("tgoyf-fst-nf"); // col 153, lowest collector
+    expect(result.confidence).toBe(0.75); // 2 candidates remain (no treatment to narrow)
   });
 
-  it("prefers high collector number (borderless) when isBorderless is true", () => {
+  it("filters to borderless via treatment field, confidence 1.0", () => {
+    const result = matcher.match({
+      rawName: "Tarmogoyf",
+      setCode: "fst",
+      collectorNumber: null,
+      isFoil: false,
+      treatment: "borderless",
+      price: "80.00",
+      priceType: "sell",
+      condition: "NM",
+      inStock: true,
+      sourceUrl: "https://example.com",
+      setName: null,
+    });
+    expect(result.printingId).toBe("tgoyf-fst-brd"); // borderColor: "borderless"
+    expect(result.confidence).toBe(1.0); // set + treatment narrowed to 1
+  });
+
+  it("filters to borderless via isBorderless flag when treatment not set", () => {
     const result = matcher.match({
       rawName: "Tarmogoyf",
       setCode: "fst",
@@ -447,6 +471,74 @@ describe("borderless sort", () => {
       sourceUrl: "https://example.com",
       setName: null,
     });
-    expect(result.printingId).toBe("tgoyf-fst-brd"); // collector 310
+    expect(result.printingId).toBe("tgoyf-fst-brd");
+    expect(result.confidence).toBe(1.0);
+  });
+
+  it("handles showcase treatment via frameEffects", () => {
+    const matcher2 = new CardMatcher();
+    matcher2.buildForTesting([
+      { id: "card-regular", setCode: "neo", setName: "Kamigawa: Neon Dynasty", collectorNumber: "100", isFoil: false, frameEffects: [], borderColor: null, cardName: "Invoke Calamity" },
+      { id: "card-showcase", setCode: "neo", setName: "Kamigawa: Neon Dynasty", collectorNumber: "380", isFoil: false, frameEffects: ["showcase"], borderColor: null, cardName: "Invoke Calamity" },
+    ]);
+    const result = matcher2.match({
+      rawName: "Invoke Calamity",
+      setCode: "neo",
+      collectorNumber: null,
+      isFoil: false,
+      treatment: "showcase",
+      price: "10.00",
+      priceType: "sell",
+      condition: "NM",
+      inStock: true,
+      sourceUrl: "https://example.com",
+      setName: null,
+    });
+    expect(result.printingId).toBe("card-showcase");
+    expect(result.confidence).toBe(1.0);
+  });
+
+  it("handles extendedart treatment via frameEffects", () => {
+    const matcher2 = new CardMatcher();
+    matcher2.buildForTesting([
+      { id: "card-regular", setCode: "mh3", setName: "Modern Horizons 3", collectorNumber: "50", isFoil: false, frameEffects: [], borderColor: null, cardName: "Flare of Cultivation" },
+      { id: "card-ea", setCode: "mh3", setName: "Modern Horizons 3", collectorNumber: "280", isFoil: false, frameEffects: ["extendedart"], borderColor: null, cardName: "Flare of Cultivation" },
+    ]);
+    const result = matcher2.match({
+      rawName: "Flare of Cultivation (Extended Art)",
+      setCode: "mh3",
+      collectorNumber: null,
+      isFoil: false,
+      treatment: "extendedart",
+      price: "25.00",
+      priceType: "sell",
+      condition: "NM",
+      inStock: true,
+      sourceUrl: "https://example.com",
+      setName: null,
+    });
+    expect(result.printingId).toBe("card-ea");
+    expect(result.confidence).toBe(1.0);
+  });
+
+  it("does not zero out when treatment signal matches nothing in index", () => {
+    // All candidates are regular (no frameEffects), but we signal "showcase".
+    // narrow() should revert to full pool rather than returning empty.
+    const result = matcher.match({
+      rawName: "Tarmogoyf",
+      setCode: "fst",
+      collectorNumber: null,
+      isFoil: false,
+      treatment: "showcase", // no showcase tarmogoyf exists in fixture
+      price: "50.00",
+      priceType: "sell",
+      condition: "NM",
+      inStock: true,
+      sourceUrl: "https://example.com",
+      setName: null,
+    });
+    // Should still return a match, not unmatched
+    expect(result.matchType).not.toBe("unmatched");
+    expect(result.printingId).not.toBeNull();
   });
 });
