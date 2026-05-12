@@ -26,7 +26,7 @@
  *   - Only NM variants are emitted (same behaviour as original Good Games scraper).
  */
 
-import { type ScrapedCard, normaliseCondition, stripVariant } from "@mtg-au/shared";
+import { type ScrapedCard, normaliseCondition, stripVariant, extractTreatment } from "@mtg-au/shared";
 import { BaseScraper } from "./base-scraper.js";
 import type { ShopifyStoreConfig } from "./shopify-stores.config.js";
 import { logger } from "../lib/logger.js";
@@ -487,7 +487,7 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
   }
 
   const tagFoil = extractFoilFromTags(product.tags);
-  const isBorderless = BORDERLESS_WORD.test(product.title);
+  const treatment = extractTreatment(product.title);
 
   const sourceUrl = `${baseUrl}/products/${product.handle}`;
   const results: ScrapedCard[] = [];
@@ -517,7 +517,7 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
       condition,
       isFoil,
       finish,
-      isBorderless: isBorderless || undefined,
+      treatment,
       inStock: isInStock(variant),
       sourceUrl,
     });

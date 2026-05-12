@@ -80,6 +80,28 @@ export function normalizeSetName(name: string): string {
 }
 
 /**
+ * Extract a canonical treatment tag from a store product title.
+ * Scans for known parenthetical or bare keywords and maps them to the same
+ * tags used by variant-utils.ts (borderless, showcase, extendedart, fullart).
+ * Returns undefined when no recognised treatment is found.
+ *
+ * Examples:
+ *   "Tarmogoyf (Extended Art) NM"       → "extendedart"
+ *   "Delver of Secrets (Showcase) Foil"  → "showcase"
+ *   "Black Lotus (Borderless)"           → "borderless"
+ *   "Plains (Full Art)"                  → "fullart"
+ */
+export function extractTreatment(title: string): string | undefined {
+  const t = title.toLowerCase();
+  // Check longer/more-specific patterns first to avoid prefix clashes.
+  if (/\bextended[\s-]?art\b/.test(t))  return "extendedart";
+  if (/\bfull[\s-]?art\b/.test(t))      return "fullart";
+  if (/\bshowcase\b/.test(t))           return "showcase";
+  if (/\bborderless\b/.test(t))         return "borderless";
+  return undefined;
+}
+
+/**
  * Map of common store set name variants → Scryfall set codes.
  * Add entries here when a scraper uses set names instead of codes,
  * or when the store spells a set name differently from Scryfall.

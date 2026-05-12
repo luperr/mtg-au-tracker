@@ -13,7 +13,7 @@ export interface ScrapedCard {
   condition: string | null;      // "NM", "LP", "MP", "HP", "DMG"
   isFoil: boolean;
   finish?: "nonfoil" | "foil" | "etched"; // more specific than isFoil; undefined = derive from isFoil
-  isBorderless?: boolean;        // true if the store listing indicates a borderless printing
+  treatment?: string;            // canonical variant: "borderless" | "showcase" | "extendedart" | "fullart"
   inStock: boolean;
   sourceUrl: string;             // Full URL to the product page
   shippingCost?: string | null;  // AUD shipping cost as decimal string, "0.00" for free, null if unknown
