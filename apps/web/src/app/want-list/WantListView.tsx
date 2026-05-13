@@ -189,7 +189,7 @@ function EditablePostageRow({
           onClick={() => { onSave(0); setEditing(false); }}
           className="text-[10px] text-cream-dim/40 hover:text-green-400 transition-colors whitespace-nowrap"
         >
-          Collect (free)
+          In-store
         </button>
         {isOverride && (
           <button
@@ -209,12 +209,12 @@ function EditablePostageRow({
       <button
         onClick={startEdit}
         title="Click to edit postage"
-        className="hover:text-cream-dim transition-colors cursor-pointer"
+        className="flex items-center gap-1 bg-muted border border-accent-border rounded px-1.5 py-0.5 hover:border-accent-light/50 hover:text-cream-dim transition-colors cursor-pointer"
       >
         {amount === null
           ? "Postage: unknown"
           : amount === 0
-          ? "Postage: free (collect)"
+          ? "Postage: free (in-store)"
           : `Postage: ${fmtAUD(amount)}`}
         {isOverride && <span className="ml-1 text-[9px] text-accent-light/60">·edited</span>}
       </button>
