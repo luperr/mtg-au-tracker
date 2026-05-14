@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@mtg-au/shared": "workspace:*",
-    "next": "^15.5.15",
+    "next": "^15.5.18",
     "postgres": "^3.4.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
