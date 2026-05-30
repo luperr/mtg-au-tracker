@@ -178,7 +178,7 @@ export const SHOPIFY_STORES: ShopifyStoreConfig[] = [
   },
   {   
     id: "area52",
-    baseUrl: "https://area52.com.au",
+    baseUrl: "https://singles.area52.com.au",
     collectionHandle: "mtg-singles-instock",
   },
     {   
