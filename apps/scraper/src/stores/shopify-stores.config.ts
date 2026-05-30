@@ -118,7 +118,7 @@ export const SHOPIFY_STORES: ShopifyStoreConfig[] = [
   {
     id: "elemental_arcade",
     baseUrl: "https://elementalarcade.com.au",
-    collectionHandle: "mtg-singles-all-products",
+    collectionHandle: "magic-the-gathering-tcg-singles",
   },
   {
     id: "ronin_games",
