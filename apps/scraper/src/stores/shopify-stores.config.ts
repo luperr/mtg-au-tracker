@@ -22,6 +22,10 @@ export interface ShopifyStoreConfig {
   // all into the product title with a single "Default Title" variant.
   // e.g. "Zenos yae Galvus (Borderless) 384 Rare FINAL FANTASY Foil NM/M"
   titleFormat?: "all-in-title";
+  // true: variants represent physical store locations (e.g. "Bendigo", "Geelong"),
+  // not condition/foil. Collapse per-foil-type; condition implied NM; foil from SKU;
+  // inStock = true if any location variant is available. (GUF-style stores.)
+  locationVariants?: true;
 }
 
 export const SHOPIFY_STORES: ShopifyStoreConfig[] = [
@@ -48,7 +52,8 @@ export const SHOPIFY_STORES: ShopifyStoreConfig[] = [
   {
     id: "guf",
     baseUrl: "https://guf.com.au",
-    collectionHandle: "mtg-singles-all-products",
+    collectionHandle: "mtg-singles-instock-all-stores",
+    locationVariants: true,
   },
   {
     id: "inn_games",
