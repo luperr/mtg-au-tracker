@@ -476,6 +476,7 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
   } else {
     // ── Standard SKU + title parsing ─────────────────────────────────────────
     const skuData = parseSkuData(product.variants[0]?.sku);
+    collectorNumber = null;
 
     // Some stores (e.g. Crit Hit) embed set+collector in a trailing bracket:
     // "Paradise Chocobo - Birds of Paradise (Borderless) [FIC - 483]"
