@@ -516,6 +516,45 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
   const sourceUrl = `${baseUrl}/products/${product.handle}`;
   const results: ScrapedCard[] = [];
 
+  // Location-variant stores (e.g. GUF) encode store branches as variants instead
+  // of condition/foil. Collapse each unique foil type into one entry; condition is
+  // implied NM; inStock = true if any branch has stock.
+  if (config.locationVariants) {
+    type FinishKey = "nonfoil" | "foil" | "etched";
+    const groups = new Map<FinishKey, { price: string; inStock: boolean }>();
+    for (const variant of product.variants) {
+      const priceNum = parseFloat(variant.price);
+      if (isNaN(priceNum) || priceNum <= 0) continue;
+      const skuData = parseSkuData(variant.sku);
+      const isFoil = skuData.isFoil ?? /\bfoil\b/i.test(variant.title);
+      const isEtched = /\betched\b/i.test(variant.title);
+      const finishKey: FinishKey = isEtched ? "etched" : isFoil ? "foil" : "nonfoil";
+      const existing = groups.get(finishKey);
+      if (!existing) {
+        groups.set(finishKey, { price: variant.price, inStock: variant.available });
+      } else if (!existing.inStock && variant.available) {
+        existing.inStock = true;
+      }
+    }
+    for (const [finishKey, { price, inStock }] of groups) {
+      results.push({
+        rawName: cardName,
+        setCode,
+        setName,
+        collectorNumber,
+        price,
+        priceType: "sell",
+        condition: "NM",
+        isFoil: finishKey !== "nonfoil",
+        finish: finishKey,
+        treatment,
+        inStock,
+        sourceUrl,
+      });
+    }
+    return results;
+  }
+
   for (const variant of product.variants) {
     const priceNum = parseFloat(variant.price);
     if (isNaN(priceNum) || priceNum <= 0) continue;
