@@ -8,6 +8,10 @@ export const metadata: Metadata = {
 const entries: { date: string; text: string }[] = [
   {
     date: "2026-05-31",
+    text: "Issue with match rate for crit hit and mega games resolived.",
+  },
+  {
+    date: "2026-05-30",
     text: "Fixed store scrapers for Area 52, Elemental Arcade, and GUF — all three were returning zero results due to wrong collection handles or location-based variant formats. Added a Changelog page so you can track what's new.",
   },
   {
