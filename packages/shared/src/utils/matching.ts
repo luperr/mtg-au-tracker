@@ -35,9 +35,9 @@ export function stripVariant(name: string): string {
   let current = name;
   while (current !== prev) {
     prev = current;
-    current = current
-      .replace(/\s*\([^)]*\)\s*$/, "")  // trailing (...)
-      .replace(/\s*\[[^\]]*\]\s*$/, "")  // trailing [...]
+    current = current.trim()
+      .replace(/\([^)]*\)$/, "")  // trailing (...)
+      .replace(/\[[^\]]*\]$/, "")  // trailing [...]
       .trim();
   }
   return current;
