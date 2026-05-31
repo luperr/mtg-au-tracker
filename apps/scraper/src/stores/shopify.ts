@@ -159,6 +159,17 @@ export function parseSkuData(sku: string | null | undefined): SkuData {
     };
   }
 
+  // Format C: SET-RARITY-TYPE-COLLECTOR-FINISH  e.g. "SOS-C-L-0267-N", "SOS-C-G-0162-F"
+  // Used by Mega Games. RARITY and TYPE are single letters; FINISH is N (nonfoil) or F (foil).
+  const formatC = sku.match(/^([A-Z0-9]{2,6})-[A-Z]-[A-Z]-(\d{1,4}[a-z]?)-([NF])$/i);
+  if (formatC) {
+    return {
+      setCode: formatC[1].toLowerCase(),
+      collectorNumber: String(parseInt(formatC[2], 10)),
+      isFoil: formatC[3].toUpperCase() === "F",
+    };
+  }
+
   return { setCode: null, collectorNumber: null, isFoil: null };
 }
 
