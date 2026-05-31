@@ -35,10 +35,16 @@ export function stripVariant(name: string): string {
   let current = name;
   while (current !== prev) {
     prev = current;
-    current = current
-      .replace(/\s*\([^)]*\)\s*$/, "")  // trailing (...)
-      .replace(/\s*\[[^\]]*\]\s*$/, "")  // trailing [...]
-      .trim();
+    current = current.trim();
+    if (current.endsWith(")")) {
+      const i = current.lastIndexOf("(");
+      if (i !== -1) current = current.slice(0, i);
+    }
+    if (current.endsWith("]")) {
+      const i = current.lastIndexOf("[");
+      if (i !== -1) current = current.slice(0, i);
+    }
+    current = current.trim();
   }
   return current;
 }

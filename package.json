@@ -17,7 +17,8 @@
   "pnpm": {
     "overrides": {
       "undici": "^8.1.0",
-      "esbuild": "^0.28.0"
+      "esbuild": "^0.28.0",
+      "postcss": "^8.5.6"
     },
     "onlyBuiltDependencies": ["esbuild", "sharp"]
   }
