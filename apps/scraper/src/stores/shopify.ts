@@ -476,25 +476,38 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
   } else {
     // ── Standard SKU + title parsing ─────────────────────────────────────────
     const skuData = parseSkuData(product.variants[0]?.sku);
-    const hasSkuMatch = skuData.setCode !== null && skuData.collectorNumber !== null;
-    if (!hasSkuMatch && isSkippedVariant(product.title)) return [];
 
-    setCode = skuData.setCode;
+    // Some stores (e.g. Crit Hit) embed set+collector in a trailing bracket:
+    // "Paradise Chocobo - Birds of Paradise (Borderless) [FIC - 483]"
+    // Extract before any other parsing so dashMatch can't fire on the wrong " - ".
+    const bracketSetCollector = product.title.match(/\[([A-Z0-9]{2,6})\s*-\s*(\d{1,4}[a-z]?)\]\s*$/i);
+    if (bracketSetCollector && !skuData.setCode) {
+      setCode = bracketSetCollector[1].toLowerCase();
+      collectorNumber = String(parseInt(bracketSetCollector[2], 10));
+    }
+
+    const hasSkuMatch = skuData.setCode !== null && skuData.collectorNumber !== null;
+    if (!hasSkuMatch && !bracketSetCollector && isSkippedVariant(product.title)) return [];
+
+    setCode = setCode ?? skuData.setCode;
     skuFoil = skuData.isFoil;
 
     const collectorMatch = COLLECTOR_NUM_RE.exec(product.title);
-    collectorNumber = skuData.collectorNumber ?? (collectorMatch ? String(parseInt(collectorMatch[1], 10)) : null);
+    collectorNumber = collectorNumber ?? skuData.collectorNumber ?? (collectorMatch ? String(parseInt(collectorMatch[1], 10)) : null);
 
-    let cleanTitle = product.title;
-    if (collectorMatch) cleanTitle = cleanTitle.replace(collectorMatch[0], "");
-    if (BORDERLESS_WORD.test(product.title)) cleanTitle = cleanTitle.replace(BORDERLESS_WORD, "");
+    // Strip the bracket and collector paren from the title before name parsing.
+    let cleanTitle = bracketSetCollector
+      ? product.title.slice(0, bracketSetCollector.index).trim()
+      : product.title;
+    if (collectorMatch && !bracketSetCollector) cleanTitle = cleanTitle.replace(collectorMatch[0], "");
+    if (BORDERLESS_WORD.test(cleanTitle)) cleanTitle = cleanTitle.replace(BORDERLESS_WORD, "");
     cleanTitle = cleanTitle.replace(/\s{2,}/g, " ").trim();
 
     const { cardName: parsedCardName, setName: titleSetName } = parseProductTitle(cleanTitle);
     const rawSetName = extractSetFromTags(product.tags) ?? titleSetName;
     const resolved = extractLotRStyleName(parsedCardName, rawSetName);
     cardName = resolved.rawName;
-    setName = resolved.resolvedSetName;
+    setName = bracketSetCollector ? null : resolved.resolvedSetName;
   }
 
   const tagFoil = extractFoilFromTags(product.tags);
