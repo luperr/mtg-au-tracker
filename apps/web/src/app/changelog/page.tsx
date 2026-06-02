@@ -7,6 +7,10 @@ export const metadata: Metadata = {
 
 const entries: { date: string; text: string }[] = [
   {
+    date: "2026-06-02",
+    text: "Mega Games match rate improved again.",
+  },
+  {
     date: "2026-05-31",
     text: "Issue with match rate for Crit Hit and Mega Games resolved.",
   },
