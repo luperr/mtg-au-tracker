@@ -16,6 +16,10 @@ function isNew(dateStr: string, days = 60) {
   return Date.now() - new Date(dateStr).getTime() < days * 86_400_000;
 }
 
+function isUpcoming(dateStr: string) {
+  return new Date(dateStr).getTime() > Date.now();
+}
+
 const CHILD_TYPE_LABEL: Record<string, string> = {
   commander:       "Commander",
   promo:           "Promo",
@@ -56,7 +60,11 @@ function SetCardMedium({ set }: { set: SetSummary }) {
       href={`/sets/${set.set_code}`}
       className="group relative block rounded-lg border border-subtle bg-surface p-4 hover:border-accent-border hover:bg-accent-muted transition-colors"
     >
-      {fresh && (
+      {isUpcoming(set.released_at) ? (
+        <span className="absolute top-3 right-3 text-[9px] uppercase tracking-widest font-semibold text-accent bg-accent-muted border border-accent/30 rounded px-1.5 py-0.5">
+          Upcoming
+        </span>
+      ) : fresh && (
         <span className="absolute top-3 right-3 text-[9px] uppercase tracking-widest font-semibold text-accent bg-accent-muted border border-accent/30 rounded px-1.5 py-0.5">
           New
         </span>
@@ -118,7 +126,11 @@ function SetRowCompact({ set }: { set: SetSummary }) {
       />
       <div className="min-w-0 flex-1 flex items-center gap-2">
         <span className="text-sm font-medium text-cream truncate">{set.set_name}</span>
-        {fresh && (
+        {isUpcoming(set.released_at) ? (
+          <span className="text-[8px] uppercase tracking-widest font-semibold text-accent border border-accent/30 rounded px-1 py-0.5 shrink-0">
+            Upcoming
+          </span>
+        ) : fresh && (
           <span className="text-[8px] uppercase tracking-widest font-semibold text-accent border border-accent/30 rounded px-1 py-0.5 shrink-0">
             New
           </span>
