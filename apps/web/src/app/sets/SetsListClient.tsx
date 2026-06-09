@@ -12,8 +12,21 @@ function formatDate(dateStr: string) {
   });
 }
 
+// Compare YYYY-MM-DD strings against today's UTC date — consistent with
+// Postgres CURRENT_DATE and avoids new Date("YYYY-MM-DD") UTC-midnight skew.
+function isUpcoming(dateStr: string) {
+  return dateStr > new Date().toISOString().slice(0, 10);
+}
+
 function isNew(dateStr: string, days = 60) {
-  return Date.now() - new Date(dateStr).getTime() < days * 86_400_000;
+  const ms = Date.now() - new Date(dateStr).getTime();
+  return ms >= 0 && ms < days * 86_400_000;
+}
+
+function getReleaseBadgeLabel(dateStr: string): "Upcoming" | "New" | null {
+  if (isUpcoming(dateStr)) return "Upcoming";
+  if (isNew(dateStr)) return "New";
+  return null;
 }
 
 const CHILD_TYPE_LABEL: Record<string, string> = {
@@ -48,7 +61,7 @@ function SubsetBadges({ childTypes }: { childTypes: string | null }) {
 }
 
 function SetCardMedium({ set }: { set: SetSummary }) {
-  const fresh = isNew(set.released_at);
+  const badge = getReleaseBadgeLabel(set.released_at);
   const value = set.set_value_aud ? parseFloat(set.set_value_aud) : null;
 
   return (
@@ -56,9 +69,9 @@ function SetCardMedium({ set }: { set: SetSummary }) {
       href={`/sets/${set.set_code}`}
       className="group relative block rounded-lg border border-subtle bg-surface p-4 hover:border-accent-border hover:bg-accent-muted transition-colors"
     >
-      {fresh && (
+      {badge && (
         <span className="absolute top-3 right-3 text-[9px] uppercase tracking-widest font-semibold text-accent bg-accent-muted border border-accent/30 rounded px-1.5 py-0.5">
-          New
+          {badge}
         </span>
       )}
 
@@ -99,7 +112,7 @@ function SetCardMedium({ set }: { set: SetSummary }) {
 }
 
 function SetRowCompact({ set }: { set: SetSummary }) {
-  const fresh = isNew(set.released_at);
+  const badge = getReleaseBadgeLabel(set.released_at);
   const value = set.set_value_aud ? parseFloat(set.set_value_aud) : null;
   const childLabels = set.child_types
     ? set.child_types.split(",").map((t) => CHILD_TYPE_LABEL[t]).filter(Boolean)
@@ -118,9 +131,9 @@ function SetRowCompact({ set }: { set: SetSummary }) {
       />
       <div className="min-w-0 flex-1 flex items-center gap-2">
         <span className="text-sm font-medium text-cream truncate">{set.set_name}</span>
-        {fresh && (
+        {badge && (
           <span className="text-[8px] uppercase tracking-widest font-semibold text-accent border border-accent/30 rounded px-1 py-0.5 shrink-0">
-            New
+            {badge}
           </span>
         )}
       </div>

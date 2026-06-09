@@ -220,6 +220,7 @@ export async function getSetList(yearsBack = 2): Promise<SetSummary[]> {
       AND (s.set_type IS NULL OR s.set_type = ANY(${CANONICAL_SET_TYPES}))
       AND s.card_count > 20
       AND s.released_at >= CURRENT_DATE - (${yearsBack} * INTERVAL '1 year')
+      AND s.released_at <= CURRENT_DATE + INTERVAL '30 days'
     GROUP BY s.set_code, s.set_name, s.released_at, s.set_type, s.card_count, s.set_value_aud
     ORDER BY s.released_at DESC
     LIMIT 100
