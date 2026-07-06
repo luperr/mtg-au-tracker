@@ -6,6 +6,10 @@ export const metadata: Metadata = {
 };
 
 const entries: { date: string; text: string }[] = [
+      {
+    date: "2026-07-06",
+    text: "Identified issues with underlying infrastructure that caused slow load times and cards to fail to be imported from scryfall. Infra updated to improve speed and reduce excessive memory consumption.  Import from scryfall function updated to stream JSON data alloying for all cards to be imported.",
+  },
     {
     date: "2026-06-09",
     text: "Reviewed logic for sets page to ensure new sets show and upcoming sets appear when enough cards are listed.",
