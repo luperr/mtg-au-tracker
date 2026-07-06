@@ -5,7 +5,10 @@
  * The individual fetch.ts and import.ts scripts remain available for manual use.
  */
 
-import { writeFile, readFile, mkdir } from "fs/promises";
+import { readFile, mkdir } from "fs/promises";
+import { createWriteStream } from "fs";
+import { pipeline } from "stream/promises";
+import { Readable } from "stream";
 import { join } from "path";
 import { sql } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
@@ -53,11 +56,10 @@ async function fetchData(): Promise<void> {
   const dataRes = await fetch(entry.download_uri, { headers: { "User-Agent": SCRYFALL_USER_AGENT } });
   if (!dataRes.ok) throw new Error(`Download failed: ${dataRes.status}`);
 
-  const cards = (await dataRes.json()) as ScryfallCard[];
-  log.info({ card_count: cards.length }, "Downloaded Scryfall card objects");
-
   await mkdir(SCRYFALL_OUTPUT_DIR, { recursive: true });
-  await writeFile(OUTPUT_FILE, JSON.stringify(cards));
+  const writeStream = createWriteStream(OUTPUT_FILE);
+  await pipeline(Readable.fromWeb(dataRes.body as import("stream/web").ReadableStream), writeStream);
+  log.info("Downloaded Scryfall card objects");
   log.debug({ path: OUTPUT_FILE }, "Saved bulk data to file");
 }
 
@@ -67,8 +69,8 @@ async function importData(): Promise<void> {
   await importSets();
 
   log.info("Reading saved Scryfall data");
-  const raw = await readFile(OUTPUT_FILE, "utf-8");
-  const allCards = JSON.parse(raw) as ScryfallCard[];
+  const raw = await readFile(OUTPUT_FILE);
+  const allCards = JSON.parse(raw.toString()) as ScryfallCard[];
 
   const importable = allCards.filter(shouldImport);
   log.info({ card_count: importable.length }, "Cards to import");

@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 
 const entries: { date: string; text: string }[] = [
     {
-    date: "2026-06-00",
+    date: "2026-06-09",
     text: "Reviewed logic for sets page to ensure new sets show and upcoming sets appear when enough cards are listed.",
   },
   {
