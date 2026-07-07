@@ -5,10 +5,12 @@
  * The individual fetch.ts and import.ts scripts remain available for manual use.
  */
 
-import { readFile, mkdir } from "fs/promises";
-import { createWriteStream } from "fs";
+import { mkdir } from "fs/promises";
+import { createWriteStream, createReadStream } from "fs";
 import { pipeline } from "stream/promises";
 import { Readable } from "stream";
+import StreamJson from "stream-json";
+import StreamArray from "stream-json/streamers/StreamArray.js";
 import { join } from "path";
 import { sql } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
@@ -69,20 +71,27 @@ async function importData(): Promise<void> {
   await importSets();
 
   log.info("Reading saved Scryfall data");
-  const raw = await readFile(OUTPUT_FILE);
-  const allCards = JSON.parse(raw.toString()) as ScryfallCard[];
-
-  const importable = allCards.filter(shouldImport);
-  log.info({ card_count: importable.length }, "Cards to import");
 
   const cardMap = new Map<string, ReturnType<typeof transform>["cardRow"]>();
   const allPrintings: ReturnType<typeof transform>["printingRows"][number][] = [];
 
-  for (const card of importable) {
-    const { cardRow, printingRows } = transform(card);
-    if (!cardMap.has(cardRow.id)) cardMap.set(cardRow.id, cardRow);
-    allPrintings.push(...printingRows);
-  }
+  await new Promise<void>((resolve, reject) => {
+    const fileStream = createReadStream(OUTPUT_FILE);
+    const jsonParser = StreamJson.parser();
+    const arrayStream = StreamArray.streamArray();
+    fileStream.pipe(jsonParser).pipe(arrayStream);
+    arrayStream.on("data", ({ value }: { value: ScryfallCard }) => {
+      if (!shouldImport(value)) return;
+      const { cardRow, printingRows } = transform(value);
+      if (!cardMap.has(cardRow.id)) cardMap.set(cardRow.id, cardRow);
+      allPrintings.push(...printingRows);
+    });
+    arrayStream.on("end", resolve);
+    arrayStream.on("error", reject);
+    fileStream.on("error", reject);
+  });
+
+  log.info({ card_count: cardMap.size }, "Cards to import");
 
   const uniqueCards = [...cardMap.values()];
   const printingMap = new Map(allPrintings.map((p) => [p.id, p]));
