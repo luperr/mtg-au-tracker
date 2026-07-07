@@ -51,6 +51,8 @@ services:
       EBAY_HIGH_VALUE_USD: ${EBAY_HIGH_VALUE_USD:-10}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       NODE_OPTIONS: --max-old-space-size=4096
+    mem_limit: 2g
+    memswap_limit: 2g
     volumes:
       - scraper_data:/app/apps/scraper/data   # persists downloaded Scryfall JSON between runs
     depends_on:
