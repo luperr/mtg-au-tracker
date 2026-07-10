@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import sql from "@/lib/db";
-import { withErrorHandler } from "@/lib/api-helpers";
+import { withApiGuard } from "@/lib/api-helpers";
 import { createRateLimiter } from "@/lib/rate-limit";
-import { getClientIp } from "@/lib/request";
 import { MAX_BULK_CARDS, MAX_CARD_QTY, RATE_LIMIT_BULK_LOOKUP_PER_MINUTE } from "@/lib/config";
 
 const checkRateLimit = createRateLimiter(RATE_LIMIT_BULK_LOOKUP_PER_MINUTE, 60 * 1000);
@@ -172,38 +171,33 @@ async function lookupByName(inputName: string, qty: number): Promise<BulkLookupR
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
-  const ip = getClientIp(request);
-  if (process.env.NODE_ENV !== "development" && !checkRateLimit(ip)) {
-    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
-  }
+  return withApiGuard(request, checkRateLimit, "bulk-lookup", async (request) => {
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
+    // Accept either { cards: BulkLookupInput[] } (new) or { names: string[] } (legacy)
+    const b = body as Record<string, unknown>;
 
-  // Accept either { cards: BulkLookupInput[] } (new) or { names: string[] } (legacy)
-  const b = body as Record<string, unknown>;
+    let cards: BulkLookupInput[];
+    if (Array.isArray(b.cards)) {
+      cards = (b.cards as BulkLookupInput[]).slice(0, MAX_BULK_CARDS);
+    } else if (Array.isArray(b.names)) {
+      cards = (b.names as string[])
+        .filter((n): n is string => typeof n === "string" && n.trim().length > 0)
+        .slice(0, MAX_BULK_CARDS)
+        .map((name) => ({ name }));
+    } else {
+      return NextResponse.json({ error: "Expected { cards: BulkLookupInput[] }" }, { status: 400 });
+    }
 
-  let cards: BulkLookupInput[];
-  if (Array.isArray(b.cards)) {
-    cards = (b.cards as BulkLookupInput[]).slice(0, MAX_BULK_CARDS);
-  } else if (Array.isArray(b.names)) {
-    cards = (b.names as string[])
-      .filter((n): n is string => typeof n === "string" && n.trim().length > 0)
-      .slice(0, MAX_BULK_CARDS)
-      .map((name) => ({ name }));
-  } else {
-    return NextResponse.json({ error: "Expected { cards: BulkLookupInput[] }" }, { status: 400 });
-  }
+    if (cards.length === 0) {
+      return NextResponse.json({ results: [] });
+    }
 
-  if (cards.length === 0) {
-    return NextResponse.json({ results: [] });
-  }
-
-  return withErrorHandler(async () => {
     const results: BulkLookupResult[] = await Promise.all(
       cards.map((card) => {
         const qty = Math.max(1, Math.min(card.qty ?? 1, MAX_CARD_QTY));
@@ -214,5 +208,5 @@ export async function POST(request: NextRequest) {
       })
     );
     return NextResponse.json({ results });
-  }, "bulk-lookup");
+  });
 }

@@ -3,7 +3,7 @@ import sql from "@/lib/db";
 import { STORE_FLAT_SHIPPING_AUD } from "@/lib/store-shipping";
 import { logger } from "@/lib/utils";
 import { createRateLimiter } from "@/lib/rate-limit";
-import { getClientIp } from "@/lib/request";
+import { withApiGuard } from "@/lib/api-helpers";
 import { RATE_LIMIT_OPTIMIZE_PER_MINUTE, OPTIMIZE_DEADLINE_MS, OPTIMIZE_EXACT_MAX_STORES } from "@/lib/config";
 import { branchAndBound, evaluateSubset, localSearch, dedupeCheapestPerStore } from "./algorithm";
 import type { OptimizeItem, Listing } from "./algorithm";
@@ -52,11 +52,7 @@ export type OptimizeResult = {
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
-  const ip = getClientIp(request);
-  if (process.env.NODE_ENV !== "development" && !checkRateLimit(ip)) {
-    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
-  }
-
+  return withApiGuard(request, checkRateLimit, "optimize", async (request) => {
   let body: unknown;
   try {
     body = await request.json();
@@ -349,4 +345,5 @@ export async function POST(request: NextRequest) {
     storeBreakdown,
     unavailable,
   } satisfies OptimizeResult);
+  });
 }

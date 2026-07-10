@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRateLimiter } from "@/lib/rate-limit";
-import { getClientIp } from "@/lib/request";
-import { withErrorHandler } from "@/lib/api-helpers";
+import { withApiGuard } from "@/lib/api-helpers";
 import { logger } from "@/lib/utils";
 import { RATE_LIMIT_CONTACT_PER_HOUR, GITHUB_REPO_OWNER, GITHUB_REPO_NAME, GITHUB_API_URL } from "@/lib/config";
 
@@ -73,56 +72,47 @@ ${fields.email || "Not provided"}
 }
 
 export async function POST(req: NextRequest) {
-  const ip = getClientIp(req);
+  return withApiGuard(req, checkRateLimit, "contact", async (req) => {
+    let body: Record<string, string>;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    }
 
-  let body: Record<string, string>;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
-  }
+    // Honeypot — silently accept so bots don't retry
+    if (body.website) {
+      return NextResponse.json({ ok: true });
+    }
 
-  // Honeypot — silently accept so bots don't retry
-  if (body.website) {
-    return NextResponse.json({ ok: true });
-  }
+    const { type, description, cardName, printing, storeName, storeUrl, email } = body;
 
-  const { type, description, cardName, printing, storeName, storeUrl, email } = body;
+    if (!type || !LABEL_MAP[type]) {
+      return NextResponse.json({ error: "Invalid issue type" }, { status: 400 });
+    }
+    if (!description || description.trim().length < 20) {
+      return NextResponse.json(
+        { error: "Description must be at least 20 characters" },
+        { status: 400 }
+      );
+    }
 
-  if (!type || !LABEL_MAP[type]) {
-    return NextResponse.json({ error: "Invalid issue type" }, { status: 400 });
-  }
-  if (!description || description.trim().length < 20) {
-    return NextResponse.json(
-      { error: "Description must be at least 20 characters" },
-      { status: 400 }
-    );
-  }
+    if (!GITHUB_TOKEN) {
+      log.error("GITHUB_TOKEN env var not set — contact form unconfigured");
+      return NextResponse.json({ error: "Contact form is not configured" }, { status: 500 });
+    }
 
-  if (process.env.NODE_ENV !== "development" && !checkRateLimit(ip)) {
-    return NextResponse.json(
-      { error: "Too many submissions. Please try again in an hour." },
-      { status: 429 }
-    );
-  }
+    const title = buildTitle(type, cardName?.trim(), storeName?.trim());
+    const issueBody = buildBody({
+      type,
+      description: description.trim(),
+      cardName: cardName?.trim(),
+      printing: printing?.trim(),
+      storeName: storeName?.trim(),
+      storeUrl: storeUrl?.trim(),
+      email: email?.trim(),
+    });
 
-  if (!GITHUB_TOKEN) {
-    log.error("GITHUB_TOKEN env var not set — contact form unconfigured");
-    return NextResponse.json({ error: "Contact form is not configured" }, { status: 500 });
-  }
-
-  const title = buildTitle(type, cardName?.trim(), storeName?.trim());
-  const issueBody = buildBody({
-    type,
-    description: description.trim(),
-    cardName: cardName?.trim(),
-    printing: printing?.trim(),
-    storeName: storeName?.trim(),
-    storeUrl: storeUrl?.trim(),
-    email: email?.trim(),
-  });
-
-  return withErrorHandler(async () => {
     const ghRes = await fetch(
       `${GITHUB_API_URL}/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/issues`,
       {
@@ -149,5 +139,5 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ ok: true });
-  }, "contact");
+  });
 }
