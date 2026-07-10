@@ -9,6 +9,7 @@ import { fmtAUD, cardHref, toSmallImage, trackEvent } from "@/lib/utils";
 import { MTG_CARD_ASPECT_RATIO } from "@/lib/config";
 import { useWantList, toWantListItem } from "@/app/WantListContext";
 import type { CardSearchResult } from "@/lib/db";
+import type { StoreListing } from "@/lib/store-listing";
 
 declare global {
   interface Window {
@@ -29,27 +30,10 @@ function AddToWantListButton({ card }: { card: CardSearchResult }) {
     setAdding(true);
     try {
       const res = await fetch(`/api/cards/store-printings?cardId=${card.id}`);
-      const printings: {
-        id: string; setName: string; setCode: string; rarity: string; isFoil: boolean;
-        imageUri: string | null; priceAud: number; shippingAud: number | null;
-        condition: string | null; url: string | null; storeId: string; storeName: string;
-      }[] = await res.json();
+      const printings: StoreListing[] = await res.json();
       if (!printings?.length) return;
       const printing = [...printings].sort((a, b) => a.priceAud - b.priceAud)[0];
-      addItem(toWantListItem({
-        printingId: printing.id,
-        setName: printing.setName,
-        setCode: printing.setCode,
-        rarity: printing.rarity,
-        isFoil: printing.isFoil,
-        storeId: printing.storeId,
-        storeName: printing.storeName,
-        priceAud: printing.priceAud,
-        shippingAud: printing.shippingAud,
-        condition: printing.condition,
-        url: printing.url,
-        imageUri: printing.imageUri,
-      }, { cardId: card.id, cardSlug: card.slug, cardName: card.name }));
+      addItem(toWantListItem(printing, { cardId: card.id, cardSlug: card.slug, cardName: card.name }));
     } finally {
       setAdding(false);
     }

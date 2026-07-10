@@ -3,6 +3,7 @@ import sql from "@/lib/db";
 import { withApiGuard } from "@/lib/api-helpers";
 import { createRateLimiter } from "@/lib/rate-limit";
 import { RATE_LIMIT_READ_PER_MINUTE } from "@/lib/config";
+import { mapListingRow, type StoreListingRow } from "@/lib/store-listing";
 
 const checkRateLimit = createRateLimiter(RATE_LIMIT_READ_PER_MINUTE, 60 * 1000);
 
@@ -14,26 +15,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "cardId required" }, { status: 400 });
     }
 
-    const rows = await sql<{
-      id: string;
-      set_name: string;
-      set_code: string;
-      collector_number: string;
-      rarity: string;
-      is_foil: boolean;
-      finish: string;
-      border_color: string | null;
-      frame_effects: string[];
-      image_uri: string | null;
-      price_aud: string;
-      shipping_aud: string | null;
-      condition: string | null;
-      url: string | null;
-      store_id: string;
-      store_name: string;
-    }[]>`
+    const rows = await sql<(StoreListingRow & { collector_number: string })[]>`
       SELECT DISTINCT ON (p.id, sp.store_id)
-        p.id,
+        p.id AS printing_id,
         p.set_name,
         p.set_code,
         p.collector_number,
@@ -59,24 +43,7 @@ export async function GET(req: NextRequest) {
     `;
 
     return NextResponse.json(
-      rows.map((r) => ({
-        id: r.id,
-        setName: r.set_name,
-        setCode: r.set_code,
-        collectorNumber: r.collector_number,
-        rarity: r.rarity,
-        isFoil: r.is_foil,
-        finish: (r.finish ?? (r.is_foil ? "foil" : "nonfoil")) as "nonfoil" | "foil" | "etched",
-        borderColor: r.border_color ?? null,
-        frameEffects: r.frame_effects ?? [],
-        imageUri: r.image_uri,
-        priceAud: parseFloat(r.price_aud),
-        shippingAud: r.shipping_aud ? parseFloat(r.shipping_aud) : null,
-        condition: r.condition,
-        url: r.url,
-        storeId: r.store_id,
-        storeName: r.store_name,
-      })),
+      rows.map((r) => ({ ...mapListingRow(r), collectorNumber: r.collector_number })),
       { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120" } }
     );
   });
