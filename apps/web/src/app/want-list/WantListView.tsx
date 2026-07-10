@@ -7,10 +7,11 @@ import { fmtAUD } from "@/lib/utils";
 import { STORE_FLAT_SHIPPING_AUD } from "@/lib/store-shipping";
 import { SetSymbol } from "@/app/SetSymbol";
 import { BuyLink } from "@/app/BuyLink";
+import { computePopupPos, CardImagePopup } from "@/app/CardMagnifier";
 import { ImportCards } from "./ImportCards";
 import type { OptimizeResult } from "@/app/api/optimize/route";
 import { cardHref } from "@/lib/utils";
-import { variantBadge } from "@/lib/variant-utils";
+import { variantBadge, variantBadgeWithFoil } from "@/lib/variant-utils";
 
 // ── Printing selector ─────────────────────────────────────────────────────────
 
@@ -66,23 +67,17 @@ function PrintingSelector({
   useClickOutside(ref, open, () => setOpen(false));
 
   function showPrintingPreview(uri: string, e: React.MouseEvent<HTMLButtonElement>) {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const popupW = 244;
-    const popupH = 340;
-    // Position to the right of the dropdown row; fall back to left if no room
-    const spaceRight = window.innerWidth - rect.right;
-    let left = spaceRight >= popupW + 16 ? rect.right + 8 : rect.left - popupW - 8;
-    left = Math.max(8, Math.min(left, window.innerWidth - popupW - 8));
-    let top = rect.top + rect.height / 2 - popupH / 2;
-    top = Math.max(8, Math.min(top, window.innerHeight - popupH - 8));
+    const { top, left } = computePopupPos(e.currentTarget.getBoundingClientRect(), 244, 340);
     setPrintingPreview({ uri, top, left });
   }
+
+  const itemBadge = variantBadgeWithFoil(item);
 
   return (
     <div ref={ref} className="relative inline-block">
       <button
         onClick={() => setOpen(!open)}
-        title={`${item.setName}${(() => { const v = variantBadge({ finish: item.finish ?? "nonfoil", borderColor: item.borderColor ?? null, frameEffects: item.frameEffects ?? [] }) ?? (item.finish === "foil" ? "Foil" : null); return v ? ` (${v})` : ""; })()} — click to change printing or store`}
+        title={`${item.setName}${itemBadge ? ` (${itemBadge})` : ""} — click to change printing or store`}
         className="flex items-center gap-0.5 hover:opacity-70 transition-opacity"
       >
         <SetSymbol setCode={item.setCode} setName={item.setName} rarity={item.rarity} />
@@ -91,14 +86,7 @@ function PrintingSelector({
 
       {/* Card image preview — fixed so it escapes overflow clipping */}
       {printingPreview && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={printingPreview.uri}
-          alt=""
-          width={244}
-          className="fixed z-[60] pointer-events-none rounded-xl shadow-2xl shadow-black/80 border border-subtle"
-          style={{ top: printingPreview.top, left: printingPreview.left }}
-        />
+        <CardImagePopup uri={printingPreview.uri} top={printingPreview.top} left={printingPreview.left} width={244} zIndex={60} />
       )}
 
       {open && (
@@ -382,6 +370,8 @@ function OptimiseModal({
                     const display = isLocked ? cur : a;
                     const printingChanged = !isLocked && a.printingId !== cur.printingId;
                     const priceDelta = a.priceAud - cur.priceAud;
+                    const curBadge = variantBadgeWithFoil(cur);
+                    const aBadge = variantBadgeWithFoil(a);
 
                     return (
                       <div key={`${a.cardId}-${a.printingId}-${a.storeId}-${idx}`} className={`flex items-center gap-2 px-3 py-2.5 transition-opacity ${isLocked ? "opacity-50" : ""}`}>
@@ -416,10 +406,10 @@ function OptimiseModal({
                               <span className="text-cream-dim/30">locked · {cur.storeName}</span>
                             ) : (
                               <>
-                                {cur.storeName}{printingChanged && <> · {cur.setName}{(() => { const v = variantBadge({ finish: cur.finish ?? "nonfoil", borderColor: cur.borderColor ?? null, frameEffects: cur.frameEffects ?? [] }) ?? (cur.finish === "foil" ? "Foil" : null); return v ? <> · {v}</> : ""; })()}</>}
+                                {cur.storeName}{printingChanged && <> · {cur.setName}{curBadge && <> · {curBadge}</>}</>}
                                 <span className="mx-1">→</span>
                                 <span className="text-cream-dim/70">{a.storeName}</span>
-                                {printingChanged && <span className="text-cream-dim/70"> · {a.setName}{(() => { const v = variantBadge({ finish: a.finish, borderColor: a.borderColor, frameEffects: a.frameEffects }) ?? (a.finish === "foil" ? "Foil" : null); return v ? ` · ${v}` : ""; })()}</span>}
+                                {printingChanged && <span className="text-cream-dim/70"> · {a.setName}{aBadge && ` · ${aBadge}`}</span>}
                               </>
                             )}
                           </div>
@@ -531,14 +521,7 @@ export function WantListView() {
   const [cardPreview, setCardPreview] = useState<{ uri: string; top: number; left: number } | null>(null);
 
   function showCardPreview(uri: string, e: React.MouseEvent<HTMLElement>) {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const popupW = 244;
-    const popupH = 340;
-    const spaceRight = window.innerWidth - rect.right;
-    let left = spaceRight >= popupW + 16 ? rect.right + 8 : rect.left - popupW - 8;
-    left = Math.max(8, Math.min(left, window.innerWidth - popupW - 8));
-    let top = rect.top + rect.height / 2 - popupH / 2;
-    top = Math.max(8, Math.min(top, window.innerHeight - popupH - 8));
+    const { top, left } = computePopupPos(e.currentTarget.getBoundingClientRect(), 244, 340);
     setCardPreview({ uri, top, left });
   }
   const [optimiseLoading, setOptimiseLoading] = useState(false);
@@ -923,14 +906,7 @@ export function WantListView() {
 
       {/* Card image preview on name hover */}
       {cardPreview && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={cardPreview.uri}
-          alt=""
-          width={244}
-          className="fixed z-50 pointer-events-none rounded-xl shadow-2xl shadow-black/80 border border-subtle"
-          style={{ top: cardPreview.top, left: cardPreview.left }}
-        />
+        <CardImagePopup uri={cardPreview.uri} top={cardPreview.top} left={cardPreview.left} width={244} />
       )}
 
       {/* Optimise modal */}

@@ -59,3 +59,23 @@ export function variantBadge(p: VariantSource): string | null {
   if (tags.has("fullart"))         return p.finish !== "nonfoil" ? "Full Art Foil" : "Full Art";
   return null; // standard and foil shown via other UI cues
 }
+
+type LenientVariantSource = {
+  finish?: string | null;
+  borderColor?: string | null;
+  frameEffects?: string[] | null;
+};
+
+/**
+ * Like variantBadge, but defaults missing fields (for callers with optional
+ * WantListItem-style data) and falls back to "Foil" when the printing is
+ * foil but has no special-treatment badge to show instead.
+ */
+export function variantBadgeWithFoil(p: LenientVariantSource): string | null {
+  const source: VariantSource = {
+    finish: p.finish ?? "nonfoil",
+    borderColor: p.borderColor ?? null,
+    frameEffects: p.frameEffects ?? [],
+  };
+  return variantBadge(source) ?? (source.finish === "foil" ? "Foil" : null);
+}
