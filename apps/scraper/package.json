@@ -40,7 +40,7 @@
     "scrape:ronin": "tsx src/stores/run-store.ts ronin_games",
     "scrape:fromthedeep": "tsx src/stores/run-store.ts from_the_deep",
     "scrape:crithit": "tsx src/stores/run-store.ts crit_hit",
-    "scrape:hrgamer": "tsx src/stores/run-store.ts hr_gamer",
+    "scrape:hrgames": "tsx src/stores/run-store.ts hr_games",
     "scrape:megagames": "tsx src/stores/run-store.ts mega_games",
     "scrape:ozziecollectables": "tsx src/stores/run-store.ts ozzie_collectables",
     "scrape:playmantis": "tsx src/stores/run-store.ts playmantis",

@@ -27,7 +27,7 @@ export const STORE_FLAT_SHIPPING_AUD: Record<string, number | null> = {
   ronin_games: 6.50,
   from_the_deep: 6.50,
   crit_hit: 6.50,
-  hr_gamer: 6.50,
+  hr_games: 6.50,
   mega_games: 6.50,
   ozzie_collectables: 6.50,
   playmantis: 6.50,
