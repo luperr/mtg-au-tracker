@@ -13,6 +13,26 @@ export const RATE_LIMIT_BULK_LOOKUP_PER_MINUTE = 10;
 export const RATE_LIMIT_OPTIMIZE_PER_MINUTE = 5;
 export const RATE_LIMIT_READ_PER_MINUTE = 120;
 
+// ── Want List optimiser ──────────────────────────────────────────────────────
+
+/**
+ * Wall-clock budget for the exact branch-and-bound pass (ms). Local search has
+ * already produced a near-optimal plan before B&B runs; B&B proves optimality
+ * for small store counts (finishes in milliseconds) and is cut off here for
+ * large ones (a typical list touches ~30 stores, where the 2^N search cannot
+ * finish in any reasonable budget). The returned plan is always valid — a
+ * cutoff just means it isn't *provably* optimal.
+ */
+export const OPTIMIZE_DEADLINE_MS = 1500;
+
+/**
+ * Run the exact branch-and-bound pass only when this many or fewer stores have
+ * listings for the want list. Beyond it the 2^N search cannot finish inside the
+ * deadline and never beats the local-search plan in practice — skipping it
+ * saves the entire deadline budget on broad lists.
+ */
+export const OPTIMIZE_EXACT_MAX_STORES = 18;
+
 // ── Pagination ───────────────────────────────────────────────────────────────
 
 export const SEARCH_PAGE_SIZE = 20;

@@ -4,8 +4,8 @@ import { STORE_FLAT_SHIPPING_AUD } from "@/lib/store-shipping";
 import { logger } from "@/lib/utils";
 import { createRateLimiter } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request";
-import { RATE_LIMIT_OPTIMIZE_PER_MINUTE } from "@/lib/config";
-import { branchAndBound, evaluateSubset } from "./algorithm";
+import { RATE_LIMIT_OPTIMIZE_PER_MINUTE, OPTIMIZE_DEADLINE_MS, OPTIMIZE_EXACT_MAX_STORES } from "@/lib/config";
+import { branchAndBound, evaluateSubset, localSearch, dedupeCheapestPerStore } from "./algorithm";
 import type { OptimizeItem, Listing } from "./algorithm";
 
 export type { OptimizeItem };
@@ -164,7 +164,9 @@ export async function POST(request: NextRequest) {
   }
 
   // Sort each card's listings: cheapest first, but current printing breaks ties
-  // so the algorithm never swaps to a different printing for zero gain.
+  // so the algorithm never swaps to a different printing for zero gain. Then
+  // drop everything but the cheapest listing per store — a broad want list can
+  // otherwise carry tens of thousands of listings into every subset evaluation.
   for (const [cardId, listings] of byCard.entries()) {
     const currentPrintingId = itemByCardId.get(cardId)!.printingId;
     listings.sort((a, b) => {
@@ -173,6 +175,7 @@ export async function POST(request: NextRequest) {
       if (b.printingId === currentPrintingId) return 1;
       return 0;
     });
+    byCard.set(cardId, dedupeCheapestPerStore(listings));
   }
 
   // Identify cards with no available listings
@@ -202,8 +205,9 @@ export async function POST(request: NextRequest) {
   // Enumerate only pool stores that actually have at least one listing for the requested
   // cards. Price-based pruning is incorrect when flat rates differ across stores (e.g. a
   // $0 collect store is always competitive regardless of per-card price). Bounding by
-  // stores-with-listings is sufficient: a typical want list draws from ≤ 10 stores so
-  // the 2^N subset search stays well under 1024 iterations.
+  // stores-with-listings keeps the search well under the full store roster, but with 30+
+  // stores now configured a broad want list can still touch enough of them to make the
+  // 2^N subset search slow — OPTIMIZE_DEADLINE_MS below is what actually bounds latency.
   const competitivePoolStores = [...allPoolStoreIds].filter(storeId =>
     [...byCard.values()].some(listings => listings.some(l => l.storeId === storeId))
   );
@@ -225,7 +229,51 @@ export async function POST(request: NextRequest) {
     const r = evaluateSubset(available, byCard, seed, allPoolStoreIds, flatRates);
     if (r && r.cost < best.cost) { best.cost = r.cost; best.assignments = r.assignments; }
   }
-  branchAndBound(sortedPoolStores, 0, new Set<string>(), available, byCard, allPoolStoreIds, flatRates, best);
+
+  // One wall-clock budget shared by local search and the exact pass.
+  const deadline = Date.now() + OPTIMIZE_DEADLINE_MS;
+
+  // Local search from the best seed's store set — near-optimal in milliseconds,
+  // giving B&B a tight upper bound so pruning is effective even at 30+ stores.
+  const initialActive = new Set<string>(
+    best.assignments
+      ? [...best.assignments.values()].map(l => l.storeId).filter(id => allPoolStoreIds.has(id))
+      : []
+  );
+  const ls = localSearch(available, byCard, initialActive, sortedPoolStores, allPoolStoreIds, flatRates, deadline);
+  if (ls && ls.cost < best.cost) { best.cost = ls.cost; best.assignments = ls.assignments; }
+
+  // Exact prove-or-improve pass. Skipped outright when the store count makes
+  // finishing hopeless (2^N nodes) — measured runs at N≈30 never improve on
+  // local search, they just burn the full deadline.
+  if (sortedPoolStores.length <= OPTIMIZE_EXACT_MAX_STORES) {
+    const completed = branchAndBound(
+      {
+        stores: sortedPoolStores,
+        available,
+        byCard,
+        allPoolStoreIds,
+        flatRates,
+        best,
+        deadline,
+        rank: new Map(sortedPoolStores.map((s, i) => [s, i])),
+      },
+      0,
+      new Set<string>(),
+    );
+
+    if (!completed) {
+      log.warn(
+        { pool_stores: sortedPoolStores.length, item_count: available.length, cost: best.cost },
+        "Optimiser hit its deadline — returning best plan found so far",
+      );
+    }
+  } else {
+    log.debug(
+      { pool_stores: sortedPoolStores.length, item_count: available.length, cost: best.cost },
+      "Exact search skipped (store count too large) — using local-search plan",
+    );
+  }
 
   if (best.assignments) {
     const usedStores = new Set([...best.assignments.values()].map(l => l.storeId));
