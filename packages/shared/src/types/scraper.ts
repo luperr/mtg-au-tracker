@@ -22,5 +22,4 @@ export interface ScrapedCard {
 // Interface all store scrapers must implement.
 export interface StoreScraper {
   scrapeAll(): AsyncGenerator<ScrapedCard>;
-  healthCheck(): Promise<boolean>;
 }
