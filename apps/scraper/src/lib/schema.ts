@@ -179,7 +179,7 @@ export const priceHistory = pgTable(
 
 // ─── Unmatched cards ──────────────────────────────────────────────────────────
 // Scraped listings that couldn't be matched to a Scryfall printing.
-// Used for debugging the matcher and improving SET_ALIASES.
+// Used for debugging the matcher and improving match coverage.
 
 export const unmatchedCards = pgTable(
   "unmatched_cards",
