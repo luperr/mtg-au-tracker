@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useClickOutside } from "@/lib/hooks/useClickOutside";
-import { useWantList, type WantListItem } from "@/app/WantListContext";
+import { useWantList, toWantListItem, type WantListItem } from "@/app/WantListContext";
 import { fmtAUD } from "@/lib/utils";
 import { STORE_FLAT_SHIPPING_AUD } from "@/lib/store-shipping";
 import { SetSymbol } from "@/app/SetSymbol";
@@ -626,9 +626,7 @@ export function WantListView() {
       if (!current) continue;
       if (current.storeId === a.storeId && current.printingId === a.printingId) continue;
       removeItem(current.id);
-      addItem({
-        ...current,
-        id: `${a.printingId}-${a.storeId}-${a.url ?? ""}`,
+      addItem(toWantListItem({
         printingId: a.printingId,
         storeId: a.storeId,
         storeName: a.storeName,
@@ -644,7 +642,7 @@ export function WantListView() {
         borderColor: a.borderColor,
         frameEffects: a.frameEffects,
         imageUri: a.imageUri,
-      });
+      }, current));
     }
     setOptimiseOpen(false);
     setOptimiseResult(null);
@@ -670,9 +668,7 @@ export function WantListView() {
 
   function handlePrintingChange(item: WantListItem, p: StorePrinting) {
     removeItem(item.id);
-    addItem({
-      ...item,
-      id: `${p.id}-${p.storeId}-${p.url ?? ""}`,
+    addItem(toWantListItem({
       printingId: p.id,
       setName: p.setName,
       setCode: p.setCode,
@@ -688,7 +684,7 @@ export function WantListView() {
       condition: p.condition,
       url: p.url,
       imageUri: p.imageUri,
-    });
+    }, item));
   }
 
   return (

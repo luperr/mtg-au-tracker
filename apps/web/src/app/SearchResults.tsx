@@ -7,7 +7,7 @@ import { TrendBadge } from "./TrendBadge";
 import { useViewPreference, type ViewMode } from "@/lib/hooks/useViewPreference";
 import { fmtAUD, cardHref, toSmallImage, trackEvent } from "@/lib/utils";
 import { MTG_CARD_ASPECT_RATIO } from "@/lib/config";
-import { useWantList } from "@/app/WantListContext";
+import { useWantList, toWantListItem } from "@/app/WantListContext";
 import type { CardSearchResult } from "@/lib/db";
 
 declare global {
@@ -36,11 +36,7 @@ function AddToWantListButton({ card }: { card: CardSearchResult }) {
       }[] = await res.json();
       if (!printings?.length) return;
       const printing = [...printings].sort((a, b) => a.priceAud - b.priceAud)[0];
-      addItem({
-        id: `${printing.id}-${printing.storeId}-${printing.url ?? ""}`,
-        cardId: card.id,
-        cardSlug: card.slug,
-        cardName: card.name,
+      addItem(toWantListItem({
         printingId: printing.id,
         setName: printing.setName,
         setCode: printing.setCode,
@@ -53,7 +49,7 @@ function AddToWantListButton({ card }: { card: CardSearchResult }) {
         condition: printing.condition,
         url: printing.url,
         imageUri: printing.imageUri,
-      });
+      }, { cardId: card.id, cardSlug: card.slug, cardName: card.name }));
     } finally {
       setAdding(false);
     }
