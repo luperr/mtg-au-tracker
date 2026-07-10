@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { useWantList } from "@/app/WantListContext";
+import { useWantList, toWantListItem, wantListItemId } from "@/app/WantListContext";
 import type { BulkLookupResult, BulkLookupInput } from "@/app/api/cards/bulk-lookup/route";
 import { cardHref } from "@/lib/utils";
 
@@ -120,13 +120,9 @@ export function ImportCards() {
     const newAdded = new Set(added);
     for (const r of results) {
       if (!r.cheapest || !r.cardId || !r.cardName) continue;
-      const itemId = `${r.cheapest.printingId}-${r.cheapest.storeName}`;
+      const itemId = wantListItemId(r.cheapest.printingId, r.cheapest.storeId ?? "", r.cheapest.url);
       if (newAdded.has(itemId)) continue;
-      addItem({
-        id: itemId,
-        cardId: r.cardId,
-        cardSlug: r.cardSlug,
-        cardName: r.cardName,
+      addItem(toWantListItem({
         printingId: r.cheapest.printingId,
         setName: r.cheapest.setName,
         setCode: r.cheapest.setCode,
@@ -139,7 +135,7 @@ export function ImportCards() {
         condition: r.cheapest.condition,
         url: r.cheapest.url,
         imageUri: r.imageUri,
-      });
+      }, { cardId: r.cardId, cardSlug: r.cardSlug, cardName: r.cardName }));
       newAdded.add(itemId);
     }
     setAdded(newAdded);
@@ -147,12 +143,8 @@ export function ImportCards() {
 
   function handleAddOne(r: BulkLookupResult) {
     if (!r.cheapest || !r.cardId || !r.cardName) return;
-    const itemId = `${r.cheapest.printingId}-${r.cheapest.storeName}`;
-    addItem({
-      id: itemId,
-      cardId: r.cardId,
-      cardSlug: r.cardSlug,
-      cardName: r.cardName,
+    const itemId = wantListItemId(r.cheapest.printingId, r.cheapest.storeId ?? "", r.cheapest.url);
+    addItem(toWantListItem({
       printingId: r.cheapest.printingId,
       setName: r.cheapest.setName,
       setCode: r.cheapest.setCode,
@@ -165,7 +157,7 @@ export function ImportCards() {
       condition: r.cheapest.condition,
       url: r.cheapest.url,
       imageUri: r.imageUri,
-    });
+    }, { cardId: r.cardId, cardSlug: r.cardSlug, cardName: r.cardName }));
     setAdded((prev) => new Set([...prev, itemId]));
   }
 

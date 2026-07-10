@@ -102,10 +102,6 @@ function mapEntry(entry: MtgMateCardEntry): ScrapedCard {
 }
 
 export class MtgMateScraper extends BaseScraper {
-  getBaseUrl(): string {
-    return MTGMATE_BASE_URL;
-  }
-
   // Fetch card data for one set code. Returns entries (may be empty).
   // Silently returns [] on 404 (set doesn't exist on MTG Mate).
   // Logs a warning on unexpected errors.

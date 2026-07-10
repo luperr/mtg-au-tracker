@@ -24,6 +24,49 @@ export interface WantListItem {
   imageUri: string | null;
 }
 
+/** The fields of a WantListItem that come from a specific store listing, as opposed to the card. */
+export type WantListListing = {
+  printingId: string;
+  setName: string;
+  setCode: string;
+  rarity: string;
+  isFoil: boolean;
+  finish?: "nonfoil" | "foil" | "etched";
+  borderColor?: string | null;
+  frameEffects?: string[];
+  storeId: string;
+  storeName: string;
+  priceAud: number;
+  shippingAud: number | null;
+  condition: string | null;
+  url: string | null;
+  imageUri: string | null;
+};
+
+/** The fields of a WantListItem that identify the card, independent of which listing was picked. */
+export type WantListCard = {
+  cardId: string;
+  cardSlug: string | null;
+  cardName: string;
+};
+
+/** The id recipe for a distinct listing — unique per printing/store/URL combination. */
+export function wantListItemId(printingId: string, storeId: string, url: string | null): string {
+  return `${printingId}-${storeId}-${url ?? ""}`;
+}
+
+/**
+ * Builds a WantListItem from a listing + card pair, owning the id recipe
+ * in exactly one place.
+ */
+export function toWantListItem(listing: WantListListing, card: WantListCard): WantListItem {
+  return {
+    ...card,
+    ...listing,
+    id: wantListItemId(listing.printingId, listing.storeId, listing.url),
+  };
+}
+
 interface WantListContextValue {
   items: WantListItem[];
   addItem: (item: WantListItem) => void;
@@ -57,7 +100,7 @@ export function WantListProvider({ children }: { children: React.ReactNode }) {
         setItems(parsed.map((item) => {
           const storeId = item.storeId ?? "";
           // Migrate old ID format (${printingId}-${storeName}) to new (${printingId}-${storeId}-${url})
-          const id = `${item.printingId}-${storeId}-${item.url ?? ""}`;
+          const id = wantListItemId(item.printingId, storeId, item.url ?? null);
           return {
             ...item,
             id,

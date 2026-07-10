@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { logger } from "@/lib/utils";
+import { getClientIp } from "@/lib/request";
 
 const log = logger.child({ component: "api" });
 
@@ -17,4 +18,23 @@ export async function withErrorHandler(
     log.error({ err, context }, "Unhandled API route error");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
+}
+
+/**
+ * Combines the rate-limit check + error handling every route needs: rejects
+ * with 429 before the handler runs (skipped in development), otherwise runs
+ * the handler through withErrorHandler. checkRateLimit is created once per
+ * route via createRateLimiter() so its request counts persist across calls.
+ */
+export async function withApiGuard(
+  req: NextRequest,
+  checkRateLimit: (ip: string) => boolean,
+  context: string,
+  handler: (req: NextRequest) => Promise<NextResponse>,
+): Promise<NextResponse> {
+  const ip = getClientIp(req);
+  if (process.env.NODE_ENV !== "development" && !checkRateLimit(ip)) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+  return withErrorHandler(() => handler(req), context);
 }

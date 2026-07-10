@@ -3,34 +3,20 @@ import sql from "@/lib/db";
 import { STORE_FLAT_SHIPPING_AUD } from "@/lib/store-shipping";
 import { logger } from "@/lib/utils";
 import { createRateLimiter } from "@/lib/rate-limit";
-import { getClientIp } from "@/lib/request";
+import { withApiGuard } from "@/lib/api-helpers";
 import { RATE_LIMIT_OPTIMIZE_PER_MINUTE, OPTIMIZE_DEADLINE_MS, OPTIMIZE_EXACT_MAX_STORES } from "@/lib/config";
 import { branchAndBound, evaluateSubset, localSearch, dedupeCheapestPerStore } from "./algorithm";
 import type { OptimizeItem, Listing } from "./algorithm";
+import { mapListingRow, type StoreListing, type StoreListingRow } from "@/lib/store-listing";
 
 export type { OptimizeItem };
 
 const log = logger.child({ component: "api-optimize" });
 const checkRateLimit = createRateLimiter(RATE_LIMIT_OPTIMIZE_PER_MINUTE, 60 * 1000);
 
-export type OptimizeAssignment = {
+export type OptimizeAssignment = StoreListing & {
   cardId: string;
   cardName: string;
-  printingId: string;
-  storeId: string;
-  storeName: string;
-  priceAud: number;
-  shippingAud: number | null;
-  condition: string | null;
-  url: string | null;
-  setName: string;
-  setCode: string;
-  rarity: string;
-  isFoil: boolean;
-  finish: "nonfoil" | "foil" | "etched";
-  borderColor: string | null;
-  frameEffects: string[];
-  imageUri: string | null;
 };
 
 export type OptimizeResult = {
@@ -52,11 +38,7 @@ export type OptimizeResult = {
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
-  const ip = getClientIp(request);
-  if (process.env.NODE_ENV !== "development" && !checkRateLimit(ip)) {
-    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
-  }
-
+  return withApiGuard(request, checkRateLimit, "optimize", async (request) => {
   let body: unknown;
   try {
     body = await request.json();
@@ -84,24 +66,7 @@ export async function POST(request: NextRequest) {
   const cardIds = typedItems.map((i) => i.cardId);
 
   // Fetch all in-stock sell listings for all cardIds across all stores and printings
-  const rows = await sql<{
-    printing_id: string;
-    card_id: string;
-    store_id: string;
-    store_name: string;
-    price_aud: string;
-    shipping_aud: string | null;
-    condition: string | null;
-    url: string | null;
-    set_name: string;
-    set_code: string;
-    rarity: string;
-    is_foil: boolean;
-    finish: string;
-    border_color: string | null;
-    frame_effects: string[];
-    image_uri: string | null;
-  }[]>`
+  const rows = await sql<(StoreListingRow & { card_id: string })[]>`
     SELECT
       p.id AS printing_id,
       p.card_id,
@@ -143,23 +108,7 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
-    const listing: Listing = {
-      printingId: row.printing_id,
-      storeId: row.store_id,
-      storeName: row.store_name,
-      priceAud: parseFloat(row.price_aud),
-      shippingAud: row.shipping_aud ? parseFloat(row.shipping_aud) : null,
-      condition: row.condition,
-      url: row.url,
-      setName: row.set_name,
-      setCode: row.set_code,
-      rarity: row.rarity,
-      isFoil: row.is_foil,
-      finish: (row.finish ?? (row.is_foil ? "foil" : "nonfoil")) as "nonfoil" | "foil" | "etched",
-      borderColor: row.border_color ?? null,
-      frameEffects: row.frame_effects ?? [],
-      imageUri: row.image_uri,
-    };
+    const listing: Listing = mapListingRow(row);
     byCard.get(row.card_id)!.push(listing);
   }
 
@@ -288,25 +237,7 @@ export async function POST(request: NextRequest) {
   // Build response — look up by cardId; printingId comes from the chosen listing
   const assignments: OptimizeAssignment[] = available.map((item) => {
     const listing = best.assignments!.get(item.cardId)!;
-    return {
-      cardId: item.cardId,
-      cardName: item.cardName,
-      printingId: listing.printingId,
-      storeId: listing.storeId,
-      storeName: listing.storeName,
-      priceAud: listing.priceAud,
-      shippingAud: listing.shippingAud,
-      condition: listing.condition,
-      url: listing.url,
-      setName: listing.setName,
-      setCode: listing.setCode,
-      rarity: listing.rarity,
-      isFoil: listing.isFoil,
-      finish: listing.finish,
-      borderColor: listing.borderColor,
-      frameEffects: listing.frameEffects,
-      imageUri: listing.imageUri,
-    };
+    return { ...listing, cardId: item.cardId, cardName: item.cardName };
   });
 
   // Build per-store breakdown
@@ -349,4 +280,5 @@ export async function POST(request: NextRequest) {
     storeBreakdown,
     unavailable,
   } satisfies OptimizeResult);
+  });
 }

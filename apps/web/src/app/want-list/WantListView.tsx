@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useClickOutside } from "@/lib/hooks/useClickOutside";
-import { useWantList, type WantListItem } from "@/app/WantListContext";
+import { useWantList, toWantListItem, type WantListItem } from "@/app/WantListContext";
 import { fmtAUD } from "@/lib/utils";
 import { STORE_FLAT_SHIPPING_AUD } from "@/lib/store-shipping";
 import { SetSymbol } from "@/app/SetSymbol";
@@ -12,27 +12,11 @@ import { ImportCards } from "./ImportCards";
 import type { OptimizeResult } from "@/app/api/optimize/route";
 import { cardHref } from "@/lib/utils";
 import { variantBadge, variantBadgeWithFoil } from "@/lib/variant-utils";
+import type { StoreListing } from "@/lib/store-listing";
 
 // ── Printing selector ─────────────────────────────────────────────────────────
 
-type StorePrinting = {
-  id: string;
-  setName: string;
-  setCode: string;
-  collectorNumber: string;
-  rarity: string;
-  isFoil: boolean;
-  finish: string;
-  borderColor: string | null;
-  frameEffects: string[];
-  imageUri: string | null;
-  priceAud: number;
-  shippingAud: number | null;
-  condition: string | null;
-  url: string | null;
-  storeId: string;
-  storeName: string;
-};
+type StorePrinting = StoreListing & { collectorNumber: string };
 
 function PrintingSelector({
   item,
@@ -98,10 +82,10 @@ function PrintingSelector({
           ) : (
             <div className="py-1 max-h-64 overflow-y-auto">
               {printings.map((p) => {
-                const isCurrent = p.id === item.printingId && p.storeId === item.storeId;
+                const isCurrent = p.printingId === item.printingId && p.storeId === item.storeId;
                 return (
                   <button
-                    key={`${p.id}-${p.storeId}`}
+                    key={`${p.printingId}-${p.storeId}`}
                     onClick={() => { onSelect(p); setOpen(false); }}
                     onMouseEnter={p.imageUri ? (e) => showPrintingPreview(p.imageUri!, e) : undefined}
                     onMouseLeave={() => setPrintingPreview(null)}
@@ -626,25 +610,7 @@ export function WantListView() {
       if (!current) continue;
       if (current.storeId === a.storeId && current.printingId === a.printingId) continue;
       removeItem(current.id);
-      addItem({
-        ...current,
-        id: `${a.printingId}-${a.storeId}-${a.url ?? ""}`,
-        printingId: a.printingId,
-        storeId: a.storeId,
-        storeName: a.storeName,
-        priceAud: a.priceAud,
-        shippingAud: a.shippingAud,
-        condition: a.condition,
-        url: a.url,
-        setName: a.setName,
-        setCode: a.setCode,
-        rarity: a.rarity,
-        isFoil: a.isFoil,
-        finish: a.finish,
-        borderColor: a.borderColor,
-        frameEffects: a.frameEffects,
-        imageUri: a.imageUri,
-      });
+      addItem(toWantListItem(a, current));
     }
     setOptimiseOpen(false);
     setOptimiseResult(null);
@@ -670,25 +636,7 @@ export function WantListView() {
 
   function handlePrintingChange(item: WantListItem, p: StorePrinting) {
     removeItem(item.id);
-    addItem({
-      ...item,
-      id: `${p.id}-${p.storeId}-${p.url ?? ""}`,
-      printingId: p.id,
-      setName: p.setName,
-      setCode: p.setCode,
-      rarity: p.rarity,
-      isFoil: p.isFoil,
-      finish: p.finish as "nonfoil" | "foil" | "etched",
-      borderColor: p.borderColor,
-      frameEffects: p.frameEffects,
-      storeId: p.storeId,
-      storeName: p.storeName,
-      priceAud: p.priceAud,
-      shippingAud: p.shippingAud,
-      condition: p.condition,
-      url: p.url,
-      imageUri: p.imageUri,
-    });
+    addItem(toWantListItem(p, item));
   }
 
   return (

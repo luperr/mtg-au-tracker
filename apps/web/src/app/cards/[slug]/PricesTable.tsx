@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import type { PrintingWithPrices } from "@/lib/db";
-import { useWantList } from "@/app/WantListContext";
+import { useWantList, toWantListItem, wantListItemId } from "@/app/WantListContext";
 import { fmtAUD } from "@/lib/utils";
 import { Dropdown, OptionItem } from "@/app/Dropdown";
 import { SetSymbol } from "@/app/SetSymbol";
@@ -54,7 +54,7 @@ function WantListButton({
   size?: "sm" | "md";
 }) {
   const { addItem, removeItem, hasItem } = useWantList();
-  const itemId = `${row.printing.id}-${row.storeId}-${row.url ?? ""}`;
+  const itemId = wantListItemId(row.printing.id, row.storeId, row.url);
   const inList = hasItem(itemId);
   const cls = size === "md" ? "w-8 h-8" : "w-6 h-6";
   return (
@@ -63,11 +63,7 @@ function WantListButton({
         if (inList) {
           removeItem(itemId);
         } else {
-          addItem({
-            id: itemId,
-            cardId,
-            cardSlug,
-            cardName,
+          addItem(toWantListItem({
             printingId: row.printing.id,
             setName: row.printing.setName,
             setCode: row.printing.setCode,
@@ -83,7 +79,7 @@ function WantListButton({
             condition: row.condition,
             url: row.url,
             imageUri: row.printing.imageUri,
-          });
+          }, { cardId, cardSlug, cardName }));
         }
       }}
       title={inList ? "Remove from want list" : "Add to want list"}

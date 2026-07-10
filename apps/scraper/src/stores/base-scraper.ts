@@ -10,7 +10,6 @@
  *                                        appear (needed for React-rendered content)
  *   - fetchJson<T>(url)                — fetch a JSON endpoint using the browser's
  *                                        existing session/cookies (no page rendering)
- *   - healthCheck()                    — returns true if the base URL loads
  *   - close()                          — shuts down the browser when scraping is done
  *
  * All methods share one Browser + BrowserContext (opened lazily, closed via close()).
@@ -110,15 +109,6 @@ export abstract class BaseScraper implements StoreScraper {
     }
   }
 
-  async healthCheck(): Promise<boolean> {
-    try {
-      const html = await this.fetchPage(this.getBaseUrl());
-      return html.length > 1000;
-    } catch {
-      return false;
-    }
-  }
-
   async close(): Promise<void> {
     await this.context?.close();
     await this.browser?.close();
@@ -127,5 +117,4 @@ export abstract class BaseScraper implements StoreScraper {
   }
 
   abstract scrapeAll(): AsyncGenerator<ScrapedCard>;
-  abstract getBaseUrl(): string;
 }

@@ -657,10 +657,6 @@ export class ShopifyScraper extends BaseScraper {
     this.log = logger.child({ component: "shopify", store: config.id });
   }
 
-  getBaseUrl(): string {
-    return this.config.baseUrl;
-  }
-
   private async fetchProductsPage(pageNum: number): Promise<ShopifyProduct[]> {
     const url = `${this.config.baseUrl}/collections/${this.config.collectionHandle}/products.json?limit=${PAGE_SIZE}&page=${pageNum}`;
     try {
