@@ -47,6 +47,7 @@ const STORES = [
   { id: "general_games", name: "General Games", baseUrl: "https://www.generalgames.com.au", scraperEnabled: true, logoUrl: null },
   { id: "elemental_arcade", name: "Elemental Arcade", baseUrl: "https://elementalarcade.com.au", scraperEnabled: true, logoUrl: null },
   { id: "ronin_games", name: "Ronin Games", baseUrl: "https://roningames.com.au", scraperEnabled: true, logoUrl: null },
+  { id: "hr_games", name: "HR Games", baseUrl: "https://hrgames.au", scraperEnabled: true, logoUrl: null },
   {
     id: "from_the_deep",
     name: "From the Deep Games",
@@ -75,7 +76,7 @@ const STORES = [
   { id: "shuffled", name: "Shuffled", baseUrl: "https://shuffled.com.au", scraperEnabled: true, logoUrl: null },
   { id: "the_card_hub_australia", name: "The Card Hub Australia", baseUrl: "https://thecardhubaustralia.com.au", scraperEnabled: true, logoUrl: null },
   { id: "that_game_store", name: "That Game Store", baseUrl: "https://thatgamestore.com.au", scraperEnabled: true, logoUrl: null },
-  { id: "area52", name: "Area52", baseUrl: "https://area52.com.au", scraperEnabled: true, logoUrl: null },
+  { id: "area52", name: "Area52", baseUrl: "https://singles.area52.com.au", scraperEnabled: true, logoUrl: null },
   { id: "mtg_singles_aus", name: "MTG Singles Australia", baseUrl: "https://www.mtgsinglesaustralia.com.au", scraperEnabled: false, logoUrl: null },
   { id: "ebay_au", name: "eBay AU", baseUrl: "https://www.ebay.com.au", scraperEnabled: true, logoUrl: null },
   { id: "shuffle_and_cut_games", name: "Shuffle and Cut Games", baseUrl: "https://shuffleandcutgames.com", scraperEnabled: true, logoUrl: null },

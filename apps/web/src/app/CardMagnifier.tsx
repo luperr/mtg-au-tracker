@@ -3,22 +3,52 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 // ── Shared positioning helper ─────────────────────────────────────────────────
+// Positions a popup image relative to a trigger element's rect: to the right
+// if there's room, otherwise to the left, vertically centred and clamped to
+// the viewport. Used by every hover/click card-image preview in the app.
 
-function computePopupPos(rect: DOMRect): { top: number; left: number } {
-  const popupW = 380;
-  const popupH = 530;
-
+export function computePopupPos(rect: DOMRect, popupW: number, popupH: number): { top: number; left: number } {
   const spaceRight = window.innerWidth - rect.right;
   let left = spaceRight >= popupW + 16
     ? rect.right + 8
     : rect.left - popupW - 8;
   left = Math.max(8, Math.min(left, window.innerWidth - popupW - 8));
 
-  const thumbMidY = rect.top + rect.height / 2;
-  let top = thumbMidY - popupH / 2;
+  const midY = rect.top + rect.height / 2;
+  let top = midY - popupH / 2;
   top = Math.max(8, Math.min(top, window.innerHeight - popupH - 8));
 
   return { top, left };
+}
+
+// ── Shared popup image ────────────────────────────────────────────────────────
+// The fixed-position card image rendered by every preview popup.
+
+export function CardImagePopup({
+  uri,
+  top,
+  left,
+  width = 380,
+  zIndex = 50,
+  alt = "",
+}: {
+  uri: string;
+  top: number;
+  left: number;
+  width?: number;
+  zIndex?: number;
+  alt?: string;
+}) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={uri}
+      alt={alt}
+      width={width}
+      className="fixed pointer-events-none rounded-xl shadow-2xl shadow-black/80 border border-subtle"
+      style={{ top, left, zIndex }}
+    />
+  );
 }
 
 // ── CardMagnifier — thumbnail that pops up a large image on hover ─────────────
@@ -39,21 +69,7 @@ export function CardMagnifier({ smallSrc, largeSrc, alt, delayMs = 0 }: Props) {
 
   function computePos() {
     if (!wrapperRef.current) return null;
-    const rect = wrapperRef.current.getBoundingClientRect();
-    const popupW = 380;
-    const popupH = 530;
-
-    const spaceRight = window.innerWidth - rect.right;
-    let left = spaceRight >= popupW + 16
-      ? rect.right + 8
-      : rect.left - popupW - 8;
-    left = Math.max(8, Math.min(left, window.innerWidth - popupW - 8));
-
-    const thumbMidY = rect.top + rect.height / 2;
-    let top = thumbMidY - popupH / 2;
-    top = Math.max(8, Math.min(top, window.innerHeight - popupH - 8));
-
-    return { top, left };
+    return computePopupPos(wrapperRef.current.getBoundingClientRect(), 380, 530);
   }
 
   function open() {
@@ -95,20 +111,7 @@ export function CardMagnifier({ smallSrc, largeSrc, alt, delayMs = 0 }: Props) {
         />
       </div>
 
-      {show && (
-        <div
-          className="fixed z-50 pointer-events-none"
-          style={{ top: pos.top, left: pos.left }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={largeSrc}
-            alt={alt}
-            width={380}
-            className="rounded-xl shadow-2xl shadow-black/80 border border-subtle"
-          />
-        </div>
-      )}
+      {show && <CardImagePopup uri={largeSrc} top={pos.top} left={pos.left} width={380} alt={alt} />}
     </>
   );
 }
@@ -136,14 +139,14 @@ export function HoverCardPopup({ imageSrc, alt, delay = 0, children }: HoverCard
     if (!wrapperRef.current) return;
     const rect = wrapperRef.current.getBoundingClientRect();
     if (delay === 0) {
-      setPos(computePopupPos(rect));
+      setPos(computePopupPos(rect, 380, 530));
       setShow(true);
       return;
     }
     timerRef.current = setTimeout(() => {
       // Re-read rect in case the element moved (e.g. scroll)
       if (!wrapperRef.current) return;
-      setPos(computePopupPos(wrapperRef.current.getBoundingClientRect()));
+      setPos(computePopupPos(wrapperRef.current.getBoundingClientRect(), 380, 530));
       setShow(true);
     }, delay);
   }
@@ -158,17 +161,7 @@ export function HoverCardPopup({ imageSrc, alt, delay = 0, children }: HoverCard
       <span ref={wrapperRef} onMouseEnter={open} onMouseLeave={close}>
         {children}
       </span>
-      {show && (
-        <div className="fixed z-50 pointer-events-none" style={{ top: pos.top, left: pos.left }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={imageSrc}
-            alt={alt}
-            width={380}
-            className="rounded-xl shadow-2xl shadow-black/80 border border-subtle"
-          />
-        </div>
-      )}
+      {show && <CardImagePopup uri={imageSrc} top={pos.top} left={pos.left} width={380} alt={alt} />}
     </>
   );
 }

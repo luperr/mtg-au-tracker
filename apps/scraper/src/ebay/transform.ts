@@ -474,39 +474,3 @@ export function transformEbayItem(item: EbayItemSummary): ScrapedCard | null {
     shippingCost: extractShipping(item),
   };
 }
-
-// ── Run directly to test ───────────────────────────────────────────────────────
-// tsx src/ebay/transform.ts
-if (process.argv[1]?.endsWith("transform.ts") || process.argv[1]?.endsWith("transform.js")) {
-  const TEST_TITLES: Array<[string, string, string]> = [
-    ["MTG Magic Lightning Bolt M11 NM Foil x1", "10.00", "Used"],
-    ["Magic The Gathering - Jace, the Mind Sculptor - JTMS - Worldwake - NM", "120.00", "Used"],
-    ["BLACK LOTUS Alpha MTG Magic Rare HP 1x", "50000.00", "Used"],
-    ["Lightning bolt x4 playset mtg near mint", "5.00", "Like New"],
-    ["PSA 9 Black Lotus Alpha MTG", "99999.00", "Used"],       // should skip
-    ["MTG Mystery Lot 100 cards bulk", "30.00", "Used"],        // should skip
-    ["Counterspell Unlimited Edition NM", "45.00", "Used"],
-    ["Ragavan Nimble Pilferer MH2 NM foil", "80.00", "Like New"],
-    ["Wrenn and Six Modern Horizons 2 LP", "55.00", "Very Good"],
-    ["Thassa's Oracle Theros Beyond Death NM", "18.00", "Like New"],
-  ];
-
-  for (const [title, priceValue, condition] of TEST_TITLES) {
-    const fakeItem: EbayItemSummary = {
-      itemId: "test",
-      title,
-      price: { value: priceValue, currency: "AUD" },
-      condition,
-      itemWebUrl: "https://ebay.com.au/test",
-      buyingOptions: ["FIXED_PRICE"],
-    };
-
-    const result = transformEbayItem(fakeItem);
-    if (result) {
-      console.log(`\n✓ "${title.slice(0, 60)}"`);
-      console.log(`  name: "${result.rawName}" | set: ${result.setName} | foil: ${result.isFoil} | cond: ${result.condition} | $${result.price}`);
-    } else {
-      console.log(`\n✗ SKIPPED: "${title.slice(0, 60)}"`);
-    }
-  }
-}

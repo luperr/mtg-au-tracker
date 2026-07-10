@@ -61,7 +61,7 @@ export class CardMatcher {
 
   // Set name → set code index built from the DB.
   // Allows stores that provide a human-readable set name (Good Games) to benefit
-  // from set-based matching without needing a static SET_ALIASES lookup.
+  // from set-based matching without a static alias table.
   private setNameIndex = new Map<string, string>(); // normalizedSetName → setCode
 
   /**
