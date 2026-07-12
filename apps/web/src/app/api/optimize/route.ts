@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import sql from "@/lib/db";
-import { STORE_FLAT_SHIPPING_AUD } from "@/lib/store-shipping";
+import { getStoreShippingRates } from "@/lib/store-shipping";
 import { logger } from "@/lib/utils";
 import { createRateLimiter } from "@/lib/rate-limit";
 import { withApiGuard } from "@/lib/api-helpers";
@@ -58,7 +58,8 @@ export async function POST(request: NextRequest) {
   );
   // Per-store shipping overrides from the client (user-edited values)
   const shippingOverrides = (body as { shippingOverrides?: Record<string, number> }).shippingOverrides ?? {};
-  const flatRates: Record<string, number | null> = { ...STORE_FLAT_SHIPPING_AUD, ...shippingOverrides };
+  const storeShippingRates = await getStoreShippingRates();
+  const flatRates: Record<string, number | null> = { ...storeShippingRates, ...shippingOverrides };
   if (Object.keys(shippingOverrides).length > 0) {
     log.debug({ shipping_overrides: shippingOverrides }, "Shipping overrides received");
   }
@@ -148,7 +149,7 @@ export async function POST(request: NextRequest) {
   // Identify pool store IDs (flat-rate, non-eBay) that appear in any listing
   const allStoreIds = new Set<string>(rows.map((r: { store_id: string }) => r.store_id));
   const allPoolStoreIds = new Set<string>(
-    [...allStoreIds].filter((id): id is string => id in STORE_FLAT_SHIPPING_AUD && id !== "ebay_au")
+    [...allStoreIds].filter((id): id is string => id in storeShippingRates && id !== "ebay_au")
   );
 
   // Enumerate only pool stores that actually have at least one listing for the requested
@@ -252,7 +253,7 @@ export async function POST(request: NextRequest) {
   let totalPostage = 0;
   const storeBreakdown = Array.from(storeGroups.values()).map(({ storeName, storeId, items: storeItems }) => {
     const cardsTotal = storeItems.reduce((s, i) => s + i.priceAud, 0);
-    const isPool = storeId in STORE_FLAT_SHIPPING_AUD && storeId !== "ebay_au";
+    const isPool = storeId in storeShippingRates && storeId !== "ebay_au";
     let shipping: number | null;
     if (isPool) {
       shipping = flatRates[storeId] ?? null;

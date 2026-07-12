@@ -4,7 +4,6 @@ import React, { useState, useRef, useEffect } from "react";
 import { useClickOutside } from "@/lib/hooks/useClickOutside";
 import { useWantList, toWantListItem, type WantListItem } from "@/app/WantListContext";
 import { fmtAUD } from "@/lib/utils";
-import { STORE_FLAT_SHIPPING_AUD } from "@/lib/store-shipping";
 import { SetSymbol } from "@/app/SetSymbol";
 import { BuyLink } from "@/app/BuyLink";
 import { computePopupPos, CardImagePopup } from "@/app/CardMagnifier";
@@ -217,10 +216,11 @@ function groupByStore(items: WantListItem[]): Map<string, WantListItem[]> {
 /** Returns the shipping charge for a store group.
  *  eBay items are per-seller so each row has its own shippingAud → sum them.
  *  Other stores charge flat rate per order — user overrides take precedence,
- *  then DB value, then static config. */
+ *  then DB value, then the store's registered flat rate. */
 function getStoreShipping(
   items: WantListItem[],
-  overrides: Record<string, number>
+  overrides: Record<string, number>,
+  storeShippingAud: Record<string, number | null>
 ): { isPerItem: boolean; flatAmount: number | null } {
   const storeId = items[0]?.storeId ?? "";
   if (storeId === "ebay_au") {
@@ -230,7 +230,7 @@ function getStoreShipping(
     return { isPerItem: false, flatAmount: overrides[storeId] };
   }
   const fromDb = items.find((i) => i.shippingAud !== null)?.shippingAud;
-  const flatAmount = fromDb !== undefined ? fromDb : (STORE_FLAT_SHIPPING_AUD[storeId] ?? null);
+  const flatAmount = fromDb !== undefined ? fromDb : (storeShippingAud[storeId] ?? null);
   return { isPerItem: false, flatAmount };
 }
 
@@ -498,7 +498,7 @@ function OptimiseModal({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function WantListView() {
+export function WantListView({ storeShippingAud }: { storeShippingAud: Record<string, number | null> }) {
   const { items, removeItem, addItem, clearAll, totalCount, storeShippingOverrides, setStoreShipping } = useWantList();
   const byStore = groupByStore(items);
   const [optimiseOpen, setOptimiseOpen] = useState(false);
@@ -622,7 +622,7 @@ export function WantListView() {
   let grandPostage = 0;
   for (const storeItems of byStore.values()) {
     grandCards += storeItems.reduce((s, i) => s + i.priceAud, 0);
-    const { isPerItem, flatAmount } = getStoreShipping(storeItems, storeShippingOverrides);
+    const { isPerItem, flatAmount } = getStoreShipping(storeItems, storeShippingOverrides, storeShippingAud);
     if (isPerItem) {
       grandPostage += storeItems.reduce((s, i) => s + (i.shippingAud ?? 0), 0);
     } else {
@@ -630,9 +630,10 @@ export function WantListView() {
     }
   }
   const grandTotal = grandCards + grandPostage;
-  const hasUnknownPostage = Array.from(byStore.values()).some(
-    (storeItems) => !getStoreShipping(storeItems, storeShippingOverrides).isPerItem && getStoreShipping(storeItems, storeShippingOverrides).flatAmount === null
-  );
+  const hasUnknownPostage = Array.from(byStore.values()).some((storeItems) => {
+    const shipping = getStoreShipping(storeItems, storeShippingOverrides, storeShippingAud);
+    return !shipping.isPerItem && shipping.flatAmount === null;
+  });
 
   function handlePrintingChange(item: WantListItem, p: StorePrinting) {
     removeItem(item.id);
@@ -696,7 +697,7 @@ export function WantListView() {
       ) : (
         <div className="space-y-6 mb-8">
           {Array.from(byStore.entries()).map(([storeName, storeItems]) => {
-            const { isPerItem, flatAmount } = getStoreShipping(storeItems, storeShippingOverrides);
+            const { isPerItem, flatAmount } = getStoreShipping(storeItems, storeShippingOverrides, storeShippingAud);
             const itemsTotal = storeItems.reduce((s, i) => s + i.priceAud, 0);
             const perItemPostage = isPerItem
               ? storeItems.reduce((s, i) => s + (i.shippingAud ?? 0), 0)

@@ -22,7 +22,7 @@ import { todayISO, matchRate } from "../lib/utils.js";
 import { CardMatcher } from "../matching/card-matcher.js";
 import { MtgMateScraper } from "./mtgmate.js";
 import { ShopifyScraper } from "./shopify.js";
-import { SHOPIFY_STORES } from "./shopify-stores.config.js";
+import { shopifyStores } from "./stores.config.js";
 import { seedStores } from "../seed.js";
 import type { BaseScraper } from "./base-scraper.js";
 import type { ScrapedCard } from "@mtg-au/shared";
@@ -31,12 +31,12 @@ import { logger } from "../lib/logger.js";
 const log = logger.child({ component: "run-all" });
 
 // ── Scraper registry ──────────────────────────────────────────────────────────
-// To add a new Shopify store, add an entry to shopify-stores.config.ts.
+// To add a new Shopify store, add an entry to stores.config.ts.
 // Non-Shopify scrapers are registered here manually.
 export const SCRAPERS: Record<string, () => BaseScraper> = {
   mtg_mate: () => new MtgMateScraper(),
   ...Object.fromEntries(
-    SHOPIFY_STORES.map((config) => [config.id, () => new ShopifyScraper(config)])
+    shopifyStores().map((config) => [config.id, () => new ShopifyScraper(config)])
   ),
 };
 
