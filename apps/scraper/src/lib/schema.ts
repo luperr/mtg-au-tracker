@@ -116,6 +116,7 @@ export const stores = pgTable("stores", {
   baseUrl: text("base_url").notNull(),
   scraperEnabled: boolean("scraper_enabled").notNull().default(false),
   logoUrl: text("logo_url"),                               // custom logo URL; null falls back to favicon service
+  flatShippingAud: text("flat_shipping_aud"),              // flat postage estimate; null = per-item/unknown (e.g. eBay)
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

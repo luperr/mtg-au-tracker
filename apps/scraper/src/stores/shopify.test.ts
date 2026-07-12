@@ -6,7 +6,7 @@ import {
   isSkippedVariant,
   mapProduct,
 } from "./shopify.js";
-import type { ShopifyStoreConfig } from "./shopify-stores.config.js";
+import type { ShopifyStoreConfig } from "./stores.config.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

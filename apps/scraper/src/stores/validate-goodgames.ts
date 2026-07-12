@@ -20,7 +20,7 @@
  */
 
 import { ShopifyScraper } from "./shopify.js";
-import { SHOPIFY_STORES } from "./shopify-stores.config.js";
+import { shopifyStores } from "./stores.config.js";
 import { CardMatcher } from "../matching/card-matcher.js";
 import type { ScrapedCard } from "@mtg-au/shared";
 import type { MatchResult } from "../matching/card-matcher.js";
@@ -57,7 +57,7 @@ async function main() {
   const matcher = new CardMatcher();
   await matcher.build();
 
-  const scraper = new ShopifyScraper(SHOPIFY_STORES.find((s) => s.id === "good_games")!);
+  const scraper = new ShopifyScraper(shopifyStores().find((s) => s.id === "good_games")!);
   const results: ValidatedCard[] = [];
   let pageCount = 0;
 

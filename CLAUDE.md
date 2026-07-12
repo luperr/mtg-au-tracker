@@ -89,17 +89,17 @@ Drizzle ORM schema — **source of truth for DB structure**.
 Tables:
 - **`cards`** — One row per unique MTG game object (oracle_id). ~32,330 rows.
 - **`printings`** — One row per physical card version. ~141,656 rows. Has `card_id` FK, set code, foil flag, USD reference price, `released_at`.
-- **`stores`** — Australian retailers + eBay AU. Seeded manually.
+- **`stores`** — Australian retailers + eBay AU, including `flat_shipping_aud`. Seeded from `STORE_REGISTRY` (`apps/scraper/src/stores/stores.config.ts`).
 - **`store_prices`** — Current prices from stores/eBay. Overwritten each scrape run.
 - **`price_history`** — Daily snapshots. Append-only.
 - **`unmatched_cards`** — Scraped listings that couldn't be matched to a Scryfall printing.
 - **`ebay_search_log`** — Tracks when each card name was last searched on eBay + result count. Drives tiered eBay scheduler.
 - **`card_searches`** — Append-only log of user search queries. `card_id` FK populated from top search result. Powers demand-gap analytics (cards searched but not in stock anywhere).
 
-### `apps/scraper/src/stores/shopify.ts` + `shopify-stores.config.ts`
-Generic Shopify scraper — one class drives all 21 Shopify-based stores via config. Shopify's `products.json` API is used directly (no HTML scraping). SKU-based matching significantly improves match rates. `goodgames.ts` was replaced by this.
+### `apps/scraper/src/stores/shopify.ts` + `stores.config.ts`
+Generic Shopify scraper — one class drives all Shopify-based stores via config. Shopify's `products.json` API is used directly (no HTML scraping). SKU-based matching significantly improves match rates. `goodgames.ts` was replaced by this.
 
-Active Shopify stores: good_games, gameology, plenty_of_games, games_portal, guf, inn_games, irresistible_force, legends_and_collectables, lots_moore, mana_market, pro_gamers, rhystic_nostalgia, tabernacle_games, cardhouse, tcg_singles, chromatic_games, general_games, elemental_arcade, ronin_games, from_the_deep, crit_hit.
+`stores.config.ts` is the single source of truth for store registration — see [Adding a new Shopify store scraper](#adding-a-new-shopify-store-scraper) below. `shopifyStores()` derives the active Shopify store list (currently 32) from `STORE_REGISTRY`; `seedStores()` (`apps/scraper/src/seed.ts`) and the web app's shipping fallback (`apps/web/src/lib/store-shipping.ts`) derive from the same file, so a store exists in exactly one place.
 
 ### `apps/scraper/src/stores/mtgmate.ts`
 MTG Mate HTML scraper.
@@ -168,7 +168,7 @@ Single component for all outbound store buy links. Owns:
 - Correct `rel="noopener noreferrer"` and new-tab behaviour
 
 ### `apps/web/src/lib/store-shipping.ts`
-Flat-rate postage per store (AUD), keyed by `store_id`. Fallback when DB doesn't supply `shipping_aud`. eBay is `null` (per-item shipping).
+`getStoreShippingRates()` — flat-rate postage per store (AUD), keyed by `store_id`, read from `stores.flat_shipping_aud` (seeded from `STORE_REGISTRY` in `stores.config.ts`) and cached in memory for an hour. Fallback when a store_prices row doesn't supply `shipping_aud`. eBay is `null` (per-item shipping).
 
 ---
 
@@ -217,16 +217,19 @@ See `.env.example` for all variables. Key ones:
 
 ## Adding a new Shopify store scraper
 
-Any AU MTG store running Shopify can be added with config changes only — no new scraper code.
+Any AU MTG store running Shopify can be added with a config change only — no new scraper code.
 
-1. **`apps/scraper/src/stores/shopify-stores.config.ts`** — add entry to `SHOPIFY_STORES`:
+1. **`apps/scraper/src/stores/stores.config.ts`** — add one entry to `STORE_REGISTRY`:
    ```ts
-   { id: "store_id", baseUrl: "https://store.com.au", collectionHandle: "magic-the-gathering-singles" }
+   {
+     id: "store_id", name: "Store Name", baseUrl: "https://store.com.au", scraperEnabled: true, logoUrl: null,
+     flatShippingAud: 6.50, // null if postage varies per item
+     shopify: { collectionHandle: "magic-the-gathering-singles" },
+   }
    ```
-2. **`apps/scraper/src/seed.ts`** — add entry to `STORES` with `scraperEnabled: true`
-3. **`apps/web/src/lib/store-shipping.ts`** — add flat-rate postage to `STORE_FLAT_SHIPPING_AUD` (use `null` if postage varies per item)
-4. Seed the DB: `docker compose run --rm scraper pnpm --filter @mtg-au/scraper seed`
-5. Test: `docker compose run --rm scraper pnpm --filter @mtg-au/scraper scrape:stores`
+   This one entry drives the scraper (via `shopifyStores()`), the DB seed, and the web app's shipping fallback — no other files to edit.
+2. Seed the DB: `docker compose run --rm scraper pnpm --filter @mtg-au/scraper seed`
+3. Test: `docker compose run --rm scraper pnpm --filter @mtg-au/scraper scrape:stores`
 
 To find the collection handle, browse to `/collections.json` on the store's domain and look for the MTG singles collection slug.
 

@@ -1,8 +1,8 @@
 /**
  * Generic Shopify scraper for Australian MTG stores.
  *
- * Any store running Shopify can be added by creating a ShopifyStoreConfig entry
- * in shopify-stores.config.ts — no scraper code changes needed.
+ * Any store running Shopify can be added by creating a registry entry with a
+ * `shopify` block in stores.config.ts — no scraper code changes needed.
  *
  * Tested stores:
  *   - Good Games   (tcg.goodgames.com.au)
@@ -28,7 +28,7 @@
 
 import { type ScrapedCard, normaliseCondition, stripVariant, extractTreatment } from "@mtg-au/shared";
 import { BaseScraper } from "./base-scraper.js";
-import type { ShopifyStoreConfig } from "./shopify-stores.config.js";
+import type { ShopifyStoreConfig } from "./stores.config.js";
 import { logger } from "../lib/logger.js";
 
 const PAGE_SIZE = 250;
