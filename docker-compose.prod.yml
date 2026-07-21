@@ -23,7 +23,8 @@ services:
       - backend
 
   scraper:
-    build:
+    image: ${IMAGE_REGISTRY:-ghcr.io/luperr}/scrymarket-scraper:${IMAGE_TAG:-latest}
+    build:                       # fallback only — normal deploys pull, never build
       context: .
       dockerfile: docker/Dockerfile.scraper
     user: "1002:1002"
@@ -62,7 +63,8 @@ services:
       - backend
 
   web:
-    build:
+    image: ${IMAGE_REGISTRY:-ghcr.io/luperr}/scrymarket-web:${IMAGE_TAG:-latest}
+    build:                       # fallback only — normal deploys pull, never build
       context: .
       dockerfile: docker/Dockerfile.web
     user: "1001:1001"

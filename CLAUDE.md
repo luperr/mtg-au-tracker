@@ -22,7 +22,7 @@ The goal: a self-hosted, self-sustaining price tracker for AU MTG players to com
 | Scheduling | `node-cron` (pinned to `Australia/Sydney` timezone) |
 | Web app | Next.js 15 (App Router) |
 | Analytics | Umami (self-hosted, custom events) |
-| Deployment | Docker Compose on Proxmox LXC, public via Cloudflare tunnel |
+| Deployment | Images built+pushed to GHCR by GitHub Actions; server pulls via Docker Compose on Proxmox LXC, public via Cloudflare tunnel |
 
 ---
 
@@ -212,6 +212,28 @@ See `.env.example` for all variables. Key ones:
 | `USER_AGENT` | HTTP User-Agent for scraping | `Scrymarket/1.0` |
 | `AUD_USD_RATE` | Static USD→AUD rate | `0.65` |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Token for `cloudflared` tunnel service | — |
+| `IMAGE_REGISTRY` | Registry+namespace for prod images (ECR-swap lever) | `ghcr.io/luperr` |
+| `IMAGE_TAG` | Which prod image to run; `main-<sha>` to pin/rollback | `latest` |
+
+---
+
+## Deployment
+
+Images are **built and pushed to GHCR by GitHub Actions** (`.github/workflows/deploy-images.yml`)
+on every merge to `main` — the server never builds. Deploying is a pull:
+
+```bash
+# On the server (repo checkout at /opt/mtg-au-tracker):
+./scripts/deploy.sh                 # deploy :latest
+./scripts/deploy.sh main-abc1234    # pin/rollback to a specific image tag
+```
+
+`deploy.sh` runs `git pull` (refreshes compose + migration SQL) → `docker compose pull` →
+`db:migrate` (before restart) → `up -d`. `docker-compose.prod.yml` references images via
+`${IMAGE_REGISTRY:-ghcr.io/luperr}/scrymarket-{web,scraper}:${IMAGE_TAG:-latest}`; the
+`build:` blocks remain only as an emergency fallback. This is deliberately AWS-ready: the
+image is the deploy artifact, migrations are a discrete command, and `IMAGE_REGISTRY` makes
+GHCR→ECR a config swap. Full runbook: `docs/prod-release.md`.
 
 ---
 

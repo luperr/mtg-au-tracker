@@ -1,0 +1,59 @@
+name: Build & push images
+
+# Builds the scraper + web images and pushes them to GHCR on every merge to main.
+# The server never builds — it pulls these images via scripts/deploy.sh.
+# Full typecheck/test already ran on the PR (ci.yml) before merge, so this workflow
+# only builds the already-green main.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-push:
+    name: Build & push (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: scraper
+            image: ghcr.io/luperr/scrymarket-scraper
+            dockerfile: docker/Dockerfile.scraper
+          - name: web
+            image: ghcr.io/luperr/scrymarket-web
+            dockerfile: docker/Dockerfile.web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ matrix.image }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=main-
+          # main-<shortsha> is immutable — deploy.sh <tag> uses it to pin/rollback
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

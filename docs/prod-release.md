@@ -11,21 +11,41 @@
 
 ---
 
+## How deploys work now
+
+Images are **built and pushed to GHCR by GitHub Actions** on every merge to `main`
+(`.github/workflows/deploy-images.yml`) — the server never builds. Deploying is a
+**pull**, driven by `scripts/deploy.sh`.
+
+Image references in `docker-compose.prod.yml` are registry-agnostic:
+
+| Var | Default | Purpose |
+|---|---|---|
+| `IMAGE_REGISTRY` | `ghcr.io/luperr` | Registry + namespace. Single lever for a future ECR swap. |
+| `IMAGE_TAG` | `latest` | Which image to run. Set to `main-<sha>` to pin or roll back. |
+
+Both are optional (inline defaults in the compose file); `deploy.sh` sets `IMAGE_TAG`
+for you from its first argument.
+
+**One-time GHCR access:** the `scrymarket-scraper` / `scrymarket-web` packages must be
+readable by the server. Simplest is to set both packages to **public** visibility in the
+repo's GitHub Packages settings (they're just compiled artifacts). If you keep them
+private, run once on the server:
+`echo <PAT-with-read:packages> | docker login ghcr.io -u luperr --password-stdin`.
+
+---
+
 ## Standard release (code changes only, no migration)
 
 ```bash
-cd /opt/mtg-au-tracker
+# On the server (repo checkout at /opt/mtg-au-tracker):
+./scripts/deploy.sh
+```
 
-# 1. Pull latest
-git pull
+That's it — `deploy.sh` runs `git pull` (to refresh the compose file + migration SQL),
+`docker compose pull web scraper`, `db:migrate`, then `up -d` and prints `ps`. Then:
 
-# 2. Rebuild changed services
-docker compose -f docker-compose.prod.yml build web scraper
-
-# 3. Restart
-docker compose -f docker-compose.prod.yml up -d
-
-# 4. Verify
+```bash
 docker compose -f docker-compose.prod.yml logs web --tail=50
 docker compose -f docker-compose.prod.yml logs scraper --tail=50
 ```
@@ -34,21 +54,23 @@ docker compose -f docker-compose.prod.yml logs scraper --tail=50
 
 ## Release with a DB migration
 
-Run the migration **before** restarting services. A running web container will
-continue serving the old schema while the migration applies cleanly.
+`deploy.sh` **already runs `db:migrate` before `up -d`** on every deploy — the migration
+applies while the old web container keeps serving the old schema, then services restart.
+So a migration release is the same `./scripts/deploy.sh`. The migration SQL is baked into
+the pulled scraper image, so there is no "rebuild first" caveat anymore — the pulled image
+*is* the fixed image.
 
-> **Important:** `db:migrate` uses whatever migration files are baked into the
-> running scraper image. If this release **modifies an existing migration file**
-> (not just adds a new one), rebuild the scraper image first so `db:migrate`
-> picks up the fixed files — then proceed as normal.
+For a migration you want to eyeball before restarting, run the steps by hand:
 
 ```bash
 cd /opt/mtg-au-tracker
+git pull --ff-only
+export IMAGE_TAG=latest   # or main-<sha>
 
-# 1. Pull latest
-git pull
+# 1. Pull the new images
+docker compose -f docker-compose.prod.yml pull web scraper
 
-# 2. Apply migration (safe to run against live DB)
+# 2. Apply migration (safe against live DB)
 docker compose -f docker-compose.prod.yml run --rm scraper \
   pnpm --filter @mtg-au/scraper db:migrate
 
@@ -57,13 +79,21 @@ docker compose -f docker-compose.prod.yml exec db \
   psql -U mtg -d mtg_tracker -c \
   "SELECT version, created_at FROM drizzle.__drizzle_migrations ORDER BY created_at DESC LIMIT 5;"
 
-# 4. Rebuild and restart
+# 4. Restart
+docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml ps
+```
+
+---
+
+## Emergency: build on the server
+
+Building on the server is no longer the deploy path, but the `build:` blocks remain in
+`docker-compose.prod.yml` as a fallback (e.g. GHCR is down). To use it:
+
+```bash
 docker compose -f docker-compose.prod.yml build web scraper
 docker compose -f docker-compose.prod.yml up -d
-
-# 5. Verify services are healthy
-docker compose -f docker-compose.prod.yml ps
-docker compose -f docker-compose.prod.yml logs web --tail=50
 ```
 
 ---
@@ -95,11 +125,16 @@ Expected: ~32k cards, ~141k printings, ~700+ sets with `set_type` populated.
 
 ### Code-only rollback
 
+Re-deploy the previous image tag — no rebuild, no revert commit needed. Find the prior
+`main-<sha>` tag under the repo's GitHub Packages (or from the earlier deploy log):
+
 ```bash
-git revert HEAD   # or: git checkout <previous-commit>
-docker compose -f docker-compose.prod.yml build web scraper
-docker compose -f docker-compose.prod.yml up -d
+./scripts/deploy.sh main-abc1234
 ```
+
+`deploy.sh` still runs `db:migrate` on rollback; that's a no-op if the older image's
+migrations are already applied. Only revert the code in git if the bad change also needs
+backing out of `main`.
 
 ### Migration rollback
 
