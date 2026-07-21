@@ -24,6 +24,7 @@
 
 import type { ScrapedCard } from "@mtg-au/shared";
 import type { EbayItemSummary } from "./browse-client.js";
+import { emptySetRecognizer, recognizeSetFromDb, type SetRecognizer } from "./set-recognizer.js";
 
 // ── Skip filters ──────────────────────────────────────────────────────────────
 // Listings matching any of these patterns are not singles and should be skipped.
@@ -156,10 +157,15 @@ export function extractCondition(title: string, ebayCondition: string): string |
 }
 
 // ── Set name extraction ───────────────────────────────────────────────────────
-// Common set abbreviations and names used in eBay titles.
-// Maps title keyword → Scryfall set name (not code — code lookup happens in CardMatcher).
+// Primary recognition is DB-derived (see set-recognizer.ts): any literal Scryfall
+// set name or set code present in the title is matched against data loaded from
+// the DB at import time, so a newly imported set is recognised with zero code
+// changes. SLANG_SET_PATTERNS below is only a fallback for genuine community
+// abbreviations that don't literally match any Scryfall set code or name — e.g.
+// "3rd ed" (real code "3ed"), "fca" (Final Fantasy slang), "JTMS"-style card-tied
+// hints. New sets should almost never need an entry added here.
 
-const SET_PATTERNS: Array<[RegExp, string]> = [
+const SLANG_SET_PATTERNS: Array<[RegExp, string]> = [
   // Common abbreviations
   [/\balpha\b/i, "Limited Edition Alpha"],
   [/\bbeta\b/i, "Limited Edition Beta"],
@@ -304,8 +310,11 @@ const SET_PATTERNS: Array<[RegExp, string]> = [
   [/\bm15\b/i, "Magic 2015"],
 ];
 
-export function extractSetName(title: string): string | null {
-  for (const [pattern, name] of SET_PATTERNS) {
+export function extractSetName(title: string, recognizer: SetRecognizer = emptySetRecognizer()): string | null {
+  const fromDb = recognizeSetFromDb(title, recognizer);
+  if (fromDb) return fromDb;
+
+  for (const [pattern, name] of SLANG_SET_PATTERNS) {
     if (pattern.test(title)) return name;
   }
   return null;
@@ -435,7 +444,7 @@ export function extractPrice(item: EbayItemSummary): string | null {
  * Transform an eBay item summary into a ScrapedCard.
  * Returns null if the listing should be skipped.
  */
-export function transformEbayItem(item: EbayItemSummary): ScrapedCard | null {
+export function transformEbayItem(item: EbayItemSummary, recognizer: SetRecognizer = emptySetRecognizer()): ScrapedCard | null {
   // Skip sealed product by eBay's own condition label — most reliable check
   const conditionLower = (item.condition ?? "").toLowerCase();
   if (conditionLower.includes("sealed") || conditionLower.includes("new/factory")) return null;
@@ -453,7 +462,7 @@ export function transformEbayItem(item: EbayItemSummary): ScrapedCard | null {
   const finish = extractFinish(item.title);
   const isFoil = finish !== "nonfoil";
   const condition = extractCondition(item.title, item.condition ?? "");
-  const setName = extractSetName(item.title);
+  const setName = extractSetName(item.title, recognizer);
   const rawName = extractCardName(item.title, setName);
 
   // If card name is too short after cleaning, it's likely junk

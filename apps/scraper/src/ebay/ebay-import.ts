@@ -32,6 +32,7 @@ import { todayISO, matchRate } from "../lib/utils.js";
 import { CardMatcher } from "../matching/card-matcher.js";
 import { searchEbayByCardName } from "./browse-client.js";
 import { transformEbayItem } from "./transform.js";
+import { buildSetRecognizer, type SetRecognizer } from "./set-recognizer.js";
 import type { EbayItemSummary } from "./browse-client.js";
 import { logger } from "../lib/logger.js";
 import { computeMarketStats } from "../market/compute-market-stats.js";
@@ -183,6 +184,7 @@ function processItem(
   item: EbayItemSummary,
   seenIds: Set<string>,
   matcher: CardMatcher,
+  setRecognizer: SetRecognizer,
   cardPrices: PriceRow[],
   batches: Batches,
   stats: Stats,
@@ -196,7 +198,7 @@ function processItem(
   }
   seenIds.add(item.itemId);
 
-  const card = transformEbayItem(item);
+  const card = transformEbayItem(item, setRecognizer);
   if (!card) {
     stats.skipped++;
     return;
@@ -242,10 +244,11 @@ export async function runEbayImport(): Promise<void> {
 
   const today = todayISO();
 
-  // Build card matcher index once
+  // Build card matcher index and set recognizer once
   log.info("Building card matcher index");
   const matcher = new CardMatcher();
   await matcher.build();
+  const setRecognizer = await buildSetRecognizer();
 
   // Determine which cards to search today
   log.info("Querying cards due for search today");
@@ -297,7 +300,7 @@ export async function runEbayImport(): Promise<void> {
       // Fetch and process eBay results into per-card buffer
       for await (const item of searchEbayByCardName(cardName)) {
         rawCount++;
-        processItem(item, seenIds, matcher, cardPrices, batches, stats, today);
+        processItem(item, seenIds, matcher, setRecognizer, cardPrices, batches, stats, today);
         if (batches.unmatched.length >= BATCH_SIZE) {
           await flushAll(batches);
         }
