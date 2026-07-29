@@ -13,11 +13,13 @@ export function normaliseCondition(raw: string): string {
     case "mint":
     case "m":
     case "regular":        // MTG Mate uses "Regular" for NM
+    case "nm-mint":        // CrystalCommerce
       return "NM";
 
     // Lightly Played
     case "lightly played":
     case "light played":
+    case "light play":     // CrystalCommerce
     case "lp":
     case "excellent":
     case "ex":
@@ -26,6 +28,7 @@ export function normaliseCondition(raw: string): string {
     // Moderately Played
     case "moderately played":
     case "moderate played":
+    case "moderate play":  // CrystalCommerce
     case "mp":
     case "good":
     case "gd":
@@ -34,6 +37,7 @@ export function normaliseCondition(raw: string): string {
     // Heavily Played
     case "heavily played":
     case "heavy played":
+    case "heavy play":     // CrystalCommerce
     case "hp":
     case "played":
       return "HP";

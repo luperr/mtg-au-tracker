@@ -101,6 +101,24 @@ Generic Shopify scraper — one class drives all Shopify-based stores via config
 
 `stores.config.ts` is the single source of truth for store registration — see [Adding a new Shopify store scraper](#adding-a-new-shopify-store-scraper) below. `shopifyStores()` derives the active Shopify store list (currently 32) from `STORE_REGISTRY`; `seedStores()` (`apps/scraper/src/seed.ts`) and the web app's shipping fallback (`apps/web/src/lib/store-shipping.ts`) derive from the same file, so a store exists in exactly one place.
 
+### `apps/scraper/src/stores/crystalcommerce.ts`
+Generic CrystalCommerce scraper — one class drives all stores on the CrystalCommerce
+platform (Rails), config-driven the same way `shopify.ts` is. First store on it: The Games Cube.
+
+CrystalCommerce has no products API, so this is HTML scraping via Cheerio. Every MTG singles
+category is linked from the homepage nav mega-menu (~437 for The Games Cube), so category
+discovery is a single request. Each category is then paged through with
+`?filtered=1&filter_by_stock=in-stock`, which cuts a set from ~120 products over 4 pages to
+~17 on one — a full run is ~700 requests rather than ~5000.
+
+Set name comes from the product's category, not the card. Finish/treatment come from `" - "`
+title suffixes drawn from a fixed vocabulary (`- Foil`, `- Foil - Borderless`, `- Extended Art`);
+only known suffixes are stripped, since real card names contain dashes too. Non-English variants
+are skipped. The platform drops connections under load, so pages retry 3× with 2s/5s/10s backoff.
+
+Add a CrystalCommerce store with a `crystalCommerce: { categoryPrefix, maxPagesPerCategory }`
+block in `STORE_REGISTRY` — no scraper code changes.
+
 ### `apps/scraper/src/stores/mtgmate.ts`
 MTG Mate HTML scraper.
 
@@ -233,6 +251,22 @@ Any AU MTG store running Shopify can be added with a config change only — no n
 
 To find the collection handle, browse to `/collections.json` on the store's domain and look for the MTG singles collection slug.
 
+## Adding a new CrystalCommerce store scraper
+
+Same deal for stores on CrystalCommerce (Rails — check for `crystalcommerce` in the page source,
+or a `_secure_frontend_session_id` cookie). Add one `STORE_REGISTRY` entry:
+
+```ts
+{
+  id: "store_id", name: "Store Name", baseUrl: "https://store.com.au", scraperEnabled: true, logoUrl: null,
+  flatShippingAud: 6.50,
+  crystalCommerce: { categoryPrefix: "magic_singles", maxPagesPerCategory: 25 },
+}
+```
+
+`categoryPrefix` is the category-slug prefix for MTG singles — find it by looking at any singles
+product URL (`/catalog/magic_singles-standard-bloomburrow/card_name/693640` → `magic_singles`).
+
 ---
 
 ## What's been built
@@ -244,6 +278,7 @@ To find the collection handle, browse to `/collections.json` on the store's doma
 - [x] Card matcher with exact / name-only / fuzzy / collector-number matching
 - [x] eBay AU import pipeline (OAuth → Browse API → title parser → DB)
 - [x] Generic Shopify scraper — 21 AU stores, config-driven
+- [x] Generic CrystalCommerce scraper — config-driven, The Games Cube
 - [x] MTG Mate HTML scraper
 - [x] Next.js web UI — search, card detail, price history charts
 - [x] Want List with per-store postage editing and Branch-and-Bound optimiser

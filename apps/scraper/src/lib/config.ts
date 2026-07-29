@@ -74,3 +74,9 @@ export const USER_AGENT =
 
 export const MTGMATE_BASE_URL = "https://www.mtgmate.com.au";
 export const MTGMATE_CONCURRENCY = 3;
+
+// ── CrystalCommerce ──────────────────────────────────────────────────────────
+
+/** CrystalCommerce drops connections under sustained load — retry before skipping a page. */
+export const CC_MAX_RETRIES = 3;
+export const CC_RETRY_BACKOFF_MS = [2_000, 5_000, 10_000];

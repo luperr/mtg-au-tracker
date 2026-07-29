@@ -8,6 +8,9 @@
  *   - fetchPage(url)                   — load a page, wait for CF challenge, return HTML
  *   - fetchPageWaitFor(url, selector)  — same, but also waits for a CSS selector to
  *                                        appear (needed for React-rendered content)
+ *   - fetchHtml(url)                   — fetch an HTML page. Plain `fetch()` first,
+ *                                        falling back to fetchPage() (browser) if the
+ *                                        store turns out to be behind a bot challenge.
  *   - fetchJson<T>(url)                — fetch a JSON endpoint. Tries a plain `fetch()`
  *                                        first (no browser cost); if that hits a bot
  *                                        challenge (403/503 or a Cloudflare interstitial
@@ -40,6 +43,7 @@ export abstract class BaseScraper implements StoreScraper {
   // Once a plain fetch() hits a bot challenge, remember it for the rest of this
   // run so we don't keep re-discovering the same block on every subsequent call.
   private useBrowserForJson = false;
+  private useBrowserForHtml = false;
 
   private async getContext(): Promise<BrowserContext> {
     if (!this.context) {
@@ -121,16 +125,43 @@ export abstract class BaseScraper implements StoreScraper {
     return this.fetchJsonViaBrowser<T>(url);
   }
 
+  // Same trade-off as fetchJson, for HTML pages: plain fetch is ~30x cheaper
+  // than a Chromium page load, which matters for stores scraped a page at a
+  // time. Falls back to fetchPage() for the rest of the run on a challenge.
+  protected async fetchHtml(url: string): Promise<string> {
+    if (!this.useBrowserForHtml) {
+      await this.rateLimit();
+      try {
+        const html = await this.fetchTextPlain(url, "text/html");
+        this.lastRequestAt = Date.now();
+        return html;
+      } catch (err) {
+        if (!(err instanceof ChallengeDetectedError)) throw err;
+        log.warn({ url }, "Plain fetch hit a bot challenge — switching to browser fetch for this store");
+        this.useBrowserForHtml = true;
+      }
+    }
+
+    return this.fetchPage(url);
+  }
+
   protected async fetchJsonPlain<T>(url: string): Promise<T> {
+    const text = await this.fetchTextPlain(url, "application/json");
+    return JSON.parse(text) as T;
+  }
+
+  // Plain fetch() with bot-challenge detection. Throws ChallengeDetectedError
+  // when the response looks like an interstitial rather than real content.
+  private async fetchTextPlain(url: string, accept: string): Promise<string> {
     const response = await fetch(url, {
-      headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+      headers: { "User-Agent": USER_AGENT, Accept: accept },
     });
 
     if (response.status === 403 || response.status === 503) {
       throw new ChallengeDetectedError(`HTTP ${response.status} — likely bot challenge`);
     }
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status} fetching JSON from ${url}`);
+      throw new Error(`HTTP ${response.status} fetching ${url}`);
     }
 
     const text = await response.text();
@@ -138,7 +169,7 @@ export abstract class BaseScraper implements StoreScraper {
       throw new ChallengeDetectedError("Cloudflare interstitial body");
     }
 
-    return JSON.parse(text) as T;
+    return text;
   }
 
   // Fetch a JSON endpoint by navigating a real browser page (handles Referer/cookies/CF)
