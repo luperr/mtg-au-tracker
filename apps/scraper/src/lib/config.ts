@@ -70,6 +70,13 @@ export const USER_AGENT =
   process.env.USER_AGENT ??
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:120.0) Gecko/20100101 Firefox/120.0";
 
+/**
+ * Timeout for BaseScraper's plain fetch() paths. Node's fetch has no default
+ * timeout, so without this a server that accepts a connection and never
+ * responds stalls a scrape indefinitely. Matches the Playwright page timeouts.
+ */
+export const PLAIN_FETCH_TIMEOUT_MS = 30_000;
+
 // ── MTG Mate ─────────────────────────────────────────────────────────────────
 
 export const MTGMATE_BASE_URL = "https://www.mtgmate.com.au";
@@ -80,3 +87,6 @@ export const MTGMATE_CONCURRENCY = 3;
 /** CrystalCommerce drops connections under sustained load — retry before skipping a page. */
 export const CC_MAX_RETRIES = 3;
 export const CC_RETRY_BACKOFF_MS = [2_000, 5_000, 10_000];
+
+/** Days between full re-scans of every category (vs. only those known to have stock). */
+export const CC_FULL_SCAN_DAYS = Number(process.env.CC_FULL_SCAN_DAYS ?? 7);

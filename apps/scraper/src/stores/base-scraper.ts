@@ -28,7 +28,7 @@
 import { chromium, type Browser, type BrowserContext } from "playwright";
 import type { ScrapedCard, StoreScraper } from "@mtg-au/shared";
 import { logger } from "../lib/logger.js";
-import { USER_AGENT } from "../lib/config.js";
+import { USER_AGENT, PLAIN_FETCH_TIMEOUT_MS } from "../lib/config.js";
 
 const log = logger.child({ component: "base-scraper" });
 
@@ -153,8 +153,12 @@ export abstract class BaseScraper implements StoreScraper {
   // Plain fetch() with bot-challenge detection. Throws ChallengeDetectedError
   // when the response looks like an interstitial rather than real content.
   private async fetchTextPlain(url: string, accept: string): Promise<string> {
+    // Node's fetch() has no default timeout: a server that accepts the
+    // connection and then never responds hangs the whole scrape forever.
+    // Matches the 30s used on the Playwright paths.
     const response = await fetch(url, {
       headers: { "User-Agent": USER_AGENT, Accept: accept },
+      signal: AbortSignal.timeout(PLAIN_FETCH_TIMEOUT_MS),
     });
 
     if (response.status === 403 || response.status === 503) {

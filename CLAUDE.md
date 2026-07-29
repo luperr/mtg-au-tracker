@@ -109,7 +109,10 @@ CrystalCommerce has no products API, so this is HTML scraping via Cheerio. Every
 category is linked from the homepage nav mega-menu (~437 for The Games Cube), so category
 discovery is a single request. Each category is then paged through with
 `?filtered=1&filter_by_stock=in-stock`, which cuts a set from ~120 products over 4 pages to
-~17 on one — a full run is ~700 requests rather than ~5000.
+~17 on one — a full run is ~700 requests rather than ~5000. On top of that, `ProbeCache`
+(same pattern as MTG Mate) means daily runs only revisit categories that had stock, with a
+full rescan every `CC_FULL_SCAN_DAYS` (default 7) to pick up restocks and new sets.
+Cache file: `SCRAPER_CACHE_DIR/crystalcommerce-{storeId}-categories.json`.
 
 Set name comes from the product's category, not the card. Finish/treatment come from `" - "`
 title suffixes drawn from a fixed vocabulary (`- Foil`, `- Foil - Borderless`, `- Extended Art`);

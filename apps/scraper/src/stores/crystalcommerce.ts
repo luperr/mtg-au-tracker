@@ -17,6 +17,10 @@
  *      products across 4 pages down to ~17 on one, so a full run is ~700
  *      requests rather than ~5000. Out-of-stock listings have no price we'd
  *      keep anyway.
+ *      Category cache: the same ProbeCache pattern MTG Mate uses. After a full
+ *      scan, daily runs only revisit categories that had stock, and a full
+ *      rescan every CC_FULL_SCAN_DAYS (default 7) picks up restocks and new
+ *      sets. Cache file: SCRAPER_CACHE_DIR/crystalcommerce-{storeId}-categories.json
  *   3. Parse each <li class="product">. The detail-layout .variants block
  *      carries every in-stock variant with its condition, language, price and
  *      quantity; the add-to-cart form's data-* attributes carry the set name.
@@ -33,14 +37,23 @@
  *     BaseScraper's 500ms pacing.
  */
 
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import * as cheerio from "cheerio";
 import { type ScrapedCard, normaliseCondition } from "@mtg-au/shared";
 import { BaseScraper } from "./base-scraper.js";
 import { logger } from "../lib/logger.js";
-import { CC_MAX_RETRIES, CC_RETRY_BACKOFF_MS } from "../lib/config.js";
+import { CC_MAX_RETRIES, CC_RETRY_BACKOFF_MS, CC_FULL_SCAN_DAYS } from "../lib/config.js";
+import { ProbeCache } from "../lib/probe-cache.js";
 import type { CrystalCommerceStoreConfig } from "./stores.config.js";
 
 const log = logger.child({ component: "crystalcommerce" });
+
+// Cache of category IDs that actually had stock, so daily runs skip the empty ones.
+const _dir = dirname(fileURLToPath(import.meta.url));
+const DEFAULT_CACHE_DIR = join(_dir, "../../data");
+const cacheFile = (storeId: string) =>
+  join(process.env.SCRAPER_CACHE_DIR ?? DEFAULT_CACHE_DIR, `crystalcommerce-${storeId}-categories.json`);
 
 // ── Title suffix vocabulary ───────────────────────────────────────────────────
 // Trailing " - X" segments are only stripped when X is one of these. Anything
@@ -277,13 +290,47 @@ export class CrystalCommerceScraper extends BaseScraper {
       return;
     }
 
-    log.info({ store: this.config.id, categories: categories.length }, "CrystalCommerce scrape plan");
+    // Same ProbeCache pattern MTG Mate uses: after a full scan, daily runs only
+    // revisit the categories that had stock. The difference from MTG Mate is
+    // that an empty category here is transient (sold out), not a permanent 404 —
+    // so the weekly full scan is what brings a restocked category back.
+    const cache = new ProbeCache({
+      filePath: cacheFile(this.config.id),
+      fullScanIntervalDays: CC_FULL_SCAN_DAYS,
+    });
+    await cache.load();
+
+    const isFullScan = cache.needsFullScan();
+    const cachedIds = new Set(cache.getValidKeys());
+    let toScrape = isFullScan ? categories : categories.filter((c) => cachedIds.has(c.id));
+
+    // Category IDs renumbered under us — the cache is useless, rescan everything.
+    if (!isFullScan && toScrape.length === 0) {
+      log.warn({ store: this.config.id }, "Cached categories match none on the site — falling back to a full scan");
+      toScrape = categories;
+    }
+
+    log.info(
+      { store: this.config.id, total: categories.length, scraping: toScrape.length, isFullScan },
+      "CrystalCommerce scrape plan",
+    );
 
     let pagesFetched = 0;
     let yielded = 0;
+    const productiveIds: string[] = [];
 
-    for (const category of categories) {
+    for (const [index, category] of toScrape.entries()) {
       const fallbackSetName = setNameFromSlug(category.slug);
+      let categoryCards = 0;
+
+      // A ~700-request run is long enough that silence is indistinguishable
+      // from a stall — log progress at info level periodically.
+      if (index > 0 && index % 50 === 0) {
+        log.info(
+          { store: this.config.id, done: index, total: toScrape.length, pages: pagesFetched, cards: yielded },
+          "CrystalCommerce progress",
+        );
+      }
 
       for (let page = 1; page <= this.config.maxPagesPerCategory; page++) {
         const html = await this.fetchWithRetry(this.categoryUrl(category, page));
@@ -292,6 +339,7 @@ export class CrystalCommerceScraper extends BaseScraper {
 
         const cards = parseCategoryPage(html, this.config.baseUrl, fallbackSetName);
         for (const card of cards) {
+          categoryCards++;
           yielded++;
           yield card;
         }
@@ -299,9 +347,18 @@ export class CrystalCommerceScraper extends BaseScraper {
         if (cards.length === 0 || !hasNextPage(html)) break;
       }
 
-      log.debug({ store: this.config.id, category: category.slug, yielded }, "Category done");
+      if (categoryCards > 0) productiveIds.push(category.id);
+      log.debug({ store: this.config.id, category: category.slug, cards: categoryCards, yielded }, "Category done");
     }
 
-    log.info({ store: this.config.id, categories: categories.length, pages: pagesFetched, cards: yielded }, "CrystalCommerce scrape complete");
+    if (isFullScan) {
+      await cache.save(productiveIds);
+      log.info({ store: this.config.id, categories_cached: productiveIds.length }, "CrystalCommerce category cache updated");
+    }
+
+    log.info(
+      { store: this.config.id, categories: toScrape.length, pages: pagesFetched, cards: yielded, isFullScan },
+      "CrystalCommerce scrape complete",
+    );
   }
 }
