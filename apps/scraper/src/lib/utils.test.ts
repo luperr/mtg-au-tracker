@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { todayISO, matchRate } from "./utils.js";
+import { todayISO, matchRate, mapWithConcurrency } from "./utils.js";
 
 describe("todayISO", () => {
   afterEach(() => {
@@ -45,5 +45,73 @@ describe("matchRate", () => {
   it("handles typical scraper values", () => {
     expect(matchRate(4500, 5000)).toBe(90);
     expect(matchRate(142, 150)).toBe(94.7);
+  });
+});
+
+describe("mapWithConcurrency", () => {
+  const tick = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  it("returns results in input order regardless of completion order", async () => {
+    // Reverse the delays so completion order is the opposite of input order.
+    const items = [1, 2, 3, 4, 5];
+    const result = await mapWithConcurrency(items, 3, async (n) => {
+      await tick((6 - n) * 10);
+      return n * 2;
+    });
+    expect(result).toEqual([2, 4, 6, 8, 10]);
+  });
+
+  it("never exceeds the concurrency limit", async () => {
+    let inFlight = 0;
+    let peak = 0;
+
+    await mapWithConcurrency(Array.from({ length: 20 }, (_, i) => i), 3, async () => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await tick(5);
+      inFlight--;
+    });
+
+    expect(peak).toBe(3);
+  });
+
+  it("pulls the next item as soon as a worker frees up, rather than waiting for a batch", async () => {
+    // One slow item alongside many fast ones. With fixed batching the fast
+    // items behind the slow one would be blocked; a pool keeps working.
+    const order: number[] = [];
+    await mapWithConcurrency([0, 1, 2, 3, 4, 5], 2, async (n) => {
+      await tick(n === 0 ? 60 : 5);
+      order.push(n);
+    });
+
+    // The slow first item must finish last despite starting first.
+    expect(order[order.length - 1]).toBe(0);
+  });
+
+  it("propagates the first rejection", async () => {
+    await expect(
+      mapWithConcurrency([1, 2, 3], 2, async (n) => {
+        if (n === 2) throw new Error("boom");
+        return n;
+      }),
+    ).rejects.toThrow("boom");
+  });
+
+  it("handles an empty input without running anything", async () => {
+    const fn = vi.fn();
+    await expect(mapWithConcurrency([], 3, fn)).resolves.toEqual([]);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("caps workers at the item count when the limit is larger", async () => {
+    let peak = 0;
+    let inFlight = 0;
+    await mapWithConcurrency([1, 2], 10, async () => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await tick(5);
+      inFlight--;
+    });
+    expect(peak).toBe(2);
   });
 });

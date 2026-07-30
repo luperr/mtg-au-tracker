@@ -35,6 +35,22 @@ const log = logger.child({ component: "base-scraper" });
 /** Thrown by the plain-fetch path when the response looks like a bot challenge. */
 export class ChallengeDetectedError extends Error {}
 
+/**
+ * A transient server-side failure worth retrying as-is (429, 502, 503, 504).
+ *
+ * Deliberately NOT a ChallengeDetectedError: an overloaded origin shedding load
+ * must not latch the scraper onto the browser path, which would only make it
+ * slower and hit the struggling server harder.
+ */
+export class RetryableHttpError extends Error {
+  constructor(readonly status: number, url: string) {
+    super(`HTTP ${status} (retryable) fetching ${url}`);
+  }
+}
+
+/** Statuses that mean "try again shortly", not "you've been blocked". */
+const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
+
 export abstract class BaseScraper implements StoreScraper {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
@@ -150,27 +166,38 @@ export abstract class BaseScraper implements StoreScraper {
     return JSON.parse(text) as T;
   }
 
-  // Plain fetch() with bot-challenge detection. Throws ChallengeDetectedError
-  // when the response looks like an interstitial rather than real content.
+  // Plain fetch() with bot-challenge detection. Classifies on the body first,
+  // then the status, so a Cloudflare interstitial is still recognised whatever
+  // status it arrives with — while a bare 503 from an overloaded origin is
+  // treated as retryable instead of as a block.
   private async fetchTextPlain(url: string, accept: string): Promise<string> {
     // Node's fetch() has no default timeout: a server that accepts the
     // connection and then never responds hangs the whole scrape forever.
     // Matches the 30s used on the Playwright paths.
     const response = await fetch(url, {
-      headers: { "User-Agent": USER_AGENT, Accept: accept },
+      headers: {
+        "User-Agent": USER_AGENT,
+        Accept: accept,
+        // These pages are ~380KB of HTML that gzip to ~49KB. undici sets this
+        // by default, but pinning it keeps the win if that ever changes.
+        "Accept-Encoding": "gzip, deflate, br",
+      },
       signal: AbortSignal.timeout(PLAIN_FETCH_TIMEOUT_MS),
     });
 
-    if (response.status === 403 || response.status === 503) {
-      throw new ChallengeDetectedError(`HTTP ${response.status} — likely bot challenge`);
+    const text = await response.text();
+
+    if (text.includes("Just a moment") || text.includes("cf-browser-verification")) {
+      throw new ChallengeDetectedError("Cloudflare interstitial body");
+    }
+    if (response.status === 403) {
+      throw new ChallengeDetectedError(`HTTP 403 — likely bot challenge`);
+    }
+    if (RETRYABLE_STATUSES.has(response.status)) {
+      throw new RetryableHttpError(response.status, url);
     }
     if (!response.ok) {
       throw new Error(`HTTP ${response.status} fetching ${url}`);
-    }
-
-    const text = await response.text();
-    if (text.includes("Just a moment") || text.includes("cf-browser-verification")) {
-      throw new ChallengeDetectedError("Cloudflare interstitial body");
     }
 
     return text;

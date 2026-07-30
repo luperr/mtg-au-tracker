@@ -17,8 +17,8 @@
 import { fileURLToPath } from "url";
 import { eq } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
-import { BATCH_SIZE } from "../lib/config.js";
-import { todayISO, matchRate } from "../lib/utils.js";
+import { BATCH_SIZE, STORE_CONCURRENCY } from "../lib/config.js";
+import { todayISO, matchRate, mapWithConcurrency } from "../lib/utils.js";
 import { CardMatcher } from "../matching/card-matcher.js";
 import { MtgMateScraper } from "./mtgmate.js";
 import { ShopifyScraper } from "./shopify.js";
@@ -211,28 +211,36 @@ export async function runAllStores(): Promise<void> {
     return;
   }
 
-  log.info({ stores: enabledStores.map((s) => s.id) }, "Starting store scrapes");
+  log.info(
+    { stores: enabledStores.map((s) => s.id), concurrency: STORE_CONCURRENCY },
+    "Starting store scrapes",
+  );
 
-  const health: StoreHealth[] = [];
-
-  for (const store of enabledStores) {
+  // Stores run concurrently so one slow store doesn't serialise the rest — the
+  // Games Cube alone takes ~1h against 33 stores that take minutes. Safe to
+  // share: `matcher` is read-only once built, each store writes only its own
+  // store_id rows, and BaseScraper's rate limiter is per-instance so every store
+  // keeps its own pacing against its own host.
+  //
+  // Errors are caught per store, never rethrown, so one failure can't abort the
+  // others via mapWithConcurrency's fail-fast.
+  const health = await mapWithConcurrency(enabledStores, STORE_CONCURRENCY, async (store) => {
     const factory = SCRAPERS[store.id];
     if (!factory) {
       log.warn({ store: store.id }, "No scraper registered for store — skipping");
-      health.push({ storeId: store.id, total: 0, matched: 0, issue: "error" });
-      continue;
+      return { storeId: store.id, total: 0, matched: 0, issue: "error" as const };
     }
 
     const scraper = factory();
     try {
-      health.push(await runStore(store.id, scraper, matcher));
+      return await runStore(store.id, scraper, matcher);
     } catch (err) {
       log.error({ err, store: store.id }, "Fatal error scraping store");
-      health.push({ storeId: store.id, total: 0, matched: 0, issue: "error" });
+      return { storeId: store.id, total: 0, matched: 0, issue: "error" as const };
     } finally {
       await scraper.close();
     }
-  }
+  });
 
   const unhealthy = health.filter((h) => h.issue !== "ok");
   log.info(

@@ -76,7 +76,9 @@ AUD/USD conversion using a static rate from `AUD_USD_RATE` env var (defaults to 
 
 ## apps/scraper — The data collection service
 
-Runs as a long-lived Docker service. Three cron jobs (all `Australia/Sydney` timezone):
+Runs as a long-lived Docker service. Stores are scraped `STORE_CONCURRENCY` at a time
+(`runAllStores()`), so one slow store doesn't hold up the rest. Three cron jobs (all
+`Australia/Sydney` timezone):
 - **3 AM daily** → Scryfall bulk import (refreshes all card/printing data)
 - **5 AM daily** → Store scrapers (Shopify + MTG Mate)
 - **6 AM daily** → eBay AU price import
@@ -108,11 +110,28 @@ platform (Rails), config-driven the same way `shopify.ts` is. First store on it:
 CrystalCommerce has no products API, so this is HTML scraping via Cheerio. Every MTG singles
 category is linked from the homepage nav mega-menu (~437 for The Games Cube), so category
 discovery is a single request. Each category is then paged through with
-`?filtered=1&filter_by_stock=in-stock`, which cuts a set from ~120 products over 4 pages to
-~17 on one — a full run is ~700 requests rather than ~5000. On top of that, `ProbeCache`
-(same pattern as MTG Mate) means daily runs only revisit categories that had stock, with a
-full rescan every `CC_FULL_SCAN_DAYS` (default 7) to pick up restocks and new sets.
+`?filtered=1&filter_by_stock=in-stock` — out-of-stock listings have no price worth keeping and
+dropping them roughly halves the pages. `ProbeCache` (same pattern as MTG Mate) then means daily
+runs only revisit categories that had stock, with a full rescan every `CC_FULL_SCAN_DAYS`
+(default 7) to pick up restocks and new sets.
 Cache file: `SCRAPER_CACHE_DIR/crystalcommerce-{storeId}-categories.json`.
+
+**It's a big job, and there is no bulk shortcut.** 30 products/page is a hard cap (`per_page`
+and `limit` are ignored) and The Games Cube stocks ~93k listings, so a full sweep is ~3,500
+pages at ~2.3s of server TTFB each. Ruled out: `.json`/`.xml` on catalog routes → 415,
+`/products.json` and Google-feed paths → 404, `Accept: application/json` → 500, and
+`/products/multi_search` returns out-of-stock printings with no in-stock filter (3MB for 5 card
+names — heavier than browsing). Unlike MTG Mate there is no "one request per set" endpoint, so
+the only lever is parallelism via `CC_CONCURRENCY`.
+
+Measured full run at concurrency 3: **88 min**, 3,483 pages, 93,223 listings, 90.2% match rate,
+zero fetch failures. Like-for-like against the same checkpoint, that's **1.65x** faster than
+sequential — well short of 3x, because the store's per-request latency roughly doubles under
+parallel load (it is Passenger-worker-bound, not bandwidth-bound).
+
+**Don't raise `CC_CONCURRENCY` above 3 without re-measuring.** 4-wide benchmarked faster in
+isolation but returned a 503 — the store sheds load. Given latency scales with concurrency,
+expect diminishing returns rather than a linear win. If 503s appear at 3, drop to 2.
 
 Set name comes from the product's category, not the card. Finish/treatment come from `" - "`
 title suffixes drawn from a fixed vocabulary (`- Foil`, `- Foil - Borderless`, `- Extended Art`);
@@ -230,6 +249,9 @@ See `.env.example` for all variables. Key ones:
 | `EBAY_RECENT_MONTHS` | How far back to search by card name | `3` |
 | `EBAY_HIGH_VALUE_USD` | USD threshold for card-name search pass | `50` |
 | `EBAY_DAILY_TARGET` | Max eBay searches per daily run | `4500` |
+| `STORE_CONCURRENCY` | Stores scraped in parallel by `runAllStores()` | `3` |
+| `CC_CONCURRENCY` | CrystalCommerce categories in flight (do not exceed 3) | `3` |
+| `CC_FULL_SCAN_DAYS` | Days between full CrystalCommerce category rescans | `7` |
 | `USER_AGENT` | HTTP User-Agent for scraping | `Scrymarket/1.0` |
 | `AUD_USD_RATE` | Static USD→AUD rate | `0.65` |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Token for `cloudflared` tunnel service | — |

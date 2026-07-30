@@ -90,3 +90,26 @@ export const CC_RETRY_BACKOFF_MS = [2_000, 5_000, 10_000];
 
 /** Days between full re-scans of every category (vs. only those known to have stock). */
 export const CC_FULL_SCAN_DAYS = Number(process.env.CC_FULL_SCAN_DAYS ?? 7);
+
+/**
+ * Categories fetched in parallel. CrystalCommerce serves ~30 products/page at
+ * ~2.3s TTFB, so a full Games Cube sweep is ~3,500 pages. Measured at 3-wide:
+ * 88 min, 1.65x faster than sequential.
+ *
+ * Only 1.65x rather than 3x because the store's latency roughly doubles under
+ * parallel load — it's Passenger-worker-bound. Do not raise without
+ * re-measuring: 4-wide returned a 503, i.e. it sheds load. If 503s show up at
+ * 3, drop to 2.
+ */
+export const CC_CONCURRENCY = Number(process.env.CC_CONCURRENCY ?? 3);
+
+// ── Store orchestration ──────────────────────────────────────────────────────
+
+/**
+ * Stores scraped in parallel by runAllStores(). Stops one slow store (the Games
+ * Cube takes ~1h) from serialising the other 33 behind it.
+ *
+ * Kept low because a store that hits a bot challenge launches its own Chromium
+ * via BaseScraper — this bounds the worst-case number of live browsers.
+ */
+export const STORE_CONCURRENCY = Number(process.env.STORE_CONCURRENCY ?? 3);

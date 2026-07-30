@@ -43,8 +43,13 @@ async function main() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main().catch((err) => {
-    log.error({ err }, "Run-store failed");
-    process.exit(1);
-  });
+  main()
+    // The postgres client keeps the event loop alive, so without an explicit
+    // exit a finished run just hangs — indistinguishable from a stalled scrape.
+    // Same reason seed.ts exits explicitly.
+    .then(() => process.exit(0))
+    .catch((err) => {
+      log.error({ err }, "Run-store failed");
+      process.exit(1);
+    });
 }

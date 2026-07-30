@@ -13,10 +13,16 @@
  *      yields all ~465 category pages.
  *   2. For each category, page through
  *        /catalog/{slug}/{id}?filtered=1&filter_by_stock=in-stock&page=N
- *      The in-stock filter is the important part: it cuts a set from ~120
- *      products across 4 pages down to ~17 on one, so a full run is ~700
- *      requests rather than ~5000. Out-of-stock listings have no price we'd
- *      keep anyway.
+ *      The in-stock filter matters — out-of-stock listings have no price we'd
+ *      keep, and dropping them roughly halves the pages.
+ *
+ *      It's still a big job: ~30 products/page is a hard cap (per_page and
+ *      limit are ignored) and the Games Cube stocks ~93k listings, so a sweep
+ *      is ~3,500 pages at ~2.3s of server TTFB each — hence CC_CONCURRENCY
+ *      categories in flight at once (measured 88 min at 3). There is no bulk
+ *      alternative: .json/.xml on catalog routes 415, /products.json 404s, and
+ *      /products/multi_search returns out-of-stock printings too (3MB for 5
+ *      card names), so it's heavier than browsing.
  *      Category cache: the same ProbeCache pattern MTG Mate uses. After a full
  *      scan, daily runs only revisit categories that had stock, and a full
  *      rescan every CC_FULL_SCAN_DAYS (default 7) picks up restocks and new
@@ -43,8 +49,9 @@ import * as cheerio from "cheerio";
 import { type ScrapedCard, normaliseCondition } from "@mtg-au/shared";
 import { BaseScraper } from "./base-scraper.js";
 import { logger } from "../lib/logger.js";
-import { CC_MAX_RETRIES, CC_RETRY_BACKOFF_MS, CC_FULL_SCAN_DAYS } from "../lib/config.js";
+import { CC_MAX_RETRIES, CC_RETRY_BACKOFF_MS, CC_FULL_SCAN_DAYS, CC_CONCURRENCY } from "../lib/config.js";
 import { ProbeCache } from "../lib/probe-cache.js";
+import { mapWithConcurrency } from "../lib/utils.js";
 import type { CrystalCommerceStoreConfig } from "./stores.config.js";
 
 const log = logger.child({ component: "crystalcommerce" });
@@ -276,6 +283,34 @@ export class CrystalCommerceScraper extends BaseScraper {
     return `${this.config.baseUrl}/catalog/${category.slug}/${category.id}?${params}`;
   }
 
+  /**
+   * Page through one category and return everything in stock.
+   *
+   * Collects rather than yields so several categories can be in flight at once;
+   * one category is a few hundred cards at most.
+   */
+  private async scrapeCategory(
+    category: CategoryLink,
+  ): Promise<{ categoryId: string; cards: ScrapedCard[]; pages: number }> {
+    const fallbackSetName = setNameFromSlug(category.slug);
+    const cards: ScrapedCard[] = [];
+    let pages = 0;
+
+    for (let page = 1; page <= this.config.maxPagesPerCategory; page++) {
+      const html = await this.fetchWithRetry(this.categoryUrl(category, page));
+      if (!html) break;
+      pages++;
+
+      const pageCards = parseCategoryPage(html, this.config.baseUrl, fallbackSetName);
+      cards.push(...pageCards);
+
+      if (pageCards.length === 0 || !hasNextPage(html)) break;
+    }
+
+    log.debug({ store: this.config.id, category: category.slug, cards: cards.length, pages }, "Category done");
+    return { categoryId: category.id, cards, pages };
+  }
+
   async *scrapeAll(): AsyncGenerator<ScrapedCard> {
     log.info({ store: this.config.id }, "Fetching CrystalCommerce category list");
     const homeHtml = await this.fetchWithRetry(this.config.baseUrl);
@@ -319,36 +354,36 @@ export class CrystalCommerceScraper extends BaseScraper {
     let yielded = 0;
     const productiveIds: string[] = [];
 
-    for (const [index, category] of toScrape.entries()) {
-      const fallbackSetName = setNameFromSlug(category.slug);
-      let categoryCards = 0;
+    // Fetch CC_CONCURRENCY categories at a time. Concurrency is across
+    // categories rather than pages within one, because a category's page count
+    // isn't known until its pages have been fetched.
+    //
+    // Chunked rather than pooled over the whole list so only a few categories'
+    // cards are buffered at once — the full catalogue is ~90k listings.
+    for (let i = 0; i < toScrape.length; i += CC_CONCURRENCY) {
+      const chunk = toScrape.slice(i, i + CC_CONCURRENCY);
 
-      // A ~700-request run is long enough that silence is indistinguishable
-      // from a stall — log progress at info level periodically.
-      if (index > 0 && index % 50 === 0) {
+      // A ~3800-page run is long enough that silence is indistinguishable from
+      // a stall — log progress at info level periodically.
+      if (i > 0 && i % 50 < CC_CONCURRENCY) {
         log.info(
-          { store: this.config.id, done: index, total: toScrape.length, pages: pagesFetched, cards: yielded },
+          { store: this.config.id, done: i, total: toScrape.length, pages: pagesFetched, cards: yielded },
           "CrystalCommerce progress",
         );
       }
 
-      for (let page = 1; page <= this.config.maxPagesPerCategory; page++) {
-        const html = await this.fetchWithRetry(this.categoryUrl(category, page));
-        if (!html) break;
-        pagesFetched++;
+      const results = await mapWithConcurrency(chunk, CC_CONCURRENCY, (category) =>
+        this.scrapeCategory(category),
+      );
 
-        const cards = parseCategoryPage(html, this.config.baseUrl, fallbackSetName);
-        for (const card of cards) {
-          categoryCards++;
+      for (const result of results) {
+        pagesFetched += result.pages;
+        if (result.cards.length > 0) productiveIds.push(result.categoryId);
+        for (const card of result.cards) {
           yielded++;
           yield card;
         }
-
-        if (cards.length === 0 || !hasNextPage(html)) break;
       }
-
-      if (categoryCards > 0) productiveIds.push(category.id);
-      log.debug({ store: this.config.id, category: category.slug, cards: categoryCards, yielded }, "Category done");
     }
 
     if (isFullScan) {
