@@ -37,7 +37,7 @@ const OUTPUT_FILE = join(SCRYFALL_OUTPUT_DIR, "default_cards.json");
 
 interface BulkDataEntry {
   type: string;
-  download_uri: string;
+  jsonl_download_uri: string;
   updated_at: string;
 }
 
@@ -55,7 +55,7 @@ async function fetchData(): Promise<void> {
   if (!entry) throw new Error("Could not find 'default_cards' in Scryfall catalog");
 
   log.info({ updated_at: entry.updated_at }, "Downloading Scryfall bulk data");
-  const dataRes = await fetch(entry.download_uri, { headers: { "User-Agent": SCRYFALL_USER_AGENT } });
+  const dataRes = await fetch(entry.jsonl_download_uri, { headers: { "User-Agent": SCRYFALL_USER_AGENT } });
   if (!dataRes.ok) throw new Error(`Download failed: ${dataRes.status}`);
 
   await mkdir(SCRYFALL_OUTPUT_DIR, { recursive: true });
