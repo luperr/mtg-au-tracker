@@ -7,10 +7,10 @@
 
 import { mkdir } from "fs/promises";
 import { createWriteStream, createReadStream } from "fs";
+import { createInterface } from "readline";
 import { pipeline } from "stream/promises";
 import { Readable } from "stream";
-import StreamJson from "stream-json";
-import StreamArray from "stream-json/streamers/StreamArray.js";
+import { createGunzip } from "zlib";
 import { join } from "path";
 import { sql } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
@@ -33,11 +33,11 @@ function cardNameToSlug(name: string): string {
     .replace(/-{2,}/g, "-")            // collapse multiple hyphens
     .replace(/^-|-$/g, "");            // trim leading/trailing hyphens
 }
-const OUTPUT_FILE = join(SCRYFALL_OUTPUT_DIR, "default_cards.json");
+const OUTPUT_FILE = join(SCRYFALL_OUTPUT_DIR, "default_cards.jsonl");
 
 interface BulkDataEntry {
   type: string;
-  download_uri: string;
+  jsonl_download_uri: string;
   updated_at: string;
 }
 
@@ -55,12 +55,16 @@ async function fetchData(): Promise<void> {
   if (!entry) throw new Error("Could not find 'default_cards' in Scryfall catalog");
 
   log.info({ updated_at: entry.updated_at }, "Downloading Scryfall bulk data");
-  const dataRes = await fetch(entry.download_uri, { headers: { "User-Agent": SCRYFALL_USER_AGENT } });
+  const dataRes = await fetch(entry.jsonl_download_uri, { headers: { "User-Agent": SCRYFALL_USER_AGENT } });
   if (!dataRes.ok) throw new Error(`Download failed: ${dataRes.status}`);
 
   await mkdir(SCRYFALL_OUTPUT_DIR, { recursive: true });
   const writeStream = createWriteStream(OUTPUT_FILE);
-  await pipeline(Readable.fromWeb(dataRes.body as import("stream/web").ReadableStream), writeStream);
+  await pipeline(
+    Readable.fromWeb(dataRes.body as import("stream/web").ReadableStream),
+    createGunzip(),
+    writeStream
+  );
   log.info("Downloaded Scryfall card objects");
   log.debug({ path: OUTPUT_FILE }, "Saved bulk data to file");
 }
@@ -75,21 +79,15 @@ async function importData(): Promise<void> {
   const cardMap = new Map<string, ReturnType<typeof transform>["cardRow"]>();
   const allPrintings: ReturnType<typeof transform>["printingRows"][number][] = [];
 
-  await new Promise<void>((resolve, reject) => {
-    const fileStream = createReadStream(OUTPUT_FILE);
-    const jsonParser = StreamJson.parser();
-    const arrayStream = StreamArray.streamArray();
-    fileStream.pipe(jsonParser).pipe(arrayStream);
-    arrayStream.on("data", ({ value }: { value: ScryfallCard }) => {
-      if (!shouldImport(value)) return;
-      const { cardRow, printingRows } = transform(value);
-      if (!cardMap.has(cardRow.id)) cardMap.set(cardRow.id, cardRow);
-      allPrintings.push(...printingRows);
-    });
-    arrayStream.on("end", resolve);
-    arrayStream.on("error", reject);
-    fileStream.on("error", reject);
-  });
+  const lines = createInterface({ input: createReadStream(OUTPUT_FILE), crlfDelay: Infinity });
+  for await (const line of lines) {
+    if (!line.trim()) continue;
+    const value = JSON.parse(line) as ScryfallCard;
+    if (!shouldImport(value)) continue;
+    const { cardRow, printingRows } = transform(value);
+    if (!cardMap.has(cardRow.id)) cardMap.set(cardRow.id, cardRow);
+    allPrintings.push(...printingRows);
+  }
 
   log.info({ card_count: cardMap.size }, "Cards to import");
 
@@ -115,21 +113,15 @@ async function importData(): Promise<void> {
       .map((r: { id: string; slug: string | null }) => [r.id, r.slug as string] as [string, string])
   );
 
-  // slugsSeen prevents duplicate assignment within this run.
-  // Seed it with slugs held by oracle_ids NOT in this batch (truly immovable).
-  const currentOracleIds = new Set(uniqueCards.map((c) => c.id));
-  const slugsSeen = new Set<string>();
-  for (const [id, slug] of existingSlugByOracleId) {
-    if (!currentOracleIds.has(id)) slugsSeen.add(slug);
-  }
+  // slugsSeen prevents duplicate assignment within this run. Every slug already
+  // in the DB is taken, including ones held by cards in this batch — those cards
+  // keep their slug, so a new card must never generate it regardless of ordering.
+  const slugsSeen = new Set<string>(existingSlugByOracleId.values());
 
   const cardSlugs = new Map<string, string>(); // oracle_id → slug
   for (const c of uniqueCards) {
     if (existingSlugByOracleId.has(c.id)) {
-      // Card already has a slug — preserve it and mark it taken.
-      const existing = existingSlugByOracleId.get(c.id)!;
-      cardSlugs.set(c.id, existing);
-      slugsSeen.add(existing);
+      cardSlugs.set(c.id, existingSlugByOracleId.get(c.id)!);
     } else {
       // New card — generate slug with collision detection.
       let slug = cardNameToSlug(c.name);
