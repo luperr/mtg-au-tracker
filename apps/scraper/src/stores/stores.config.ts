@@ -194,7 +194,11 @@ export const STORE_REGISTRY: StoreConfig[] = [
     flatShippingAud: 6.50, shopify: { collectionHandle: "mtg-singles" },
   },
   {
-    id: "games_cube", name: "The Games Cube", baseUrl: "https://www.thegamescube.com", scraperEnabled: true, logoUrl: null,
+    // Disabled pending permission from the store: robots.txt disallows all
+    // non-Googlebot crawlers, and a sweep is ~3,500 requests that visibly
+    // degrades their server (see the CrystalCommerce section in CLAUDE.md).
+    // The scraper itself works — flip this to true to bring it into the run.
+    id: "games_cube", name: "The Games Cube", baseUrl: "https://www.thegamescube.com", scraperEnabled: false, logoUrl: null,
     flatShippingAud: 6.50, crystalCommerce: { categoryPrefix: "magic_singles", maxPagesPerCategory: 25 },
   },
   { id: "mtg_singles_aus", name: "MTG Singles Australia", baseUrl: "https://www.mtgsinglesaustralia.com.au", scraperEnabled: false, logoUrl: null, flatShippingAud: null },
