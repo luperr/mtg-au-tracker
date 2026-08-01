@@ -188,8 +188,10 @@ export async function runScryfallImport(): Promise<void> {
 // Run directly: tsx src/scryfall/bulk-import.ts
 import { fileURLToPath } from "url";
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  runScryfallImport().catch((err) => {
-    log.fatal({ err }, "Fatal error");
-    process.exit(1);
-  });
+  runScryfallImport()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      log.fatal({ err }, "Fatal error");
+      process.exit(1);
+    });
 }
