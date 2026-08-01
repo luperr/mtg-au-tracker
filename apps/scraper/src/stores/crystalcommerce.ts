@@ -251,23 +251,35 @@ export function setNameFromSlug(slug: string): string {
 }
 
 export class CrystalCommerceScraper extends BaseScraper {
+  /** Retried requests this run — a silent throughput killer, so it's reported. */
+  private retries = 0;
+
   constructor(private readonly config: CrystalCommerceStoreConfig) {
     super();
   }
 
   // CrystalCommerce drops connections under sustained load, so retry with
   // backoff before giving up on a page.
+  //
+  // Retries are counted and surfaced in the progress log, not just logged when
+  // they run out: a run was observed degrading ~25x in its tail (33s/page vs
+  // 1.3s) purely from pages timing out and then succeeding on retry. Nothing
+  // failed, so nothing was logged, and three hours vanished silently.
   private async fetchWithRetry(url: string): Promise<string | null> {
     for (let attempt = 0; attempt <= CC_MAX_RETRIES; attempt++) {
       try {
-        return await this.fetchHtml(url);
+        const html = await this.fetchHtml(url);
+        if (attempt > 0) this.retries += attempt;
+        return html;
       } catch (err) {
         const isLast = attempt === CC_MAX_RETRIES;
         const is404 = err instanceof Error && err.message.includes("HTTP 404");
         if (is404 || isLast) {
+          this.retries += attempt;
           log.warn({ store: this.config.id, url, attempt, err: String(err) }, "Giving up on page");
           return null;
         }
+        log.debug({ store: this.config.id, url, attempt, err: String(err) }, "Retrying page");
         await new Promise((r) => setTimeout(r, CC_RETRY_BACKOFF_MS[attempt]));
       }
     }
@@ -350,6 +362,7 @@ export class CrystalCommerceScraper extends BaseScraper {
       "CrystalCommerce scrape plan",
     );
 
+    const startedAt = Date.now();
     let pagesFetched = 0;
     let yielded = 0;
     const productiveIds: string[] = [];
@@ -366,8 +379,20 @@ export class CrystalCommerceScraper extends BaseScraper {
       // A ~3800-page run is long enough that silence is indistinguishable from
       // a stall — log progress at info level periodically.
       if (i > 0 && i % 50 < CC_CONCURRENCY) {
+        const elapsedMin = (Date.now() - startedAt) / 60_000;
         log.info(
-          { store: this.config.id, done: i, total: toScrape.length, pages: pagesFetched, cards: yielded },
+          {
+            store: this.config.id,
+            done: i,
+            total: toScrape.length,
+            pages: pagesFetched,
+            cards: yielded,
+            retries: this.retries,
+            elapsed_min: +elapsedMin.toFixed(1),
+            // The number to watch: it held ~1.3s in a healthy run and blew out
+            // to ~33s when the store started stalling.
+            secs_per_page: pagesFetched > 0 ? +((elapsedMin * 60) / pagesFetched).toFixed(2) : 0,
+          },
           "CrystalCommerce progress",
         );
       }
@@ -391,8 +416,18 @@ export class CrystalCommerceScraper extends BaseScraper {
       log.info({ store: this.config.id, categories_cached: productiveIds.length }, "CrystalCommerce category cache updated");
     }
 
+    const elapsedMin = (Date.now() - startedAt) / 60_000;
     log.info(
-      { store: this.config.id, categories: toScrape.length, pages: pagesFetched, cards: yielded, isFullScan },
+      {
+        store: this.config.id,
+        categories: toScrape.length,
+        pages: pagesFetched,
+        cards: yielded,
+        retries: this.retries,
+        elapsed_min: +elapsedMin.toFixed(1),
+        secs_per_page: pagesFetched > 0 ? +((elapsedMin * 60) / pagesFetched).toFixed(2) : 0,
+        isFullScan,
+      },
       "CrystalCommerce scrape complete",
     );
   }

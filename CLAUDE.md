@@ -129,6 +129,13 @@ zero fetch failures. Like-for-like against the same checkpoint, that's **1.65x**
 sequential — well short of 3x, because the store's per-request latency roughly doubles under
 parallel load (it is Passenger-worker-bound, not bandwidth-bound).
 
+**Runtime is not stable — expect 1.5–4h.** A second run the same night took **4h14m**: the first
+351 categories finished in 67 min at ~1.3s/page, then the last 44 took 187 min at ~33s/page. The
+store starts stalling connections under sustained scraping, and because those pages time out and
+then *succeed* on retry, nothing is logged as an error. Watch `secs_per_page` and `retries` in
+the progress log — that's what makes the degradation visible. If it's climbing, the store is
+telling us to back off: lower `CC_CONCURRENCY`, don't retry harder.
+
 **Don't raise `CC_CONCURRENCY` above 3 without re-measuring.** 4-wide benchmarked faster in
 isolation but returned a 503 — the store sheds load. Given latency scales with concurrency,
 expect diminishing returns rather than a linear win. If 503s appear at 3, drop to 2.
