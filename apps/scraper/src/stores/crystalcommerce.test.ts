@@ -129,6 +129,15 @@ describe("parseVariantDescription", () => {
     expect(parseVariantDescription("NM-Mint, Japanese")).toBeNull();
     expect(parseVariantDescription("")).toBeNull();
   });
+
+  // normaliseCondition echoes anything it doesn't recognise, so without an
+  // explicit check these land in store_prices.condition and show up in the web
+  // UI's condition filter.
+  it("rejects rows whose first field is not a condition", () => {
+    expect(parseVariantDescription("All variants")).toBeNull();
+    expect(parseVariantDescription("Add to Cart, English")).toBeNull();
+    expect(parseVariantDescription("$4.50, English")).toBeNull();
+  });
 });
 
 describe("parsePrice", () => {
@@ -158,6 +167,31 @@ describe("parseCategoryLinks", () => {
       { slug: "magic_singles-standard-bloomburrow", id: "6088" },
       { slug: "magic_singles-modern-modern_horizons_3", id: "6079" },
     ]);
+  });
+
+  // The mega-menu links its grouping levels too. An intermediate node lists
+  // every product under all of its children, so scraping it blows through
+  // maxPagesPerCategory and duplicates every leaf category's listings.
+  it("drops intermediate nav nodes that are ancestors of other categories", () => {
+    const withParents = `
+      <a href="/catalog/magic_singles-standard/6000">Standard</a>
+      <a href="/catalog/magic_singles-standard-bloomburrow/6088">Bloomburrow</a>
+      <a href="/catalog/magic_singles-modern/6001">Modern</a>
+      <a href="/catalog/magic_singles-modern-modern_horizons_3/6079">MH3</a>`;
+
+    expect(parseCategoryLinks(withParents, "magic_singles")).toEqual([
+      { slug: "magic_singles-standard-bloomburrow", id: "6088" },
+      { slug: "magic_singles-modern-modern_horizons_3", id: "6079" },
+    ]);
+  });
+
+  // Only a "-" boundary counts as ancestry — a shared prefix isn't a parent.
+  it("keeps categories whose slug is merely a prefix of another", () => {
+    const siblings = `
+      <a href="/catalog/magic_singles-standard-bloom/6001">Bloom</a>
+      <a href="/catalog/magic_singles-standard-bloomburrow/6088">Bloomburrow</a>`;
+
+    expect(parseCategoryLinks(siblings, "magic_singles")).toHaveLength(2);
   });
 });
 

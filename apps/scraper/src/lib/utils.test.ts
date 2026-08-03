@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { todayISO, matchRate, mapWithConcurrency } from "./utils.js";
+import { todayISO, matchRate, mapWithConcurrency, mapConcurrentStream } from "./utils.js";
 
 describe("todayISO", () => {
   afterEach(() => {
@@ -113,5 +113,116 @@ describe("mapWithConcurrency", () => {
       inFlight--;
     });
     expect(peak).toBe(2);
+  });
+
+  // A malformed env var (CC_CONCURRENCY="three") reaches the pool as NaN.
+  // Array.from({ length: NaN }) builds zero workers, so the pool would quietly
+  // process nothing and report success — after prices had been deleted.
+  it("still runs every item when the limit is NaN", async () => {
+    const result = await mapWithConcurrency([1, 2, 3], Number.NaN, async (n) => n * 2);
+    expect(result).toEqual([2, 4, 6]);
+  });
+});
+
+describe("mapConcurrentStream", () => {
+  const tick = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  async function collect<T>(gen: AsyncGenerator<T>): Promise<T[]> {
+    const out: T[] = [];
+    for await (const item of gen) out.push(item);
+    return out;
+  }
+
+  it("yields every result", async () => {
+    const result = await collect(mapConcurrentStream([1, 2, 3, 4], 2, async (n) => n * 2));
+    expect(result.sort((a, b) => a - b)).toEqual([2, 4, 6, 8]);
+  });
+
+  it("never exceeds the concurrency limit", async () => {
+    let inFlight = 0;
+    let peak = 0;
+
+    await collect(
+      mapConcurrentStream(Array.from({ length: 20 }, (_, i) => i), 3, async () => {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        await tick(5);
+        inFlight--;
+      }),
+    );
+
+    expect(peak).toBe(3);
+  });
+
+  // The whole point of streaming over chunking: a slow item must not stop the
+  // workers beside it from starting the next ones.
+  it("keeps workers busy past a slow item instead of waiting for a batch", async () => {
+    const started: number[] = [];
+    await collect(
+      mapConcurrentStream([0, 1, 2, 3, 4, 5], 2, async (n) => {
+        started.push(n);
+        await tick(n === 0 ? 80 : 5);
+        return n;
+      }),
+    );
+
+    // With fixed chunks of 2, item 4 could only start after items 0 and 1 both
+    // finished. Pooling starts it while the slow item 0 is still running.
+    expect(started).toContain(4);
+    expect(started.indexOf(4)).toBeLessThan(started.length);
+    expect(started.length).toBe(6);
+  });
+
+  it("applies backpressure rather than buffering the whole list", async () => {
+    let produced = 0;
+    const gen = mapConcurrentStream(Array.from({ length: 50 }, (_, i) => i), 2, async (n) => {
+      produced++;
+      return n;
+    });
+
+    // Pull a single result, then let the pool run as far as it will.
+    await gen.next();
+    await tick(50);
+
+    // Bounded at limit * 2 buffered plus what's in flight and consumed —
+    // nowhere near all 50.
+    expect(produced).toBeLessThan(10);
+    await gen.return(undefined as never);
+  });
+
+  it("propagates the first rejection", async () => {
+    await expect(
+      collect(
+        mapConcurrentStream([1, 2, 3], 2, async (n) => {
+          if (n === 2) throw new Error("boom");
+          return n;
+        }),
+      ),
+    ).rejects.toThrow("boom");
+  });
+
+  it("handles an empty input without running anything", async () => {
+    const fn = vi.fn();
+    await expect(collect(mapConcurrentStream([], 3, fn))).resolves.toEqual([]);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("stops pulling new items when the consumer breaks out early", async () => {
+    let called = 0;
+    const gen = mapConcurrentStream(Array.from({ length: 50 }, (_, i) => i), 2, async (n) => {
+      called++;
+      await tick(2);
+      return n;
+    });
+
+    for await (const _ of gen) break;
+    await tick(40);
+
+    expect(called).toBeLessThan(10);
+  });
+
+  it("still runs every item when the limit is NaN", async () => {
+    const result = await collect(mapConcurrentStream([1, 2, 3], Number.NaN, async (n) => n * 2));
+    expect(result.sort((a, b) => a - b)).toEqual([2, 4, 6]);
   });
 });

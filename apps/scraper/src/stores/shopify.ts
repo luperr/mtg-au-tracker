@@ -271,14 +271,21 @@ export class ShopifyScraper extends BaseScraper {
     this.log = logger.child({ component: "shopify", store: config.id });
   }
 
-  private async fetchProductsPage(pageNum: number): Promise<ShopifyProduct[]> {
+  /**
+   * Fetch one page of the collection. Returns null when the request failed, as
+   * distinct from an empty page — the two are indistinguishable to a paginating
+   * caller but mean opposite things: "the catalogue ends here" vs "we have no
+   * idea what's here". Swallowing the failure into [] silently truncated stores
+   * mid-run, after runStore had already deleted their prices.
+   */
+  private async fetchProductsPage(pageNum: number): Promise<ShopifyProduct[] | null> {
     const url = `${this.config.baseUrl}/collections/${this.config.collectionHandle}/products.json?limit=${PAGE_SIZE}&page=${pageNum}`;
     try {
       const data = await this.fetchJson<ProductsResponse>(url);
       return data.products ?? [];
     } catch (err: unknown) {
       this.log.warn({ page: pageNum, err: String(err) }, "Failed to fetch products page");
-      return [];
+      return null;
     }
   }
 
@@ -292,6 +299,15 @@ export class ShopifyScraper extends BaseScraper {
     while (true) {
       this.log.debug({ page }, "Fetching products page");
       const products = await this.fetchProductsPage(page);
+
+      // BaseScraper has already retried transient failures by this point, so a
+      // null here is a real outage. Fail the store loudly rather than reporting
+      // however much of the catalogue we happened to get before it broke.
+      if (products === null) {
+        throw new Error(
+          `${this.config.id}: products page ${page} could not be fetched — aborting rather than reporting a partial catalogue`,
+        );
+      }
 
       if (products.length === 0) {
         this.log.debug({ page }, "No products on page — done");

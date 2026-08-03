@@ -28,7 +28,12 @@
 import { chromium, type Browser, type BrowserContext } from "playwright";
 import type { ScrapedCard, StoreScraper } from "@mtg-au/shared";
 import { logger } from "../lib/logger.js";
-import { USER_AGENT, PLAIN_FETCH_TIMEOUT_MS } from "../lib/config.js";
+import {
+  USER_AGENT,
+  PLAIN_FETCH_TIMEOUT_MS,
+  HTTP_MAX_RETRIES,
+  HTTP_RETRY_BACKOFF_MS,
+} from "../lib/config.js";
 
 const log = logger.child({ component: "base-scraper" });
 
@@ -50,6 +55,24 @@ export class RetryableHttpError extends Error {
 
 /** Statuses that mean "try again shortly", not "you've been blocked". */
 const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
+
+/**
+ * True when a response body is a Cloudflare interstitial.
+ *
+ * Deliberately narrow. An earlier version matched "Just a moment" anywhere in
+ * the body, which is a real phrase that can appear in card names, flavour text
+ * or third-party widget markup — and one false positive latches the scraper
+ * onto Chromium for the rest of the run (~3,500 page loads on a Games Cube
+ * sweep). A genuine interstitial puts it in the <title>, near the top of a tiny
+ * document, so only the document head is searched.
+ */
+function isChallengeBody(text: string): boolean {
+  const head = text.slice(0, CHALLENGE_SCAN_BYTES);
+  return /<title>\s*Just a moment/i.test(head) || head.includes("cf-browser-verification");
+}
+
+/** Interstitials are a couple of KB; real pages put their <title> up here too. */
+const CHALLENGE_SCAN_BYTES = 4096;
 
 export abstract class BaseScraper implements StoreScraper {
   private browser: Browser | null = null;
@@ -92,13 +115,29 @@ export abstract class BaseScraper implements StoreScraper {
     const context = await this.getContext();
     const page = await context.newPage();
     try {
-      await page.goto(url, { waitUntil: "load", timeout: 30000 });
+      const response = await page.goto(url, { waitUntil: "load", timeout: 30000 });
       await this.waitForCloudflare(page);
+      // Without this an error page comes back as perfectly valid HTML, so
+      // callers that key off "HTTP 404" (CrystalCommerce's fetchWithRetry)
+      // silently treat a dead URL as an empty one. 403 is excluded: that's the
+      // challenge status this browser path exists to clear.
+      this.assertBrowserResponseOk(response, url);
       const content = await page.content();
       this.lastRequestAt = Date.now();
       return content;
     } finally {
       await page.close();
+    }
+  }
+
+  private assertBrowserResponseOk(
+    response: import("playwright").Response | null,
+    url: string,
+  ): void {
+    if (!response) return; // e.g. same-document navigation — nothing to judge
+    const status = response.status();
+    if (status >= 400 && status !== 403) {
+      throw new Error(`HTTP ${status} fetching ${url}`);
     }
   }
 
@@ -121,6 +160,29 @@ export abstract class BaseScraper implements StoreScraper {
     }
   }
 
+  /**
+   * Retry `attempt` while it fails with a RetryableHttpError (429/502/503/504).
+   *
+   * These are transient origin failures, so the browser fallback is no help —
+   * but they must not escape either. Callers up the stack (ShopifyScraper,
+   * MtgMateScraper) turn a thrown fetch error into "no products here", which a
+   * paginating scraper cannot distinguish from the end of the catalogue: one
+   * blip mid-pagination silently truncates a store whose prices have already
+   * been deleted for the run. Retrying here is what keeps that rare.
+   */
+  private async withRetry<T>(url: string, attempt: () => Promise<T>): Promise<T> {
+    for (let i = 0; ; i++) {
+      try {
+        return await attempt();
+      } catch (err) {
+        if (!(err instanceof RetryableHttpError) || i >= HTTP_MAX_RETRIES) throw err;
+        const backoff = HTTP_RETRY_BACKOFF_MS[i];
+        log.warn({ url, status: err.status, attempt: i + 1, backoff }, "Transient HTTP error — retrying");
+        await new Promise((r) => setTimeout(r, backoff));
+      }
+    }
+  }
+
   // Fetch a JSON endpoint. Plain fetch() first (cheap); falls back to a real
   // browser page only if this store turns out to be behind a bot challenge.
   protected async fetchJson<T>(url: string): Promise<T> {
@@ -128,7 +190,7 @@ export abstract class BaseScraper implements StoreScraper {
 
     if (!this.useBrowserForJson) {
       try {
-        const result = await this.fetchJsonPlain<T>(url);
+        const result = await this.withRetry(url, () => this.fetchJsonPlain<T>(url));
         this.lastRequestAt = Date.now();
         return result;
       } catch (err) {
@@ -148,7 +210,7 @@ export abstract class BaseScraper implements StoreScraper {
     if (!this.useBrowserForHtml) {
       await this.rateLimit();
       try {
-        const html = await this.fetchTextPlain(url, "text/html");
+        const html = await this.withRetry(url, () => this.fetchTextPlain(url, "text/html"));
         this.lastRequestAt = Date.now();
         return html;
       } catch (err) {
@@ -170,7 +232,7 @@ export abstract class BaseScraper implements StoreScraper {
   // then the status, so a Cloudflare interstitial is still recognised whatever
   // status it arrives with — while a bare 503 from an overloaded origin is
   // treated as retryable instead of as a block.
-  private async fetchTextPlain(url: string, accept: string): Promise<string> {
+  protected async fetchTextPlain(url: string, accept: string): Promise<string> {
     // Node's fetch() has no default timeout: a server that accepts the
     // connection and then never responds hangs the whole scrape forever.
     // Matches the 30s used on the Playwright paths.
@@ -187,7 +249,7 @@ export abstract class BaseScraper implements StoreScraper {
 
     const text = await response.text();
 
-    if (text.includes("Just a moment") || text.includes("cf-browser-verification")) {
+    if (isChallengeBody(text)) {
       throw new ChallengeDetectedError("Cloudflare interstitial body");
     }
     if (response.status === 403) {

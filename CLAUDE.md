@@ -143,7 +143,20 @@ expect diminishing returns rather than a linear win. If 503s appear at 3, drop t
 Set name comes from the product's category, not the card. Finish/treatment come from `" - "`
 title suffixes drawn from a fixed vocabulary (`- Foil`, `- Foil - Borderless`, `- Extended Art`);
 only known suffixes are stripped, since real card names contain dashes too. Non-English variants
-are skipped. The platform drops connections under load, so pages retry 3× with 2s/5s/10s backoff.
+are skipped, as are variant rows whose first field isn't a real condition (the aggregate
+"All variants" row). The platform drops connections under load, so pages retry 3× with
+2s/5s/10s backoff, on top of `BaseScraper`'s own retry of transient HTTP statuses.
+
+Category discovery keeps **leaf categories only**. The mega-menu also links its grouping levels
+(`magic_singles-standard` next to `magic_singles-standard-bloomburrow`), and an intermediate node
+lists every product under all its children — scraping one blows through `maxPagesPerCategory` and
+duplicates every leaf's listings. Any slug that is a strict `-`-boundary prefix of another is
+dropped. Hitting the page cap now logs a warning rather than truncating silently.
+
+Categories are streamed through a `CC_CONCURRENCY`-wide pool (`mapConcurrentStream`), not fixed
+chunks, so a 25-page category doesn't stall the 1-page ones beside it. The cache keeps categories
+that had stock **plus any whose pages exhausted their retries** — a failed category isn't known to
+be empty, and pruning it would drop a whole set from prices until the next full scan.
 
 Add a CrystalCommerce store with a `crystalCommerce: { categoryPrefix, maxPagesPerCategory }`
 block in `STORE_REGISTRY` — no scraper code changes.

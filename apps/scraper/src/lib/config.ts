@@ -5,6 +5,32 @@
  * Import from this module instead of reading process.env directly.
  */
 
+// ── Env parsing ──────────────────────────────────────────────────────────────
+
+/**
+ * Read a positive integer from the environment, falling back on anything
+ * unusable (unset, empty, non-numeric, zero, negative, fractional).
+ *
+ * Number()/parseInt() return NaN for a typo'd value, and NaN propagates
+ * silently: a NaN concurrency limit makes mapWithConcurrency spawn zero
+ * workers, so a run scrapes nothing and still reports success — after the
+ * store's prices have already been deleted. Fail back to the default loudly
+ * instead.
+ */
+export function positiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    process.stderr.write(
+      `[config] ${name}="${raw}" is not a positive integer — using default ${fallback}\n`,
+    );
+    return fallback;
+  }
+  return parsed;
+}
+
 // ── Database ─────────────────────────────────────────────────────────────────
 
 export const DATABASE_URL = process.env.DATABASE_URL;
@@ -37,9 +63,9 @@ export const EBAY_ENV = (process.env.EBAY_ENV ?? "production") as "production" |
 export const EBAY_CLIENT_ID = process.env.EBAY_CLIENT_ID;
 export const EBAY_CLIENT_SECRET = process.env.EBAY_CLIENT_SECRET;
 
-export const EBAY_DAILY_TARGET = parseInt(process.env.EBAY_DAILY_TARGET ?? "4500", 10);
-export const EBAY_PAGES_PER_SET = parseInt(process.env.EBAY_PAGES_PER_SET ?? "5", 10);
-export const EBAY_PAGES_PER_CARD = parseInt(process.env.EBAY_PAGES_PER_CARD ?? "1", 10);
+export const EBAY_DAILY_TARGET = positiveIntEnv("EBAY_DAILY_TARGET", 4500);
+export const EBAY_PAGES_PER_SET = positiveIntEnv("EBAY_PAGES_PER_SET", 5);
+export const EBAY_PAGES_PER_CARD = positiveIntEnv("EBAY_PAGES_PER_CARD", 1);
 
 /** Items per page — eBay Browse API max is 200 */
 export const EBAY_PAGE_SIZE = 200;
@@ -77,6 +103,18 @@ export const USER_AGENT =
  */
 export const PLAIN_FETCH_TIMEOUT_MS = 30_000;
 
+/**
+ * Retries for transient upstream failures (429/502/503/504) on the plain-fetch
+ * paths. These are not bot challenges, so the browser fallback can't help — the
+ * only useful response is to wait and ask again.
+ *
+ * Deliberately short and few: a store shedding load wants less traffic, not
+ * more. Scrapers with their own retry loop (CrystalCommerce) stack on top of
+ * this, so the backoff stays modest to bound the worst case.
+ */
+export const HTTP_MAX_RETRIES = 2;
+export const HTTP_RETRY_BACKOFF_MS = [2_000, 6_000];
+
 // ── MTG Mate ─────────────────────────────────────────────────────────────────
 
 export const MTGMATE_BASE_URL = "https://www.mtgmate.com.au";
@@ -89,7 +127,7 @@ export const CC_MAX_RETRIES = 3;
 export const CC_RETRY_BACKOFF_MS = [2_000, 5_000, 10_000];
 
 /** Days between full re-scans of every category (vs. only those known to have stock). */
-export const CC_FULL_SCAN_DAYS = Number(process.env.CC_FULL_SCAN_DAYS ?? 7);
+export const CC_FULL_SCAN_DAYS = positiveIntEnv("CC_FULL_SCAN_DAYS", 7);
 
 /**
  * Categories fetched in parallel. CrystalCommerce serves ~30 products/page at
@@ -101,7 +139,7 @@ export const CC_FULL_SCAN_DAYS = Number(process.env.CC_FULL_SCAN_DAYS ?? 7);
  * re-measuring: 4-wide returned a 503, i.e. it sheds load. If 503s show up at
  * 3, drop to 2.
  */
-export const CC_CONCURRENCY = Number(process.env.CC_CONCURRENCY ?? 3);
+export const CC_CONCURRENCY = positiveIntEnv("CC_CONCURRENCY", 3);
 
 // ── Store orchestration ──────────────────────────────────────────────────────
 
@@ -112,4 +150,4 @@ export const CC_CONCURRENCY = Number(process.env.CC_CONCURRENCY ?? 3);
  * Kept low because a store that hits a bot challenge launches its own Chromium
  * via BaseScraper — this bounds the worst-case number of live browsers.
  */
-export const STORE_CONCURRENCY = Number(process.env.STORE_CONCURRENCY ?? 3);
+export const STORE_CONCURRENCY = positiveIntEnv("STORE_CONCURRENCY", 3);

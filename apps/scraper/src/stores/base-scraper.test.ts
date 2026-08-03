@@ -11,6 +11,10 @@ class TestScraper extends BaseScraper {
   fetchJsonPlainForTest<T>(url: string): Promise<T> {
     return this.fetchJsonPlain<T>(url);
   }
+
+  fetchTextPlainForTest(url: string): Promise<string> {
+    return this.fetchTextPlain(url, "text/html");
+  }
 }
 
 function mockFetchOnce(status: number, body: string) {
@@ -85,6 +89,27 @@ describe("BaseScraper.fetchJsonPlain", () => {
     mockFetchOnce(500, "Internal Server Error");
     const scraper = new TestScraper();
     await expect(scraper.fetchJsonPlainForTest("https://example.com/products.json")).rejects.not.toBeInstanceOf(
+      ChallengeDetectedError,
+    );
+  });
+
+  // "Just a moment" is a real English phrase that turns up in card names,
+  // flavour text and third-party widget markup. Matching it anywhere in the
+  // body latched the whole run onto Chromium — thousands of page loads — off a
+  // single false positive.
+  it("does not treat a normal page mentioning 'Just a moment' in its content as a challenge", async () => {
+    const body =
+      "<html><head><title>Ancestral Recall - Store</title></head>" +
+      "<body><p>Just a moment, we're checking stock.</p></body></html>";
+    mockFetchOnce(200, body);
+    const scraper = new TestScraper();
+    await expect(scraper.fetchTextPlainForTest("https://example.com/page")).resolves.toBe(body);
+  });
+
+  it("still detects an interstitial whose marker sits outside the title", async () => {
+    mockFetchOnce(403, "<html><body><div id='cf-browser-verification'></div></body></html>");
+    const scraper = new TestScraper();
+    await expect(scraper.fetchTextPlainForTest("https://example.com/page")).rejects.toBeInstanceOf(
       ChallengeDetectedError,
     );
   });
