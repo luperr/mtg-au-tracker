@@ -76,7 +76,9 @@ AUD/USD conversion using a static rate from `AUD_USD_RATE` env var (defaults to 
 
 ## apps/scraper — The data collection service
 
-Runs as a long-lived Docker service. Three cron jobs (all `Australia/Sydney` timezone):
+Runs as a long-lived Docker service. Stores are scraped `STORE_CONCURRENCY` at a time
+(`runAllStores()`), so one slow store doesn't hold up the rest. Three cron jobs (all
+`Australia/Sydney` timezone):
 - **3 AM daily** → Scryfall bulk import (refreshes all card/printing data)
 - **5 AM daily** → Store scrapers (Shopify + MTG Mate)
 - **6 AM daily** → eBay AU price import
@@ -100,6 +102,64 @@ Tables:
 Generic Shopify scraper — one class drives all Shopify-based stores via config. Shopify's `products.json` API is used directly (no HTML scraping). SKU-based matching significantly improves match rates. `goodgames.ts` was replaced by this.
 
 `stores.config.ts` is the single source of truth for store registration — see [Adding a new Shopify store scraper](#adding-a-new-shopify-store-scraper) below. `shopifyStores()` derives the active Shopify store list (currently 32) from `STORE_REGISTRY`; `seedStores()` (`apps/scraper/src/seed.ts`) and the web app's shipping fallback (`apps/web/src/lib/store-shipping.ts`) derive from the same file, so a store exists in exactly one place.
+
+### `apps/scraper/src/stores/crystalcommerce.ts`
+Generic CrystalCommerce scraper — one class drives all stores on the CrystalCommerce
+platform (Rails), config-driven the same way `shopify.ts` is. First store on it: The Games Cube.
+
+CrystalCommerce has no products API, so this is HTML scraping via Cheerio. Every MTG singles
+category is linked from the homepage nav mega-menu (~437 for The Games Cube), so category
+discovery is a single request. Each category is then paged through with
+`?filtered=1&filter_by_stock=in-stock` — out-of-stock listings have no price worth keeping and
+dropping them roughly halves the pages. `ProbeCache` (same pattern as MTG Mate) then means daily
+runs only revisit categories that had stock, with a full rescan every `CC_FULL_SCAN_DAYS`
+(default 7) to pick up restocks and new sets.
+Cache file: `SCRAPER_CACHE_DIR/crystalcommerce-{storeId}-categories.json`.
+
+**It's a big job, and there is no bulk shortcut.** 30 products/page is a hard cap (`per_page`
+and `limit` are ignored) and The Games Cube stocks ~93k listings, so a full sweep is ~3,500
+pages at ~2.3s of server TTFB each. Ruled out: `.json`/`.xml` on catalog routes → 415,
+`/products.json` and Google-feed paths → 404, `Accept: application/json` → 500, and
+`/products/multi_search` returns out-of-stock printings with no in-stock filter (3MB for 5 card
+names — heavier than browsing). Unlike MTG Mate there is no "one request per set" endpoint, so
+the only lever is parallelism via `CC_CONCURRENCY`.
+
+Measured full run at concurrency 3: **88 min**, 3,483 pages, 93,223 listings, 90.2% match rate,
+zero fetch failures. Like-for-like against the same checkpoint, that's **1.65x** faster than
+sequential — well short of 3x, because the store's per-request latency roughly doubles under
+parallel load (it is Passenger-worker-bound, not bandwidth-bound).
+
+**Runtime is not stable — expect 1.5–4h.** A second run the same night took **4h14m**: the first
+351 categories finished in 67 min at ~1.3s/page, then the last 44 took 187 min at ~33s/page. The
+store starts stalling connections under sustained scraping, and because those pages time out and
+then *succeed* on retry, nothing is logged as an error. Watch `secs_per_page` and `retries` in
+the progress log — that's what makes the degradation visible. If it's climbing, the store is
+telling us to back off: lower `CC_CONCURRENCY`, don't retry harder.
+
+**Don't raise `CC_CONCURRENCY` above 3 without re-measuring.** 4-wide benchmarked faster in
+isolation but returned a 503 — the store sheds load. Given latency scales with concurrency,
+expect diminishing returns rather than a linear win. If 503s appear at 3, drop to 2.
+
+Set name comes from the product's category, not the card. Finish/treatment come from `" - "`
+title suffixes drawn from a fixed vocabulary (`- Foil`, `- Foil - Borderless`, `- Extended Art`);
+only known suffixes are stripped, since real card names contain dashes too. Non-English variants
+are skipped, as are variant rows whose first field isn't a real condition (the aggregate
+"All variants" row). The platform drops connections under load, so pages retry 3× with
+2s/5s/10s backoff, on top of `BaseScraper`'s own retry of transient HTTP statuses.
+
+Category discovery keeps **leaf categories only**. The mega-menu also links its grouping levels
+(`magic_singles-standard` next to `magic_singles-standard-bloomburrow`), and an intermediate node
+lists every product under all its children — scraping one blows through `maxPagesPerCategory` and
+duplicates every leaf's listings. Any slug that is a strict `-`-boundary prefix of another is
+dropped. Hitting the page cap now logs a warning rather than truncating silently.
+
+Categories are streamed through a `CC_CONCURRENCY`-wide pool (`mapConcurrentStream`), not fixed
+chunks, so a 25-page category doesn't stall the 1-page ones beside it. The cache keeps categories
+that had stock **plus any whose pages exhausted their retries** — a failed category isn't known to
+be empty, and pruning it would drop a whole set from prices until the next full scan.
+
+Add a CrystalCommerce store with a `crystalCommerce: { categoryPrefix, maxPagesPerCategory }`
+block in `STORE_REGISTRY` — no scraper code changes.
 
 ### `apps/scraper/src/stores/mtgmate.ts`
 MTG Mate HTML scraper.
@@ -209,6 +269,9 @@ See `.env.example` for all variables. Key ones:
 | `EBAY_RECENT_MONTHS` | How far back to search by card name | `3` |
 | `EBAY_HIGH_VALUE_USD` | USD threshold for card-name search pass | `50` |
 | `EBAY_DAILY_TARGET` | Max eBay searches per daily run | `4500` |
+| `STORE_CONCURRENCY` | Stores scraped in parallel by `runAllStores()` | `3` |
+| `CC_CONCURRENCY` | CrystalCommerce categories in flight (do not exceed 3) | `3` |
+| `CC_FULL_SCAN_DAYS` | Days between full CrystalCommerce category rescans | `7` |
 | `USER_AGENT` | HTTP User-Agent for scraping | `Scrymarket/1.0` |
 | `AUD_USD_RATE` | Static USD→AUD rate | `0.65` |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Token for `cloudflared` tunnel service | — |
@@ -233,6 +296,22 @@ Any AU MTG store running Shopify can be added with a config change only — no n
 
 To find the collection handle, browse to `/collections.json` on the store's domain and look for the MTG singles collection slug.
 
+## Adding a new CrystalCommerce store scraper
+
+Same deal for stores on CrystalCommerce (Rails — check for `crystalcommerce` in the page source,
+or a `_secure_frontend_session_id` cookie). Add one `STORE_REGISTRY` entry:
+
+```ts
+{
+  id: "store_id", name: "Store Name", baseUrl: "https://store.com.au", scraperEnabled: true, logoUrl: null,
+  flatShippingAud: 6.50,
+  crystalCommerce: { categoryPrefix: "magic_singles", maxPagesPerCategory: 25 },
+}
+```
+
+`categoryPrefix` is the category-slug prefix for MTG singles — find it by looking at any singles
+product URL (`/catalog/magic_singles-standard-bloomburrow/card_name/693640` → `magic_singles`).
+
 ---
 
 ## What's been built
@@ -244,6 +323,7 @@ To find the collection handle, browse to `/collections.json` on the store's doma
 - [x] Card matcher with exact / name-only / fuzzy / collector-number matching
 - [x] eBay AU import pipeline (OAuth → Browse API → title parser → DB)
 - [x] Generic Shopify scraper — 21 AU stores, config-driven
+- [x] Generic CrystalCommerce scraper — config-driven, The Games Cube
 - [x] MTG Mate HTML scraper
 - [x] Next.js web UI — search, card detail, price history charts
 - [x] Want List with per-store postage editing and Branch-and-Bound optimiser
