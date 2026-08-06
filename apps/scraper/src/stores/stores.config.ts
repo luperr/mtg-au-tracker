@@ -194,6 +194,10 @@ export const STORE_REGISTRY: StoreConfig[] = [
     flatShippingAud: 6.50, shopify: { collectionHandle: "mtg-singles" },
   },
   {
+    id: "the_games_district", name: "The Games District", baseUrl: "https://thegamesdistrict.com", scraperEnabled: true, logoUrl: null,
+    flatShippingAud: 7.0, shopify: { collectionHandle: "mtg-singles" },
+  },
+  {
     // Disabled pending permission from the store: robots.txt disallows all
     // non-Googlebot crawlers, and a sweep is ~3,500 requests that visibly
     // degrades their server (see the CrystalCommerce section in CLAUDE.md).
