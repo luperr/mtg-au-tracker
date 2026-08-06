@@ -49,6 +49,7 @@
     "scrape:thatgamestore": "tsx src/stores/run-store.ts that_game_store",
     "scrape:area52": "tsx src/stores/run-store.ts area52",
     "scrape:shuffleandcutgames": "tsx src/stores/run-store.ts shuffle_and_cut_games",
+    "scrape:thegamesdistrict": "tsx src/stores/run-store.ts the_games_district",
     "scrape:gamescube": "tsx src/stores/run-store.ts games_cube",
     "compute:set-values": "tsx src/stores/compute-set-values.ts",
     "compute:market-stats": "tsx src/market/compute-market-stats.ts",
