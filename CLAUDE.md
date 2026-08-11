@@ -99,7 +99,46 @@ Tables:
 - **`card_searches`** — Append-only log of user search queries. `card_id` FK populated from top search result. Powers demand-gap analytics (cards searched but not in stock anywhere).
 
 ### `apps/scraper/src/stores/shopify.ts` + `stores.config.ts`
-Generic Shopify scraper — one class drives all Shopify-based stores via config. Shopify's `products.json` API is used directly (no HTML scraping). SKU-based matching significantly improves match rates. `goodgames.ts` was replaced by this.
+Generic Shopify scraper — one class drives all Shopify-based stores via config. Reads the
+**Storefront GraphQL API** (`/api/2025-01/graphql.json`), which every store exposes
+unauthenticated — no token or per-store credential. SKU-based matching significantly improves
+match rates. `goodgames.ts` was replaced by this.
+
+**`products.json` is gone and must not come back.** Shopify caps pagination of any array at
+25,000 objects and enforces it on the *offset*: `limit × page` may not exceed 25,000, so
+`limit=250&page=101` is HTTP 400 and no page size or parallelism reaches product 25,001. 13 of
+33 stores are over that line (the largest holds 151,141 products). Until commit `10ca01a` the
+400 was swallowed into "no more products" and those stores silently published a truncated
+catalogue — Cardhouse held 22,355 printings of a 133,202-product store.
+
+`scrapeAll()` picks the most precise source the catalogue size allows, each fallback triggered
+by Shopify's own pagination-limit error rather than a configured threshold:
+
+1. **The collection** — names exactly the products we want, keeps out-of-stock listings. Works
+   until the collection passes 25,000 items.
+2. **Top-level `products(query:)`**, filtered to `available_for_sale:true` + the store's
+   `productType` (auto-detected from the collection, since the value varies: "MTG Single",
+   "Single Cards", "TCG Singles").
+3. **Keyset windows by `created_at`** when even that overflows. The query sorts by creation
+   date, so the last product seen is the watermark the next window resumes from.
+
+A large store therefore ends up with the union of the partial collection walk and every in-stock
+product beyond it. Measured: Cardhouse 41,210 printings (was 22,355), Plenty of Games 50,223
+(was 23,681), The Games District 35,035 products where `products.json` failed outright.
+
+**Traps, all verified against live stores:**
+- `collection.products(filters:[{available:true}])` applies the filter only *within* the first
+  25,000 items — it returns a subset while looking like it succeeded (3,009 of 18,432 on The
+  Games District). Never use it; the unfiltered collection at least fails loudly.
+- Search fields `price:`, `vendor:`, `sku:` and `updated_at:` are **accepted and silently
+  ignored** — `price:>=1000000` returns the entire catalogue. Only `created_at:`, `tag:`,
+  `title:` and `product_type:` actually filter. Check a filter changes the result set, not just
+  that it doesn't error.
+- Filtering by `product_type` alone is not enough for small stores: Gameology's type is a
+  generic "Single Cards" that includes Pokémon, which drops its match rate to 45.7%. That is
+  why the collection is tried first.
+- `quantityAvailable` needs an inventory scope we don't have; `inventory_quantity` is set to 0
+  and `isInStock()` reads `availableForSale` instead.
 
 `stores.config.ts` is the single source of truth for store registration — see [Adding a new Shopify store scraper](#adding-a-new-shopify-store-scraper) below. `shopifyStores()` derives the active Shopify store list (currently 32) from `STORE_REGISTRY`; `seedStores()` (`apps/scraper/src/seed.ts`) and the web app's shipping fallback (`apps/web/src/lib/store-shipping.ts`) derive from the same file, so a store exists in exactly one place.
 
