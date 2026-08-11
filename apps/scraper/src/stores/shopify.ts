@@ -10,8 +10,11 @@
  *   - Plenty of Games (plentyofgames.com.au)
  *
  * Strategy:
- *   Paginate /collections/{handle}/products.json?limit=250&page=N until an
- *   empty products array is returned. Each Shopify product has:
+ *   Cursor-walk the Storefront GraphQL API — see shopify-graphql.ts for why
+ *   products.json can no longer be used. `scrapeAll()` picks the most precise
+ *   source a store's catalogue size allows, falling back only when Shopify's own
+ *   25,000-item pagination limit says it must. Each product arrives in the same
+ *   shape the REST endpoint returned:
  *     - title: The card name (may include set in parentheses or after a dash)
  *     - tags: Array of strings — may include set names, colours, etc.
  *     - options: Named option axes (Condition, Finish / Foil, etc.)
@@ -30,7 +33,25 @@
 import { type ScrapedCard, normaliseCondition, extractTreatment } from "@mtg-au/shared";
 import { BaseScraper } from "./base-scraper.js";
 import type { ShopifyStoreConfig } from "./stores.config.js";
-import type { ShopifyOption, ShopifyProduct, ShopifyVariant, ProductsResponse } from "./shopify-types.js";
+import type { ShopifyOption, ShopifyProduct, ShopifyVariant } from "./shopify-types.js";
+import {
+  COLLECTION_QUERY,
+  PRODUCTS_QUERY,
+  PRODUCT_TYPE_QUERY,
+  GRAPHQL_PAGE_SIZE,
+  GRAPHQL_VARIANT_LIMIT,
+  PAGINATION_LIMIT,
+  PaginationLimitError,
+  buildProductQuery,
+  dominantProductType,
+  parseCollectionPage,
+  parseProductsPage,
+  storefrontUrl,
+  type CollectionResponse,
+  type GraphQLProductsPage,
+  type ProductTypeResponse,
+  type StorefrontResponse,
+} from "./shopify-graphql.js";
 import { parseSkuData } from "./sku-parser.js";
 import { parseStandardTitle } from "./title-parsers/standard.js";
 import { parseAllInTitleFormat } from "./title-parsers/all-in-title.js";
@@ -38,8 +59,6 @@ import { logger } from "../lib/logger.js";
 
 export { parseProductTitle, isSkippedVariant } from "./title-parsers/standard.js";
 export { parseSkuData } from "./sku-parser.js";
-
-const PAGE_SIZE = 250;
 
 // Gameology encodes foil in tags: "Printing_Non-Foil" or "Printing_Foil".
 // Mega Games (and others) use plain "Foil" / "Non-Foil" tags.
@@ -271,81 +290,253 @@ export class ShopifyScraper extends BaseScraper {
     this.log = logger.child({ component: "shopify", store: config.id });
   }
 
+  // Running totals for one scrapeAll(), reset at the start of each run so a
+  // reused instance doesn't report the previous run's figures.
+  private totalProducts = 0;
+  private totalCards = 0;
+  private truncatedVariants = 0;
+  private requests = 0;
+  /** Creation date of the last product seen, for resuming past the limit. */
+  private lastCreatedAt: number | null = null;
   /**
-   * Fetch one page of the collection. Returns null when the request failed, as
-   * distinct from an empty page — the two are indistinguishable to a paginating
-   * caller but mean opposite things: "the catalogue ends here" vs "we have no
-   * idea what's here". Swallowing the failure into [] silently truncated stores
-   * mid-run, after runStore had already deleted their prices.
+   * Product ids already yielded this run.
+   *
+   * Each fallback tier re-walks products the previous tier already emitted
+   * before it discovered it had overflowed, and a store that changes underneath
+   * a multi-window walk can return one twice. A duplicate here becomes a
+   * duplicate row in store_prices, which has no unique constraint to catch it.
    */
-  private async fetchProductsPage(pageNum: number): Promise<ShopifyProduct[] | null> {
-    const url = `${this.config.baseUrl}/collections/${this.config.collectionHandle}/products.json?limit=${PAGE_SIZE}&page=${pageNum}`;
+  private readonly seen = new Set<number>();
+
+  /**
+   * Which productType identifies this store's singles.
+   *
+   * Discovered once per run from the store's existing collectionHandle rather
+   * than configured per store: the value differs across stores ("MTG Single",
+   * "Single Cards", "TCG Singles") and the collection already names exactly the
+   * products we want.
+   */
+  private async detectProductType(): Promise<string> {
+    const response = await this.postJson<ProductTypeResponse>(storefrontUrl(this.config.baseUrl), {
+      query: PRODUCT_TYPE_QUERY,
+      variables: { handle: this.config.collectionHandle, pageSize: GRAPHQL_PAGE_SIZE },
+    });
+    this.requests++;
+    return dominantProductType(response, this.config.collectionHandle);
+  }
+
+  /** Fetch one cursor page. Throws — see shopify-graphql.ts on why not null. */
+  private async fetchProducts(query: string, cursor: string | null): Promise<GraphQLProductsPage> {
+    const response = await this.postJson<StorefrontResponse>(storefrontUrl(this.config.baseUrl), {
+      query: PRODUCTS_QUERY,
+      variables: { query, cursor, pageSize: GRAPHQL_PAGE_SIZE, variantLimit: GRAPHQL_VARIANT_LIMIT },
+    });
+    this.requests++;
+    return parseProductsPage(response, query);
+  }
+
+  /**
+   * Scrape a store, preferring the most precise source that fits.
+   *
+   *   1. The collection itself — names exactly the products we want, and keeps
+   *      out-of-stock listings, so it is a like-for-like replacement for the old
+   *      REST path. Works until the collection passes 25,000 items.
+   *   2. The top-level query filtered by productType and in-stock — the only
+   *      thing that can read a larger catalogue, at the cost of approximating
+   *      "MTG single" by product type.
+   *   3. The same, partitioned by creation date, when even that exceeds 25,000.
+   *
+   * Each fallback is triggered by Shopify's own pagination-limit error rather
+   * than a configured threshold, so a store moves between tiers on its own as
+   * its catalogue grows.
+   */
+  async *scrapeAll(): AsyncGenerator<ScrapedCard> {
+    this.totalProducts = 0;
+    this.totalCards = 0;
+    this.truncatedVariants = 0;
+    this.requests = 0;
+    this.lastCreatedAt = null;
+    this.seen.clear();
+
     try {
-      const data = await this.fetchJson<ProductsResponse>(url);
-      return data.products ?? [];
-    } catch (err: unknown) {
-      this.log.warn({ page: pageNum, err: String(err) }, "Failed to fetch products page");
-      return null;
+      this.log.info({ api: "storefront-collection" }, "Starting Shopify scrape");
+      yield* this.walkCollection();
+      this.reportRunHealth("collection");
+      return;
+    } catch (err) {
+      if (!(err instanceof PaginationLimitError)) throw err;
+      this.log.info(
+        { limit: PAGINATION_LIMIT },
+        "Collection exceeds the pagination limit — falling back to the product-type query",
+      );
+    }
+
+    // The collection walk got through 25,000 products before it hit the wall.
+    // Those are real listings and are kept — they stay in `seen` so the wider
+    // query below doesn't re-yield them as duplicate rows. A large store
+    // therefore ends up with the union: that first slice, including its
+    // out-of-stock listings, plus every in-stock product found below.
+    const productType = await this.detectProductType();
+    this.log.info({ api: "storefront-products", product_type: productType }, "Scraping by product type");
+
+    yield* this.walkByCreationDate(productType);
+
+    this.reportRunHealth("product-type");
+  }
+
+  /**
+   * Walk the in-stock catalogue in creation-date order, resuming past the
+   * pagination limit.
+   *
+   * PRODUCTS_QUERY sorts by `created_at`, so when a window hits the 25,000-item
+   * ceiling the last product seen is a watermark: the next window asks for
+   * `created_at >= watermark` and carries on. That is one wasted request per
+   * window rather than the repeated full-window probing a bisecting search
+   * needs — and bisection searches badly here anyway, because catalogues cluster
+   * in recent dates, so a midpoint split spends many rounds on empty halves.
+   *
+   * `>=` rather than `>` so products sharing the watermark second are not
+   * skipped; `seen` absorbs the resulting overlap.
+   */
+  private async *walkByCreationDate(productType: string): AsyncGenerator<ScrapedCard> {
+    let since: number | null = null;
+    let window = 0;
+
+    while (true) {
+      window++;
+      this.lastCreatedAt = null;
+      try {
+        yield* this.walkQuery(buildProductQuery(productType, since));
+        return;
+      } catch (err) {
+        if (!(err instanceof PaginationLimitError)) throw err;
+
+        const watermark = this.lastCreatedAt;
+        // No watermark, or one that hasn't moved, means the next window would
+        // repeat this one forever. That implies >25,000 in-stock products share
+        // a single creation second, which no query can page through.
+        if (watermark === null || (since !== null && watermark <= since)) {
+          throw new Error(
+            `${this.config.id}: cannot page past the ${PAGINATION_LIMIT}-item limit — ` +
+              `creation-date watermark did not advance past ` +
+              `${since === null ? "the start" : new Date(since).toISOString()}`,
+          );
+        }
+
+        this.log.info(
+          { window, resume_from: new Date(watermark).toISOString() },
+          "Window hit the pagination limit — resuming from the last creation date",
+        );
+        since = watermark;
+      }
     }
   }
 
-  async *scrapeAll(): AsyncGenerator<ScrapedCard> {
-    this.log.info("Starting Shopify scrape");
-
-    let page = 1;
-    let totalProducts = 0;
-    let totalCards = 0;
+  /** Cursor-walk the configured collection, yielding cards as they arrive. */
+  private async *walkCollection(): AsyncGenerator<ScrapedCard> {
+    let cursor: string | null = null;
+    let page = 0;
 
     while (true) {
-      this.log.debug({ page }, "Fetching products page");
-      const products = await this.fetchProductsPage(page);
+      page++;
+      const response = await this.postJson<CollectionResponse>(storefrontUrl(this.config.baseUrl), {
+        query: COLLECTION_QUERY,
+        variables: {
+          handle: this.config.collectionHandle,
+          cursor,
+          pageSize: GRAPHQL_PAGE_SIZE,
+          variantLimit: GRAPHQL_VARIANT_LIMIT,
+        },
+      });
+      this.requests++;
+      const result = parseCollectionPage(response, this.config.collectionHandle);
 
-      // BaseScraper has already retried transient failures by this point, so a
-      // null here is a real outage. Fail the store loudly rather than reporting
-      // however much of the catalogue we happened to get before it broke.
-      if (products === null) {
+      yield* this.emit(result);
+
+      if (!result.hasNextPage) break;
+      if (result.cursor === null) {
         throw new Error(
-          `${this.config.id}: products page ${page} could not be fetched — aborting rather than reporting a partial catalogue`,
+          `${this.config.id}: collection reported more pages but returned no cursor at page ${page}`,
         );
       }
+      cursor = result.cursor;
+    }
+  }
 
-      if (products.length === 0) {
-        this.log.debug({ page }, "No products on page — done");
-        break;
-      }
+  /** Cursor-paginate one query to exhaustion, yielding cards as they arrive. */
+  private async *walkQuery(query: string): AsyncGenerator<ScrapedCard> {
+    let cursor: string | null = null;
+    let page = 0;
 
-      totalProducts += products.length;
-
-      for (const product of products) {
-        const cards = mapProduct(product, this.config);
-        totalCards += cards.length;
-        for (const card of cards) {
-          yield card;
-        }
-      }
-
-      this.log.debug({ page, products: products.length, total_cards: totalCards }, "Page fetched");
-
-      if (products.length < PAGE_SIZE) {
-        // Last page — no need to fetch another
-        break;
-      }
-
+    while (true) {
       page++;
+      const result: GraphQLProductsPage = await this.fetchProducts(query, cursor);
+
+      yield* this.emit(result);
+
+      if (!result.hasNextPage) break;
+
+      // hasNextPage is true but there is no cursor to advance with: continuing
+      // would refetch page 1 forever. Bail loudly instead of looping.
+      if (result.cursor === null) {
+        throw new Error(
+          `${this.config.id}: Storefront API reported more pages but returned no cursor at page ${page} of "${query}"`,
+        );
+      }
+      cursor = result.cursor;
     }
 
-    if (totalProducts === 0) {
+    this.log.debug({ query, pages: page, total_products: this.totalProducts }, "Query walked");
+  }
+
+  /** Map one page to cards, skipping products already emitted this run. */
+  private *emit(result: GraphQLProductsPage): Generator<ScrapedCard> {
+    this.truncatedVariants += result.truncatedVariantProducts;
+    // Recorded even for products skipped as duplicates: the watermark tracks how
+    // far the sorted walk reached, not how much of it was new.
+    if (result.lastCreatedAt !== null) this.lastCreatedAt = result.lastCreatedAt;
+
+    for (const product of result.products) {
+      if (this.seen.has(product.id)) continue;
+      this.seen.add(product.id);
+      this.totalProducts++;
+
+      const cards = mapProduct(product, this.config);
+      this.totalCards += cards.length;
+      for (const card of cards) {
+        yield card;
+      }
+    }
+  }
+
+  private reportRunHealth(source: "collection" | "product-type"): void {
+    if (this.truncatedVariants > 0) {
+      this.log.warn(
+        { products: this.truncatedVariants, variant_limit: GRAPHQL_VARIANT_LIMIT },
+        "Some products have more variants than we request — raise GRAPHQL_VARIANT_LIMIT",
+      );
+    }
+
+    if (this.totalProducts === 0) {
       this.log.error(
-        { store: this.config.id, likely_cause: "endpoint_404_or_empty_collection" },
+        { store: this.config.id, likely_cause: "empty_collection_or_bad_product_type" },
         "Store returned zero products — check collection handle or store availability",
       );
-    } else if (totalCards === 0) {
+    } else if (this.totalCards === 0) {
       this.log.error(
-        { store: this.config.id, total_products: totalProducts, likely_cause: "handle_returns_wrong_product_type" },
+        { store: this.config.id, total_products: this.totalProducts, likely_cause: "handle_returns_wrong_product_type" },
         "Store returned products but zero cards were parsed — collection handle may point to wrong product type",
       );
     }
 
-    this.log.info({ total_products: totalProducts, total_cards: totalCards }, "Shopify scrape complete");
+    this.log.info(
+      {
+        total_products: this.totalProducts,
+        total_cards: this.totalCards,
+        requests: this.requests,
+        source,
+      },
+      "Shopify scrape complete",
+    );
   }
 }

@@ -57,6 +57,27 @@ export class RetryableHttpError extends Error {
 const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
 
 /**
+ * True for failures worth another go: a retryable status, or a request that
+ * timed out or had its connection dropped.
+ *
+ * AbortSignal.timeout() raises a TimeoutError DOMException, and undici reports
+ * a dropped connection as a TypeError whose cause carries the socket error —
+ * neither is an instance of any type we can import, so they are matched by
+ * name. A ChallengeDetectedError is deliberately excluded: that one means
+ * "switch to the browser", not "try again".
+ */
+export function isTransientFetchError(err: unknown): boolean {
+  if (err instanceof RetryableHttpError) return true;
+  if (err instanceof ChallengeDetectedError) return false;
+  if (err instanceof Error) {
+    if (err.name === "TimeoutError" || err.name === "AbortError") return true;
+    // undici wraps socket-level failures ("fetch failed") around a cause.
+    if (err.name === "TypeError" && /fetch failed/i.test(err.message)) return true;
+  }
+  return false;
+}
+
+/**
  * True when a response body is a Cloudflare interstitial.
  *
  * Deliberately narrow. An earlier version matched "Just a moment" anywhere in
@@ -161,7 +182,8 @@ export abstract class BaseScraper implements StoreScraper {
   }
 
   /**
-   * Retry `attempt` while it fails with a RetryableHttpError (429/502/503/504).
+   * Retry `attempt` while it fails transiently — a RetryableHttpError
+   * (429/502/503/504) or a request that timed out or dropped.
    *
    * These are transient origin failures, so the browser fallback is no help —
    * but they must not escape either. Callers up the stack (ShopifyScraper,
@@ -169,15 +191,24 @@ export abstract class BaseScraper implements StoreScraper {
    * paginating scraper cannot distinguish from the end of the catalogue: one
    * blip mid-pagination silently truncates a store whose prices have already
    * been deleted for the run. Retrying here is what keeps that rare.
+   *
+   * Timeouts count because a single walk can run to hundreds of requests, and a
+   * store that stalls one of them would otherwise fail the whole run — observed
+   * on Cardhouse, where one aborted request ended a scrape already 25,000
+   * products in.
    */
   private async withRetry<T>(url: string, attempt: () => Promise<T>): Promise<T> {
     for (let i = 0; ; i++) {
       try {
         return await attempt();
       } catch (err) {
-        if (!(err instanceof RetryableHttpError) || i >= HTTP_MAX_RETRIES) throw err;
+        if (!isTransientFetchError(err) || i >= HTTP_MAX_RETRIES) throw err;
         const backoff = HTTP_RETRY_BACKOFF_MS[i];
-        log.warn({ url, status: err.status, attempt: i + 1, backoff }, "Transient HTTP error — retrying");
+        const status = err instanceof RetryableHttpError ? err.status : undefined;
+        log.warn(
+          { url, status, err: status === undefined ? String(err) : undefined, attempt: i + 1, backoff },
+          "Transient fetch failure — retrying",
+        );
         await new Promise((r) => setTimeout(r, backoff));
       }
     }
@@ -228,21 +259,42 @@ export abstract class BaseScraper implements StoreScraper {
     return JSON.parse(text) as T;
   }
 
+  /**
+   * POST a JSON body and parse the JSON response.
+   *
+   * Deliberately has no browser fallback, unlike fetchJson(). This exists for
+   * GraphQL API endpoints, which are not the pages a bot challenge protects —
+   * and a Chromium page load cannot replay a POST body anyway. Transient
+   * statuses are still retried, so a blip mid-pagination doesn't read as the
+   * end of the catalogue.
+   */
+  protected async postJson<T>(url: string, body: unknown): Promise<T> {
+    await this.rateLimit();
+    const text = await this.withRetry(url, () =>
+      this.fetchTextPlain(url, "application/json", JSON.stringify(body)),
+    );
+    this.lastRequestAt = Date.now();
+    return JSON.parse(text) as T;
+  }
+
   // Plain fetch() with bot-challenge detection. Classifies on the body first,
   // then the status, so a Cloudflare interstitial is still recognised whatever
   // status it arrives with — while a bare 503 from an overloaded origin is
   // treated as retryable instead of as a block.
-  protected async fetchTextPlain(url: string, accept: string): Promise<string> {
+  protected async fetchTextPlain(url: string, accept: string, postBody?: string): Promise<string> {
     // Node's fetch() has no default timeout: a server that accepts the
     // connection and then never responds hangs the whole scrape forever.
     // Matches the 30s used on the Playwright paths.
     const response = await fetch(url, {
+      method: postBody === undefined ? "GET" : "POST",
+      body: postBody,
       headers: {
         "User-Agent": USER_AGENT,
         Accept: accept,
         // These pages are ~380KB of HTML that gzip to ~49KB. undici sets this
         // by default, but pinning it keeps the win if that ever changes.
         "Accept-Encoding": "gzip, deflate, br",
+        ...(postBody === undefined ? {} : { "Content-Type": "application/json" }),
       },
       signal: AbortSignal.timeout(PLAIN_FETCH_TIMEOUT_MS),
     });

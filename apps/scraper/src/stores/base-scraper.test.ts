@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { BaseScraper, ChallengeDetectedError, RetryableHttpError } from "./base-scraper.js";
+import { BaseScraper, ChallengeDetectedError, RetryableHttpError, isTransientFetchError } from "./base-scraper.js";
 import type { ScrapedCard } from "@mtg-au/shared";
 
 // A minimal concrete subclass so we can exercise the protected fetchJsonPlain()
@@ -112,5 +112,44 @@ describe("BaseScraper.fetchJsonPlain", () => {
     await expect(scraper.fetchTextPlainForTest("https://example.com/page")).rejects.toBeInstanceOf(
       ChallengeDetectedError,
     );
+  });
+});
+
+// ─── isTransientFetchError ────────────────────────────────────────────────────
+// A single Shopify walk can run to hundreds of requests, so a stalled request
+// must be retried rather than ending the store's whole run.
+
+describe("isTransientFetchError", () => {
+  it("retries a retryable HTTP status", () => {
+    expect(isTransientFetchError(new RetryableHttpError(503, "http://x"))).toBe(true);
+  });
+
+  it("retries a request aborted by AbortSignal.timeout()", () => {
+    const err = new Error("The operation was aborted due to timeout");
+    err.name = "TimeoutError";
+    expect(isTransientFetchError(err)).toBe(true);
+  });
+
+  it("retries an AbortError", () => {
+    const err = new Error("aborted");
+    err.name = "AbortError";
+    expect(isTransientFetchError(err)).toBe(true);
+  });
+
+  it("retries undici's dropped-connection TypeError", () => {
+    expect(isTransientFetchError(new TypeError("fetch failed"))).toBe(true);
+  });
+
+  // A challenge means "switch to the browser", not "try the same way again".
+  it("does not retry a bot challenge", () => {
+    expect(isTransientFetchError(new ChallengeDetectedError("cf"))).toBe(false);
+  });
+
+  it("does not retry an ordinary error", () => {
+    expect(isTransientFetchError(new Error("HTTP 404 fetching http://x"))).toBe(false);
+  });
+
+  it("does not retry a non-Error value", () => {
+    expect(isTransientFetchError("boom")).toBe(false);
   });
 });
