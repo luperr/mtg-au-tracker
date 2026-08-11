@@ -263,6 +263,19 @@ describe("buildProductQuery", () => {
   it("escapes a single quote in the product type", () => {
     expect(buildProductQuery("Collector's Single")).toContain("product_type:'Collector\\'s Single'");
   });
+
+  it("escapes backslashes", () => {
+    expect(buildProductQuery("MTG\\Single")).toContain("product_type:'MTG\\\\Single'");
+  });
+
+  // Without this, the trailing backslash escapes the closing quote.
+  it("escapes a trailing backslash so the literal still terminates", () => {
+    expect(buildProductQuery("MTG Single\\")).toContain("product_type:'MTG Single\\\\'");
+  });
+
+  it("escapes both characters of an embedded \\'", () => {
+    expect(buildProductQuery("a\\'b")).toContain("product_type:'a\\\\\\'b'");
+  });
 });
 
 // ─── Creation-date watermark ──────────────────────────────────────────────────

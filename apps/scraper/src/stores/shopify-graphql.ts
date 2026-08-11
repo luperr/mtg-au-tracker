@@ -273,11 +273,11 @@ function isPaginationLimitMessage(message: string): boolean {
  */
 
 /**
- * Shopify search syntax quotes with single quotes, so a value containing one
- * would terminate the literal early and silently change what we match.
+ * Quote a value for Shopify search syntax. Backslashes must be escaped before
+ * quotes, or a value ending in one escapes its own closing quote.
  */
 function quote(value: string): string {
-  return `'${value.replace(/'/g, "\\'")}'`;
+  return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
 }
 
 /**
