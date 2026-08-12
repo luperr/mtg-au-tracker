@@ -28,6 +28,7 @@ import {
   date,
   numeric,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 // Note: price_history is a PARTITIONED table (RANGE by recorded_at, monthly).
 // Drizzle does not model the partition structure — it sees the parent table only.
 // The id column was dropped as part of partitioning; natural key is
@@ -72,6 +73,9 @@ export const cards = pgTable(
   (table) => [
     index("cards_name_idx").on(table.name),                // fast name lookups
     uniqueIndex("cards_slug_idx").on(table.slug),          // slug lookups for SEO routes
+    // Trigram index for the leading-wildcard ILIKE in searchCards()/countCards();
+    // a btree can't serve '%bolt%'. Requires the pg_trgm extension (migration 0013).
+    index("cards_name_trgm_idx").using("gin", sql`${table.name} gin_trgm_ops`),
   ]
 );
 

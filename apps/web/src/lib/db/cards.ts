@@ -96,31 +96,42 @@ export const PAGE_SIZE = SEARCH_PAGE_SIZE;
 
 export async function searchCards(query: string, offset = 0): Promise<CardSearchResult[]> {
   if (!query.trim()) return [];
+  // Page the `cards` table on its own first, then look up printing count/art for
+  // just those rows. Joining `printings` before the LIMIT made every search seq-scan
+  // all ~148k printings, aggregate a ~113k-row join, and spill ~20MB to a disk sort
+  // before discarding all but 20 rows.
   return sql<CardSearchResult[]>`
+    WITH matched AS (
+      SELECT c.id, c.slug, c.name, c.type_line, c.colors, c.scrymarket_price, c.price_trend
+      FROM cards c
+      WHERE c.name ILIKE ${"%" + query + "%"}
+      ORDER BY c.name, c.id
+      LIMIT ${PAGE_SIZE} OFFSET ${offset}
+    )
     SELECT
-      c.id,
-      c.slug,
-      c.name,
-      c.type_line,
-      c.colors,
-      COUNT(DISTINCT p.id)::int AS printing_count,
+      m.id,
+      m.slug,
+      m.name,
+      m.type_line,
+      m.colors,
+      (
+        SELECT COUNT(*)::int
+        FROM printings p
+        WHERE p.card_id = m.id
+      ) AS printing_count,
       (
         SELECT p2.image_uri
         FROM printings p2
-        WHERE p2.card_id = c.id
+        WHERE p2.card_id = m.id
           AND p2.image_uri IS NOT NULL
           AND p2.is_foil = false
         ORDER BY p2.released_at DESC
         LIMIT 1
       ) AS image_uri,
-      c.scrymarket_price::text AS scrymarket_price,
-      c.price_trend AS trend
-    FROM cards c
-    LEFT JOIN printings p ON p.card_id = c.id
-    WHERE c.name ILIKE ${"%" + query + "%"}
-    GROUP BY c.id, c.name, c.type_line, c.colors, c.scrymarket_price, c.price_trend
-    ORDER BY c.name
-    LIMIT ${PAGE_SIZE} OFFSET ${offset}
+      m.scrymarket_price::text AS scrymarket_price,
+      m.price_trend AS trend
+    FROM matched m
+    ORDER BY m.name, m.id
   `;
 }
 
