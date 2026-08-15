@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { unstable_cache } from "next/cache";
 import type { Metadata } from "next";
 import {
   getSetMetadata,
@@ -10,7 +11,25 @@ import {
 } from "@/lib/db";
 import { SetDataStory } from "./SetDataStory";
 
-export const dynamic = "force-dynamic";
+// The page reads searchParams, so it renders dynamically regardless. What matters is
+// that the four aggregates below aren't recomputed for every visitor: the underlying
+// data only changes when the nightly market stats task runs, so one hour of caching
+// per set-code combination collapses a burst of traffic into a single set of queries.
+const SET_DATA_TTL_SECONDS = 3600;
+
+// unstable_cache folds the arguments into the cache key, so the subset selection is
+// already part of it — callers just need to pass the codes in a stable order.
+const getCachedSetData = unstable_cache(
+  async (setCode: string, allSetCodes: string[]) =>
+    Promise.all([
+      getSetPriceTimeline(allSetCodes),
+      getSetCardPerformance(allSetCodes),
+      getSetRarityBreakdown(allSetCodes),
+      getSetReprintCards(setCode),
+    ]),
+  ["set-page-data"],
+  { revalidate: SET_DATA_TTL_SECONDS },
+);
 
 export async function generateMetadata({
   params,
@@ -66,15 +85,10 @@ export default async function SetPage({
       ? subsetsParam.split(",").filter((c) => validChildCodes.has(c))
       : [];
   }
-  const allSetCodes = [setCode, ...activeSubsets];
+  const allSetCodes = [setCode, ...activeSubsets].sort();
 
   const [timeline, cardPerf, rarityBreakdown, reprintCards] =
-    await Promise.all([
-      getSetPriceTimeline(allSetCodes),
-      getSetCardPerformance(allSetCodes),
-      getSetRarityBreakdown(allSetCodes),
-      getSetReprintCards(setCode),
-    ]);
+    await getCachedSetData(setCode, allSetCodes);
 
   return (
     <SetDataStory

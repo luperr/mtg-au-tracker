@@ -99,6 +99,13 @@
       "when": 1786000000000,
       "tag": "0013_cards_name_trgm",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1786780000000,
+      "tag": "0014_set_card_daily",
+      "breakpoints": true
     }
   ]
 }

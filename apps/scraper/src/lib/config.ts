@@ -43,6 +43,20 @@ export const CRON_STORES = process.env.SCRAPE_CRON_STORES ?? "0 5 * * *";
 export const CRON_EBAY = process.env.SCRAPE_CRON_EBAY ?? "0 6 * * *";
 export const CRON_MARKET = process.env.SCRAPE_CRON_MARKET ?? "0 7 * * *"; // fallback after eBay import
 
+/**
+ * Market stats (scrymarket prices, movers, set_card_daily, set values) are PAUSED
+ * by default. Set MARKET_STATS_ENABLED=true to turn them back on.
+ *
+ * They read the whole of price_history, which on the production disks (ZFS mirror
+ * over USB, ~40 IOPS) means hours of saturated IO — one run was measured still
+ * going 5h42m in, stalling every other query on the box. Off until that job is
+ * reworked to run incrementally.
+ *
+ * The flag gates computeMarketStats() itself rather than the cron registration,
+ * because the eBay import calls it too. Running the script by hand still works.
+ */
+export const MARKET_STATS_ENABLED = process.env.MARKET_STATS_ENABLED === "true";
+
 // ── Batch processing ─────────────────────────────────────────────────────────
 
 /** Shared batch size for all DB bulk inserts (store prices, history, printings) */
