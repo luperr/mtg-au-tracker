@@ -82,8 +82,23 @@ Runs as a long-lived Docker service. Stores are scraped `STORE_CONCURRENCY` at a
 - **3 AM daily** → Scryfall bulk import (refreshes all card/printing data)
 - **5 AM daily** → Store scrapers (Shopify + MTG Mate)
 - **6 AM daily** → eBay AU price import
+- **7 AM daily** → Market stats — **currently paused**, see below
 
 Also runs an initial Scryfall import on startup if the DB is empty.
+
+**Market stats are paused.** `computeMarketStats()` returns immediately unless
+`MARKET_STATS_ENABLED=true`. Its first two passes read the whole of `price_history`
+and saturate the production disks for hours — one run was measured still going 5h42m
+in, with every other query on the box stalled behind it. While paused,
+`cards.scrymarket_price`, `cards.price_trend`, `market_movers`, `set_card_daily` and
+`sets.set_value_aud` all go stale. Re-enabling needs those passes reworked to be
+incremental first; `refreshSetCardDaily()` is already written that way, the others
+are not.
+
+The flag gates the function rather than the cron registration, because the eBay
+import calls it too (`ebay-import.ts`). Running the script by hand
+(`pnpm --filter @mtg-au/scraper exec tsx src/market/compute-market-stats.ts`) still
+executes regardless — that's a deliberate human decision to pay the IO cost.
 
 ### `apps/scraper/src/lib/schema.ts`
 Drizzle ORM schema — **source of truth for DB structure**.
@@ -94,7 +109,7 @@ Tables:
 - **`stores`** — Australian retailers + eBay AU, including `flat_shipping_aud`. Seeded from `STORE_REGISTRY` (`apps/scraper/src/stores/stores.config.ts`).
 - **`store_prices`** — Current prices from stores/eBay. Overwritten each scrape run.
 - **`price_history`** — Daily snapshots. Append-only.
-- **`unmatched_cards`** — Scraped listings that couldn't be matched to a Scryfall printing.
+- **`unmatched_cards`** — Scraped listings that couldn't be matched to a Scryfall printing. **Current run only** — every writer clears its own rows before inserting (`run-all.ts` per store, `ebay-import.ts` for `ebay_au`). An unmatched listing names no printing, so nothing in the UI can reach it; it's only useful for debugging the run that produced it. The eBay path used to append without ever deleting, which is how the table reached 14.4M rows / 3.4GB.
 - **`ebay_search_log`** — Tracks when each card name was last searched on eBay + result count. Drives tiered eBay scheduler.
 - **`card_searches`** — Append-only log of user search queries. `card_id` FK populated from top search result. Powers demand-gap analytics (cards searched but not in stock anywhere).
 - **`set_card_daily`** — Pre-aggregated cheapest non-foil sell price per (set, card, day), built nightly from `price_history` by `computeMarketStats()`. Exists because `price_history` carries no `set_code`, so the set pages' aggregates had to scan all ~18GB of it per request. Foils and basic lands are filtered at build time. See [Set pages read pre-aggregated data](#set-pages-read-pre-aggregated-data).
@@ -309,6 +324,7 @@ See `.env.example` for all variables. Key ones:
 | `EBAY_RECENT_MONTHS` | How far back to search by card name | `3` |
 | `EBAY_HIGH_VALUE_USD` | USD threshold for card-name search pass | `50` |
 | `EBAY_DAILY_TARGET` | Max eBay searches per daily run | `4500` |
+| `MARKET_STATS_ENABLED` | Set to `true` to un-pause the nightly market stats job | unset (paused) |
 | `STORE_CONCURRENCY` | Stores scraped in parallel by `runAllStores()` | `3` |
 | `CC_CONCURRENCY` | CrystalCommerce categories in flight (do not exceed 3) | `3` |
 | `CC_FULL_SCAN_DAYS` | Days between full CrystalCommerce category rescans | `7` |

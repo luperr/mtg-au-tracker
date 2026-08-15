@@ -14,8 +14,13 @@
  *   3. updateSetValues() — unchanged logic, moved here from run-all.ts for
  *      cohesion. Updates sets.set_value_aud.
  *
- * All three store their results in Postgres so web API routes are trivial
+ * All of these store their results in Postgres so web API routes are trivial
  * SELECTs against pre-computed values. No runtime aggregation on the web side.
+ *
+ * CURRENTLY PAUSED — see MARKET_STATS_ENABLED in lib/config.ts. These passes read
+ * the whole of price_history and saturate the production disks for hours. Turning
+ * them back on needs the work to become incremental first; refreshSetCardDaily()
+ * below is already written that way, the two above it are not.
  */
 
 import { fileURLToPath } from "node:url";
@@ -23,6 +28,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../lib/db.js";
 import { logger } from "../lib/logger.js";
 import { updateSetValues } from "../stores/update-set-values.js";
+import { MARKET_STATS_ENABLED } from "../lib/config.js";
 import { TREND_UP_THRESHOLD, TREND_DOWN_THRESHOLD } from "@mtg-au/shared";
 
 const log = logger.child({ component: "compute-market-stats" });
@@ -339,7 +345,21 @@ async function refreshSetCardDaily(): Promise<void> {
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
-export async function computeMarketStats(): Promise<void> {
+/**
+ * @param force run even when MARKET_STATS_ENABLED is off. Reserved for the CLI entry
+ *   point below — a human running the script by hand has decided to pay the IO cost.
+ *   The two automatic callers (the market cron and the tail of the eBay import) leave
+ *   it unset so the flag actually pauses them.
+ */
+export async function computeMarketStats({ force = false } = {}): Promise<void> {
+  if (!MARKET_STATS_ENABLED && !force) {
+    log.warn(
+      "Market stats are paused (MARKET_STATS_ENABLED is not 'true') — skipping. " +
+      "scrymarket_price, market_movers, set_card_daily and sets.set_value_aud will go stale.",
+    );
+    return;
+  }
+
   await computeScrymarketPrices();
   await computeMarketMovers();
   await refreshSetCardDaily();
@@ -347,7 +367,7 @@ export async function computeMarketStats(): Promise<void> {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  computeMarketStats()
+  computeMarketStats({ force: true })
     .then(() => process.exit(0))
     .catch((err) => {
       log.error({ err }, "Market stats computation failed");
