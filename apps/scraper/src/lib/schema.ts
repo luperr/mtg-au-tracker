@@ -260,3 +260,35 @@ export const marketMovers = pgTable(
     uniqueIndex("market_movers_unique_idx").on(table.windowDays, table.direction, table.rank),
   ]
 );
+
+// ─── Set card daily ───────────────────────────────────────────────────────────
+// Pre-aggregated daily price per (set, card) — the cheapest non-foil sell price
+// seen that day across every printing of the card in that set.
+//
+// Why this exists: the set pages used to aggregate price_history live on every
+// request. price_history is ~18GB across seven monthly partitions and carries no
+// set_code, so filtering to one set meant scanning the lot — minutes per request
+// on spinning disks, and requests arrived faster than they drained. This table is
+// the same aggregate keyed by set_code, so a set page reads only its own rows.
+//
+// Basic lands and foils are excluded at build time to match the set-page queries.
+// Append-only in practice: filled one recorded_at at a time by the nightly market
+// stats task, which also backfills any dates it finds missing.
+
+export const setCardDaily = pgTable(
+  "set_card_daily",
+  {
+    setCode: text("set_code").notNull(),
+    cardId: text("card_id").notNull().references(() => cards.id),
+    recordedAt: date("recorded_at").notNull(),
+    minPrice: numeric("min_price").notNull(),
+  },
+  (table) => [
+    // Leading set_code + recorded_at serves the set-page lookups directly.
+    uniqueIndex("set_card_daily_unique_idx").on(
+      table.setCode,
+      table.recordedAt,
+      table.cardId,
+    ),
+  ]
+);

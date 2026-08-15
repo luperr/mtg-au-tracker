@@ -8,6 +8,10 @@ import {
 export const runtime = "nodejs";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
+// Crawler-facing and driven by data that only changes once a night, so there is no
+// reason to rebuild it per fetch. Every social/preview fetch used to re-run the set
+// aggregates; cache the rendered image for a day instead.
+export const revalidate = 86400;
 
 async function fetchSvgAsDataUrl(url: string): Promise<string | null> {
   try {
