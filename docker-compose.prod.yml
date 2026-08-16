@@ -3,6 +3,24 @@ services:
     image: postgres:16-alpine
     restart: always
     shm_size: 256mb
+    # Postgres ran on stock defaults until now: shared_buffers=128MB against a ~20GB
+    # database, on a ZFS mirror of USB-attached spinning disks (~40 IOPS). The cache
+    # hit rate was 40% — six of every ten block reads went to physical disk — while
+    # 5.9GB of the container's 7.6GB sat unused. Nothing here buys speed with CPU;
+    # every setting is here to keep pages in RAM and off that disk.
+    #
+    # Budget at 7.6GB total: 2GB shared_buffers + (3 autovacuum workers x 256MB
+    # maintenance_work_mem) + ~20 backends x 16MB work_mem ~= 3.1GB worst case.
+    #
+    # Deliberately NOT changed: random_page_cost (4 is honest for spinning disks) and
+    # effective_io_concurrency (1 is right for a single mirror) — lowering either
+    # would push the planner toward more random IO, which is the resource we lack.
+    command: >
+      postgres
+      -c shared_buffers=2GB
+      -c work_mem=16MB
+      -c maintenance_work_mem=256MB
+      -c max_wal_size=4GB
     logging:
       driver: json-file
       options:

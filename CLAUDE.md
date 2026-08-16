@@ -497,6 +497,22 @@ Consequences worth remembering:
 
 **Current setup**: Docker running inside an LXC on Proxmox.
 
+**Postgres is tuned for a disk that can't seek.** The database lives on `lpool` — a ZFS
+mirror of two USB-attached spinning drives (~40 IOPS), and moving it to the idle NVMe
+isn't possible on this hardware. Every Postgres setting in `docker-compose.prod.yml` is
+there to keep pages in RAM rather than to spend CPU. Until 2026-08-17 it ran on stock
+defaults: `shared_buffers=128MB` against a ~20GB database, a **40% cache hit rate**
+(healthy is 95–99%), and 5.9GB of the container's 7.6GB unused.
+
+`random_page_cost` (4) and `effective_io_concurrency` (1) are deliberately left alone —
+both are honest values for a single spinning mirror, and lowering either pushes the
+planner toward more random IO, which is exactly the resource in short supply.
+
+**When a query is slow here, suspect physical reads before suspecting the plan.** The
+card detail page was taking 228s on a *correctly indexed* query — `printings_card_id_idx`
+existed and was being used. It was slow purely because tens of thousands of scattered
+blocks each cost a seek. Check `pg_statio_user_tables` cache hit rate before rewriting SQL.
+
 **Planned network architecture**:
 - `vmbr0` VLAN 10 (Management): Proxmox UI (8006), SSH — LAN only
 - `vmbr1` VLAN 20 (Services): Docker LXC — internet via Cloudflare tunnel only
