@@ -199,7 +199,7 @@ export const STORE_REGISTRY: StoreConfig[] = [
   },
   {
     id: "the_hall_of_heroes", name: "The Hall Of Heroes", baseUrl: "https://thehallofheroes.com.au", scraperEnabled: true, logoUrl: null,
-    flatShippingAud: 10.0, shopify: { collectionHandle: "mtg-singles-all-products" },
+    flatShippingAud: 10.0, shopify: { collectionHandle: "mtg-singles-instock" },
   },
   {
     // Disabled pending permission from the store: robots.txt disallows all
