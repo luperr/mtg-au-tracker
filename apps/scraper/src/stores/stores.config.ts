@@ -198,6 +198,10 @@ export const STORE_REGISTRY: StoreConfig[] = [
     flatShippingAud: 7.0, shopify: { collectionHandle: "mtg-singles" },
   },
   {
+    id: "the_hall_of_heroes", name: "The Hall Of Heroes", baseUrl: "https://thehallofheroes.com.au", scraperEnabled: true, logoUrl: null,
+    flatShippingAud: 10.0, shopify: { collectionHandle: "mtg-singles-instock" },
+  },
+  {
     // Disabled pending permission from the store: robots.txt disallows all
     // non-Googlebot crawlers, and a sweep is ~3,500 requests that visibly
     // degrades their server (see the CrystalCommerce section in CLAUDE.md).
