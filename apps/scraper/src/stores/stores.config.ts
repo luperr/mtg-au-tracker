@@ -203,7 +203,7 @@ export const STORE_REGISTRY: StoreConfig[] = [
   },
   {
     id: "cherry_collectables", name: "Cherry Collectables", baseUrl: "https://www.cherrycollectables.com.au/", scraperEnabled: true, logoUrl: null,
-    flatShippingAud: 9.0, shopify: { collectionHandle: "magic-the-gathering-singles", titleFormat: "all-in-title" },
+    flatShippingAud: 9.0, shopify: { collectionHandle: "magic-the-gathering-singles"},
   },
   {
     // Disabled pending permission from the store: robots.txt disallows all
