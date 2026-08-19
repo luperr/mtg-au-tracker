@@ -202,6 +202,10 @@ export const STORE_REGISTRY: StoreConfig[] = [
     flatShippingAud: 10.0, shopify: { collectionHandle: "mtg-singles-instock" },
   },
   {
+    id: "cherry_collectables", name: "Cherry Collectables", baseUrl: "https://www.cherrycollectables.com.au/", scraperEnabled: true, logoUrl: null,
+    flatShippingAud: 9.0, shopify: { collectionHandle: "magic-the-gathering-singles" },
+  },
+  {
     // Disabled pending permission from the store: robots.txt disallows all
     // non-Googlebot crawlers, and a sweep is ~3,500 requests that visibly
     // degrades their server (see the CrystalCommerce section in CLAUDE.md).
