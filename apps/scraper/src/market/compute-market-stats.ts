@@ -14,8 +14,13 @@
  *   3. updateSetValues() — unchanged logic, moved here from run-all.ts for
  *      cohesion. Updates sets.set_value_aud.
  *
- * All three store their results in Postgres so web API routes are trivial
+ * All of these store their results in Postgres so web API routes are trivial
  * SELECTs against pre-computed values. No runtime aggregation on the web side.
+ *
+ * CURRENTLY PAUSED — see MARKET_STATS_ENABLED in lib/config.ts. These passes read
+ * the whole of price_history and saturate the production disks for hours. Turning
+ * them back on needs the work to become incremental first; refreshSetCardDaily()
+ * below is already written that way, the two above it are not.
  */
 
 import { fileURLToPath } from "node:url";
@@ -23,6 +28,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../lib/db.js";
 import { logger } from "../lib/logger.js";
 import { updateSetValues } from "../stores/update-set-values.js";
+import { MARKET_STATS_ENABLED } from "../lib/config.js";
 import { TREND_UP_THRESHOLD, TREND_DOWN_THRESHOLD } from "@mtg-au/shared";
 
 const log = logger.child({ component: "compute-market-stats" });
@@ -280,16 +286,88 @@ async function computeMarketMovers(): Promise<void> {
   log.info("Market movers updated (7d / 14d / 30d)");
 }
 
+// ─── Set card daily ───────────────────────────────────────────────────────────
+
+/**
+ * Fill set_card_daily for every price_history date it doesn't already cover.
+ *
+ * The set pages need "cheapest non-foil sell price per card per day, for one set".
+ * price_history has no set_code, so answering that live meant scanning all seven
+ * monthly partitions (~18GB) per request. Here we pay for it once per day instead.
+ *
+ * One date per statement, deliberately: each is pruned to a single partition and
+ * driven by price_history_recorded_at_idx, so a cold table backfills as a few
+ * hundred small queries rather than one multi-hour scan. The newest date already
+ * present is recomputed as well — the nightly run can land while a store scrape is
+ * still writing, so yesterday's row set may have grown since we last saw it.
+ */
+async function refreshSetCardDaily(): Promise<void> {
+  const pending = await db.execute(sql`
+    SELECT DISTINCT ph.recorded_at::text AS recorded_at
+    FROM price_history ph
+    WHERE ph.recorded_at >= COALESCE((SELECT MAX(recorded_at) FROM set_card_daily), '-infinity'::date)
+    ORDER BY 1
+  `);
+
+  const dates = (pending as unknown as Array<{ recorded_at: string }>)
+    .map((row) => row.recorded_at);
+  if (dates.length === 0) {
+    log.info("set_card_daily is already up to date");
+    return;
+  }
+
+  log.info({ dates: dates.length, from: dates[0], to: dates[dates.length - 1] },
+    "Refreshing set_card_daily");
+
+  for (const recordedAt of dates) {
+    await db.execute(sql`
+      INSERT INTO set_card_daily (set_code, card_id, recorded_at, min_price)
+      SELECT
+        p.set_code,
+        p.card_id,
+        ph.recorded_at,
+        MIN(ph.price_aud::numeric)
+      FROM price_history ph
+      JOIN printings p ON p.id = ph.printing_id
+      JOIN cards c ON c.id = p.card_id
+      WHERE ph.recorded_at = ${recordedAt}::date
+        AND ph.price_type = 'sell'
+        AND p.is_foil = false
+        AND c.type_line NOT ILIKE 'Basic Land%'
+      GROUP BY p.set_code, p.card_id, ph.recorded_at
+      ON CONFLICT (set_code, recorded_at, card_id)
+      DO UPDATE SET min_price = EXCLUDED.min_price
+    `);
+  }
+
+  log.info({ dates: dates.length }, "set_card_daily refreshed");
+}
+
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
-export async function computeMarketStats(): Promise<void> {
+/**
+ * @param force run even when MARKET_STATS_ENABLED is off. Reserved for the CLI entry
+ *   point below — a human running the script by hand has decided to pay the IO cost.
+ *   The two automatic callers (the market cron and the tail of the eBay import) leave
+ *   it unset so the flag actually pauses them.
+ */
+export async function computeMarketStats({ force = false } = {}): Promise<void> {
+  if (!MARKET_STATS_ENABLED && !force) {
+    log.warn(
+      "Market stats are paused (MARKET_STATS_ENABLED is not 'true') — skipping. " +
+      "scrymarket_price, market_movers, set_card_daily and sets.set_value_aud will go stale.",
+    );
+    return;
+  }
+
   await computeScrymarketPrices();
   await computeMarketMovers();
+  await refreshSetCardDaily();
   await updateSetValues();
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  computeMarketStats()
+  computeMarketStats({ force: true })
     .then(() => process.exit(0))
     .catch((err) => {
       log.error({ err }, "Market stats computation failed");

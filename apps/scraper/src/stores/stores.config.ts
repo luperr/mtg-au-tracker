@@ -30,6 +30,19 @@ export interface ShopifyStoreConfig {
   locationVariants?: true;
 }
 
+// The subset of fields CrystalCommerceScraper needs. Same split as
+// ShopifyStoreConfig: scraper code and tests can build one without the
+// registration-only fields.
+export interface CrystalCommerceStoreConfig {
+  id: string;              // matches stores.id in DB (e.g. "games_cube")
+  baseUrl: string;         // e.g. "https://www.thegamescube.com"
+  categoryPrefix: string;  // category slug prefix for MTG singles (e.g. "magic_singles")
+  // Safety stop on the per-category pagination loop. With the in-stock filter
+  // applied, real categories run 1-3 pages; a much higher number means the
+  // "next page" detection has broken and we're looping.
+  maxPagesPerCategory: number;
+}
+
 export interface StoreConfig {
   id: string;
   name: string;
@@ -41,6 +54,8 @@ export interface StoreConfig {
   flatShippingAud: number | null;
   // Present only for stores scraped via the generic Shopify scraper.
   shopify?: Omit<ShopifyStoreConfig, "id" | "baseUrl">;
+  // Present only for stores scraped via the generic CrystalCommerce scraper.
+  crystalCommerce?: Omit<CrystalCommerceStoreConfig, "id" | "baseUrl">;
 }
 
 export const STORE_REGISTRY: StoreConfig[] = [
@@ -178,6 +193,26 @@ export const STORE_REGISTRY: StoreConfig[] = [
     id: "shuffle_and_cut_games", name: "Shuffle and Cut Games", baseUrl: "https://shuffleandcutgames.com", scraperEnabled: true, logoUrl: null,
     flatShippingAud: 6.50, shopify: { collectionHandle: "mtg-singles" },
   },
+  {
+    id: "the_games_district", name: "The Games District", baseUrl: "https://thegamesdistrict.com", scraperEnabled: true, logoUrl: null,
+    flatShippingAud: 7.0, shopify: { collectionHandle: "mtg-singles" },
+  },
+  {
+    id: "the_hall_of_heroes", name: "The Hall Of Heroes", baseUrl: "https://thehallofheroes.com.au", scraperEnabled: true, logoUrl: null,
+    flatShippingAud: 10.0, shopify: { collectionHandle: "mtg-singles-instock" },
+  },
+  {
+    id: "cherry_collectables", name: "Cherry Collectables", baseUrl: "https://www.cherrycollectables.com.au/", scraperEnabled: true, logoUrl: null,
+    flatShippingAud: 9.0, shopify: { collectionHandle: "magic-the-gathering-singles"},
+  },
+  {
+    // Disabled pending permission from the store: robots.txt disallows all
+    // non-Googlebot crawlers, and a sweep is ~3,500 requests that visibly
+    // degrades their server (see the CrystalCommerce section in CLAUDE.md).
+    // The scraper itself works — flip this to true to bring it into the run.
+    id: "games_cube", name: "The Games Cube", baseUrl: "https://www.thegamescube.com", scraperEnabled: false, logoUrl: null,
+    flatShippingAud: 6.50, crystalCommerce: { categoryPrefix: "magic_singles", maxPagesPerCategory: 25 },
+  },
   { id: "mtg_singles_aus", name: "MTG Singles Australia", baseUrl: "https://www.mtgsinglesaustralia.com.au", scraperEnabled: false, logoUrl: null, flatShippingAud: null },
   { id: "ebay_au", name: "eBay AU", baseUrl: "https://www.ebay.com.au", scraperEnabled: true, logoUrl: null, flatShippingAud: null },
 ];
@@ -187,4 +222,12 @@ export function shopifyStores(): ShopifyStoreConfig[] {
   return STORE_REGISTRY.filter(
     (s): s is StoreConfig & { shopify: NonNullable<StoreConfig["shopify"]> } => s.shopify !== undefined
   ).map((s) => ({ id: s.id, baseUrl: s.baseUrl, ...s.shopify }));
+}
+
+/** Registry entries that are scraped via the generic CrystalCommerce scraper. */
+export function crystalCommerceStores(): CrystalCommerceStoreConfig[] {
+  return STORE_REGISTRY.filter(
+    (s): s is StoreConfig & { crystalCommerce: NonNullable<StoreConfig["crystalCommerce"]> } =>
+      s.crystalCommerce !== undefined
+  ).map((s) => ({ id: s.id, baseUrl: s.baseUrl, ...s.crystalCommerce }));
 }

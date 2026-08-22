@@ -76,12 +76,29 @@ AUD/USD conversion using a static rate from `AUD_USD_RATE` env var (defaults to 
 
 ## apps/scraper — The data collection service
 
-Runs as a long-lived Docker service. Three cron jobs (all `Australia/Sydney` timezone):
+Runs as a long-lived Docker service. Stores are scraped `STORE_CONCURRENCY` at a time
+(`runAllStores()`), so one slow store doesn't hold up the rest. Three cron jobs (all
+`Australia/Sydney` timezone):
 - **3 AM daily** → Scryfall bulk import (refreshes all card/printing data)
 - **5 AM daily** → Store scrapers (Shopify + MTG Mate)
 - **6 AM daily** → eBay AU price import
+- **7 AM daily** → Market stats — **currently paused**, see below
 
 Also runs an initial Scryfall import on startup if the DB is empty.
+
+**Market stats are paused.** `computeMarketStats()` returns immediately unless
+`MARKET_STATS_ENABLED=true`. Its first two passes read the whole of `price_history`
+and saturate the production disks for hours — one run was measured still going 5h42m
+in, with every other query on the box stalled behind it. While paused,
+`cards.scrymarket_price`, `cards.price_trend`, `market_movers`, `set_card_daily` and
+`sets.set_value_aud` all go stale. Re-enabling needs those passes reworked to be
+incremental first; `refreshSetCardDaily()` is already written that way, the others
+are not.
+
+The flag gates the function rather than the cron registration, because the eBay
+import calls it too (`ebay-import.ts`). Running the script by hand
+(`pnpm --filter @mtg-au/scraper exec tsx src/market/compute-market-stats.ts`) still
+executes regardless — that's a deliberate human decision to pay the IO cost.
 
 ### `apps/scraper/src/lib/schema.ts`
 Drizzle ORM schema — **source of truth for DB structure**.
@@ -92,14 +109,112 @@ Tables:
 - **`stores`** — Australian retailers + eBay AU, including `flat_shipping_aud`. Seeded from `STORE_REGISTRY` (`apps/scraper/src/stores/stores.config.ts`).
 - **`store_prices`** — Current prices from stores/eBay. Overwritten each scrape run.
 - **`price_history`** — Daily snapshots. Append-only.
-- **`unmatched_cards`** — Scraped listings that couldn't be matched to a Scryfall printing.
+- **`unmatched_cards`** — Scraped listings that couldn't be matched to a Scryfall printing. **Current run only** — every writer clears its own rows before inserting (`run-all.ts` per store, `ebay-import.ts` for `ebay_au`). An unmatched listing names no printing, so nothing in the UI can reach it; it's only useful for debugging the run that produced it. The eBay path used to append without ever deleting, which is how the table reached 14.4M rows / 3.4GB.
 - **`ebay_search_log`** — Tracks when each card name was last searched on eBay + result count. Drives tiered eBay scheduler.
 - **`card_searches`** — Append-only log of user search queries. `card_id` FK populated from top search result. Powers demand-gap analytics (cards searched but not in stock anywhere).
+- **`set_card_daily`** — Pre-aggregated cheapest non-foil sell price per (set, card, day), built nightly from `price_history` by `computeMarketStats()`. Exists because `price_history` carries no `set_code`, so the set pages' aggregates had to scan all ~18GB of it per request. Foils and basic lands are filtered at build time. See [Set pages read pre-aggregated data](#set-pages-read-pre-aggregated-data).
 
 ### `apps/scraper/src/stores/shopify.ts` + `stores.config.ts`
-Generic Shopify scraper — one class drives all Shopify-based stores via config. Shopify's `products.json` API is used directly (no HTML scraping). SKU-based matching significantly improves match rates. `goodgames.ts` was replaced by this.
+Generic Shopify scraper — one class drives all Shopify-based stores via config. Reads the
+**Storefront GraphQL API** (`/api/2025-01/graphql.json`), which every store exposes
+unauthenticated — no token or per-store credential. SKU-based matching significantly improves
+match rates. `goodgames.ts` was replaced by this.
+
+**`products.json` is gone and must not come back.** Shopify caps pagination of any array at
+25,000 objects and enforces it on the *offset*: `limit × page` may not exceed 25,000, so
+`limit=250&page=101` is HTTP 400 and no page size or parallelism reaches product 25,001. 13 of
+33 stores are over that line (the largest holds 151,141 products). Until commit `10ca01a` the
+400 was swallowed into "no more products" and those stores silently published a truncated
+catalogue — Cardhouse held 22,355 printings of a 133,202-product store.
+
+`scrapeAll()` picks the most precise source the catalogue size allows, each fallback triggered
+by Shopify's own pagination-limit error rather than a configured threshold:
+
+1. **The collection** — names exactly the products we want, keeps out-of-stock listings. Works
+   until the collection passes 25,000 items.
+2. **Top-level `products(query:)`**, filtered to `available_for_sale:true` + the store's
+   `productType` (auto-detected from the collection, since the value varies: "MTG Single",
+   "Single Cards", "TCG Singles").
+3. **Keyset windows by `created_at`** when even that overflows. The query sorts by creation
+   date, so the last product seen is the watermark the next window resumes from.
+
+A large store therefore ends up with the union of the partial collection walk and every in-stock
+product beyond it. Measured: Cardhouse 41,210 printings (was 22,355), Plenty of Games 50,223
+(was 23,681), The Games District 35,035 products where `products.json` failed outright.
+
+**Traps, all verified against live stores:**
+- `collection.products(filters:[{available:true}])` applies the filter only *within* the first
+  25,000 items — it returns a subset while looking like it succeeded (3,009 of 18,432 on The
+  Games District). Never use it; the unfiltered collection at least fails loudly.
+- Search fields `price:`, `vendor:`, `sku:` and `updated_at:` are **accepted and silently
+  ignored** — `price:>=1000000` returns the entire catalogue. Only `created_at:`, `tag:`,
+  `title:` and `product_type:` actually filter. Check a filter changes the result set, not just
+  that it doesn't error.
+- Filtering by `product_type` alone is not enough for small stores: Gameology's type is a
+  generic "Single Cards" that includes Pokémon, which drops its match rate to 45.7%. That is
+  why the collection is tried first.
+- `quantityAvailable` needs an inventory scope we don't have; `inventory_quantity` is set to 0
+  and `isInStock()` reads `availableForSale` instead.
 
 `stores.config.ts` is the single source of truth for store registration — see [Adding a new Shopify store scraper](#adding-a-new-shopify-store-scraper) below. `shopifyStores()` derives the active Shopify store list (currently 32) from `STORE_REGISTRY`; `seedStores()` (`apps/scraper/src/seed.ts`) and the web app's shipping fallback (`apps/web/src/lib/store-shipping.ts`) derive from the same file, so a store exists in exactly one place.
+
+### `apps/scraper/src/stores/crystalcommerce.ts`
+Generic CrystalCommerce scraper — one class drives all stores on the CrystalCommerce
+platform (Rails), config-driven the same way `shopify.ts` is. First store on it: The Games Cube.
+
+CrystalCommerce has no products API, so this is HTML scraping via Cheerio. Every MTG singles
+category is linked from the homepage nav mega-menu (~437 for The Games Cube), so category
+discovery is a single request. Each category is then paged through with
+`?filtered=1&filter_by_stock=in-stock` — out-of-stock listings have no price worth keeping and
+dropping them roughly halves the pages. `ProbeCache` (same pattern as MTG Mate) then means daily
+runs only revisit categories that had stock, with a full rescan every `CC_FULL_SCAN_DAYS`
+(default 7) to pick up restocks and new sets.
+Cache file: `SCRAPER_CACHE_DIR/crystalcommerce-{storeId}-categories.json`.
+
+**It's a big job, and there is no bulk shortcut.** 30 products/page is a hard cap (`per_page`
+and `limit` are ignored) and The Games Cube stocks ~93k listings, so a full sweep is ~3,500
+pages at ~2.3s of server TTFB each. Ruled out: `.json`/`.xml` on catalog routes → 415,
+`/products.json` and Google-feed paths → 404, `Accept: application/json` → 500, and
+`/products/multi_search` returns out-of-stock printings with no in-stock filter (3MB for 5 card
+names — heavier than browsing). Unlike MTG Mate there is no "one request per set" endpoint, so
+the only lever is parallelism via `CC_CONCURRENCY`.
+
+Measured full run at concurrency 3: **88 min**, 3,483 pages, 93,223 listings, 90.2% match rate,
+zero fetch failures. Like-for-like against the same checkpoint, that's **1.65x** faster than
+sequential — well short of 3x, because the store's per-request latency roughly doubles under
+parallel load (it is Passenger-worker-bound, not bandwidth-bound).
+
+**Runtime is not stable — expect 1.5–4h.** A second run the same night took **4h14m**: the first
+351 categories finished in 67 min at ~1.3s/page, then the last 44 took 187 min at ~33s/page. The
+store starts stalling connections under sustained scraping, and because those pages time out and
+then *succeed* on retry, nothing is logged as an error. Watch `secs_per_page` and `retries` in
+the progress log — that's what makes the degradation visible. If it's climbing, the store is
+telling us to back off: lower `CC_CONCURRENCY`, don't retry harder.
+
+**Don't raise `CC_CONCURRENCY` above 3 without re-measuring.** 4-wide benchmarked faster in
+isolation but returned a 503 — the store sheds load. Given latency scales with concurrency,
+expect diminishing returns rather than a linear win. If 503s appear at 3, drop to 2.
+
+Set name comes from the product's category, not the card. Finish/treatment come from `" - "`
+title suffixes drawn from a fixed vocabulary (`- Foil`, `- Foil - Borderless`, `- Extended Art`);
+only known suffixes are stripped, since real card names contain dashes too. Non-English variants
+are skipped, as are variant rows whose first field isn't a real condition (the aggregate
+"All variants" row). The platform drops connections under load, so pages retry 3× with
+2s/5s/10s backoff, on top of `BaseScraper`'s own retry of transient HTTP statuses.
+
+Category discovery keeps **leaf categories only**. The mega-menu also links its grouping levels
+(`magic_singles-standard` next to `magic_singles-standard-bloomburrow`), and an intermediate node
+lists every product under all its children — scraping one blows through `maxPagesPerCategory` and
+duplicates every leaf's listings. Any slug that is a strict `-`-boundary prefix of another is
+dropped. Hitting the page cap now logs a warning rather than truncating silently.
+
+Categories are streamed through a `CC_CONCURRENCY`-wide pool (`mapConcurrentStream`), not fixed
+chunks, so a 25-page category doesn't stall the 1-page ones beside it. The cache keeps categories
+that had stock **plus any whose pages exhausted their retries** — a failed category isn't known to
+be empty, and pruning it would drop a whole set from prices until the next full scan.
+
+Add a CrystalCommerce store with a `crystalCommerce: { categoryPrefix, maxPagesPerCategory }`
+block in `STORE_REGISTRY` — no scraper code changes.
 
 ### `apps/scraper/src/stores/mtgmate.ts`
 MTG Mate HTML scraper.
@@ -209,6 +324,10 @@ See `.env.example` for all variables. Key ones:
 | `EBAY_RECENT_MONTHS` | How far back to search by card name | `3` |
 | `EBAY_HIGH_VALUE_USD` | USD threshold for card-name search pass | `50` |
 | `EBAY_DAILY_TARGET` | Max eBay searches per daily run | `4500` |
+| `MARKET_STATS_ENABLED` | Set to `true` to un-pause the nightly market stats job | unset (paused) |
+| `STORE_CONCURRENCY` | Stores scraped in parallel by `runAllStores()` | `3` |
+| `CC_CONCURRENCY` | CrystalCommerce categories in flight (do not exceed 3) | `3` |
+| `CC_FULL_SCAN_DAYS` | Days between full CrystalCommerce category rescans | `7` |
 | `USER_AGENT` | HTTP User-Agent for scraping | `Scrymarket/1.0` |
 | `AUD_USD_RATE` | Static USD→AUD rate | `0.65` |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Token for `cloudflared` tunnel service | — |
@@ -255,6 +374,22 @@ Any AU MTG store running Shopify can be added with a config change only — no n
 
 To find the collection handle, browse to `/collections.json` on the store's domain and look for the MTG singles collection slug.
 
+## Adding a new CrystalCommerce store scraper
+
+Same deal for stores on CrystalCommerce (Rails — check for `crystalcommerce` in the page source,
+or a `_secure_frontend_session_id` cookie). Add one `STORE_REGISTRY` entry:
+
+```ts
+{
+  id: "store_id", name: "Store Name", baseUrl: "https://store.com.au", scraperEnabled: true, logoUrl: null,
+  flatShippingAud: 6.50,
+  crystalCommerce: { categoryPrefix: "magic_singles", maxPagesPerCategory: 25 },
+}
+```
+
+`categoryPrefix` is the category-slug prefix for MTG singles — find it by looking at any singles
+product URL (`/catalog/magic_singles-standard-bloomburrow/card_name/693640` → `magic_singles`).
+
 ---
 
 ## What's been built
@@ -266,6 +401,7 @@ To find the collection handle, browse to `/collections.json` on the store's doma
 - [x] Card matcher with exact / name-only / fuzzy / collector-number matching
 - [x] eBay AU import pipeline (OAuth → Browse API → title parser → DB)
 - [x] Generic Shopify scraper — 21 AU stores, config-driven
+- [x] Generic CrystalCommerce scraper — config-driven, The Games Cube
 - [x] MTG Mate HTML scraper
 - [x] Next.js web UI — search, card detail, price history charts
 - [x] Want List with per-store postage editing and Branch-and-Bound optimiser
@@ -350,11 +486,54 @@ The Want List optimiser solves an Uncapacitated Facility Location Problem: which
 **Why store `card_id` on `card_searches` from the top search result?**
 The demand-gap report needs to join user searches against store inventory. At search time, the top result is the most likely intended card. Null is used when no results are returned. This is a best-effort attribution — accurate enough for aggregate demand analytics.
 
+### Set pages read pre-aggregated data
+
+`/sets/[setCode]` used to aggregate `price_history` live on every request, and its
+`opengraph-image` route ran the same two queries again for every crawler fetch. Because
+`price_history` has no `set_code`, filtering to one set meant scanning all seven monthly
+partitions — ~18GB. The database lives on a ZFS mirror of USB-attached spinning disks
+(~40 IOPS; moving it to the NVMe isn't possible on this hardware), so each of those took
+minutes, and requests arrived faster than they drained: a dozen backends piling up on the
+same scan drove host-wide IO pressure to 96% and load to 25.
+
+So the aggregate is now computed once a night into `set_card_daily` and the set pages read
+that instead. Measured on the dev dataset (3.9M `price_history` rows — prod holds ~84M), the
+timeline query drops from **45,856 disk block reads to 85**. Results are identical; both
+rewritten queries were diffed against the originals across a multi-set selection.
+
+Consequences worth remembering:
+- **`price_history` is still the source of truth.** `set_card_daily` is a derived cache and
+  can be rebuilt by truncating it — `refreshSetCardDaily()` backfills every missing date.
+- **It backfills one `recorded_at` per statement, on purpose.** Each is pruned to a single
+  partition and driven by `price_history_recorded_at_idx`. A single whole-table statement
+  would be the multi-hour scan this change exists to avoid.
+- **The newest existing date is always recomputed**, since the nightly task can run while a
+  store scrape is still writing that day's rows.
+- **Anything new that needs per-set history should extend this table, not re-query
+  `price_history`.** `getSymbioticMovers()` is the remaining live-scan query; it is bounded
+  to a 30-day pre-release window and currently has no callers.
+
 ---
 
 ## Infrastructure — Proxmox
 
 **Current setup**: Docker running inside an LXC on Proxmox.
+
+**Postgres is tuned for a disk that can't seek.** The database lives on `lpool` — a ZFS
+mirror of two USB-attached spinning drives (~40 IOPS), and moving it to the idle NVMe
+isn't possible on this hardware. Every Postgres setting in `docker-compose.prod.yml` is
+there to keep pages in RAM rather than to spend CPU. Until 2026-08-17 it ran on stock
+defaults: `shared_buffers=128MB` against a ~20GB database, a **40% cache hit rate**
+(healthy is 95–99%), and 5.9GB of the container's 7.6GB unused.
+
+`random_page_cost` (4) and `effective_io_concurrency` (1) are deliberately left alone —
+both are honest values for a single spinning mirror, and lowering either pushes the
+planner toward more random IO, which is exactly the resource in short supply.
+
+**When a query is slow here, suspect physical reads before suspecting the plan.** The
+card detail page was taking 228s on a *correctly indexed* query — `printings_card_id_idx`
+existed and was being used. It was slow purely because tens of thousands of scattered
+blocks each cost a seek. Check `pg_statio_user_tables` cache hit rate before rewriting SQL.
 
 **Planned network architecture**:
 - `vmbr0` VLAN 10 (Management): Proxmox UI (8006), SSH — LAN only

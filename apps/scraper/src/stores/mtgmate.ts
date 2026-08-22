@@ -102,22 +102,26 @@ function mapEntry(entry: MtgMateCardEntry): ScrapedCard {
 }
 
 export class MtgMateScraper extends BaseScraper {
-  // Fetch card data for one set code. Returns entries (may be empty).
-  // Silently returns [] on 404 (set doesn't exist on MTG Mate).
-  // Logs a warning on unexpected errors.
-  private async fetchSetData(code: string): Promise<MtgMateCardEntry[]> {
+  // Fetch card data for one set code.
+  //
+  // Returns entries (possibly empty) when the set was successfully probed, and
+  // null when the probe failed. The distinction matters for the cache: an empty
+  // result is "MTG Mate doesn't stock this set", a failure is "we don't know",
+  // and only the former should evict the code for a week.
+  //
+  // A 404 counts as an empty result — most Scryfall set codes genuinely don't
+  // exist on MTG Mate, which is the whole reason the cache exists.
+  private async fetchSetData(code: string): Promise<MtgMateCardEntry[] | null> {
     const url = `${MTGMATE_BASE_URL}/magic_sets/${code}/data`;
     try {
       const data = await this.fetchJson<CardDataResponse>(url);
       if (!data.uuid_data) return [];
       return Object.values(data.uuid_data);
     } catch (err: unknown) {
-      // 404 = this set code doesn't exist on MTG Mate — expected for many codes
       const is404 = err instanceof Error && err.message.includes("HTTP 404");
-      if (!is404) {
-        log.warn({ url, err: String(err) }, "Failed to fetch set data");
-      }
-      return [];
+      if (is404) return [];
+      log.warn({ url, err: String(err) }, "Failed to fetch set data");
+      return null;
     }
   }
 
@@ -144,6 +148,7 @@ export class MtgMateScraper extends BaseScraper {
 
     let scraped = 0;
     let withData = 0;
+    let failed = 0;
     const validCodes: string[] = [];
 
     // Process set codes in parallel batches
@@ -155,6 +160,13 @@ export class MtgMateScraper extends BaseScraper {
       for (let j = 0; j < batch.length; j++) {
         const entries = results[j];
         scraped++;
+        // Probe failed — keep the code in the cache so a transient outage
+        // doesn't drop a whole set from prices until the next full scan.
+        if (entries === null) {
+          failed++;
+          validCodes.push(batch[j]);
+          continue;
+        }
         if (entries.length > 0) {
           withData++;
           validCodes.push(batch[j]);
@@ -171,6 +183,9 @@ export class MtgMateScraper extends BaseScraper {
       log.info({ valid_codes_cached: validCodes.length }, "MTG Mate set code cache updated");
     }
 
-    log.info({ sets_with_data: withData, sets_probed: codes.length, isFullScan }, "MTG Mate scrape complete");
+    log.info(
+      { sets_with_data: withData, sets_probed: codes.length, sets_failed: failed, isFullScan },
+      "MTG Mate scrape complete",
+    );
   }
 }

@@ -3,12 +3,16 @@
  *
  * For each store with scraperEnabled = true:
  *   1. Build the in-memory card matching index (once, shared across all stores)
- *   2. Delete existing store_prices and unmatched_cards for this store
- *   3. Run the store's scraper (async generator)
- *   4. Match each ScrapedCard to a Scryfall printing
- *   5. Bulk-insert matched prices into store_prices
- *   6. Upsert today's snapshot into price_history (insert, on conflict do nothing)
- *   7. Log unmatched cards to unmatched_cards for review
+ *   2. Open a transaction, and inside it:
+ *      a. Delete existing store_prices and unmatched_cards for this store
+ *      b. Run the store's scraper (async generator)
+ *      c. Match each ScrapedCard to a Scryfall printing
+ *      d. Bulk-insert matched prices into store_prices
+ *      e. Upsert today's snapshot into price_history (insert, on conflict do nothing)
+ *      f. Log unmatched cards to unmatched_cards for review
+ *
+ * Step 2 is one transaction so a store either replaces its data completely or
+ * keeps yesterday's — see runStore() for what went wrong when it wasn't.
  *
  * Run manually:
  *   docker compose run --rm dev pnpm --filter @mtg-au/scraper scrape:stores
@@ -17,12 +21,13 @@
 import { fileURLToPath } from "url";
 import { eq } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
-import { BATCH_SIZE } from "../lib/config.js";
-import { todayISO, matchRate } from "../lib/utils.js";
+import { BATCH_SIZE, STORE_CONCURRENCY } from "../lib/config.js";
+import { todayISO, matchRate, mapWithConcurrency } from "../lib/utils.js";
 import { CardMatcher } from "../matching/card-matcher.js";
 import { MtgMateScraper } from "./mtgmate.js";
 import { ShopifyScraper } from "./shopify.js";
-import { shopifyStores } from "./stores.config.js";
+import { CrystalCommerceScraper } from "./crystalcommerce.js";
+import { shopifyStores, crystalCommerceStores } from "./stores.config.js";
 import { seedStores } from "../seed.js";
 import type { BaseScraper } from "./base-scraper.js";
 import type { ScrapedCard } from "@mtg-au/shared";
@@ -31,12 +36,15 @@ import { logger } from "../lib/logger.js";
 const log = logger.child({ component: "run-all" });
 
 // ── Scraper registry ──────────────────────────────────────────────────────────
-// To add a new Shopify store, add an entry to stores.config.ts.
-// Non-Shopify scrapers are registered here manually.
+// To add a Shopify or CrystalCommerce store, add an entry to stores.config.ts.
+// Scrapers for bespoke platforms are registered here manually.
 export const SCRAPERS: Record<string, () => BaseScraper> = {
   mtg_mate: () => new MtgMateScraper(),
   ...Object.fromEntries(
     shopifyStores().map((config) => [config.id, () => new ShopifyScraper(config)])
+  ),
+  ...Object.fromEntries(
+    crystalCommerceStores().map((config) => [config.id, () => new CrystalCommerceScraper(config)])
   ),
 };
 
@@ -58,18 +66,9 @@ export async function runStore(
 
   log.info({ store: storeId }, "Starting store scrape");
 
-  // Clear stale data from previous runs
-  await db.delete(schema.storePrices).where(eq(schema.storePrices.storeId, storeId));
-  await db.delete(schema.unmatchedCards).where(eq(schema.unmatchedCards.storeId, storeId));
-  log.debug({ store: storeId }, "Cleared existing prices and unmatched cards");
-
   type PriceRow = typeof schema.storePrices.$inferInsert;
   type HistoryRow = typeof schema.priceHistory.$inferInsert;
   type UnmatchedRow = typeof schema.unmatchedCards.$inferInsert;
-
-  const priceBatch: PriceRow[] = [];
-  const historyBatch: HistoryRow[] = [];
-  const unmatchedBatch: UnmatchedRow[] = [];
 
   let matched = 0;
   let unmatched = 0;
@@ -77,48 +76,82 @@ export async function runStore(
   let totalConfidence = 0;
   const byMatchType: Record<string, number> = {};
 
-  async function flushPrices(): Promise<void> {
-    if (priceBatch.length === 0) return;
-    await db.insert(schema.storePrices).values(priceBatch);
-    priceBatch.length = 0;
-  }
+  /**
+   * The delete and every insert run in one transaction, so a store either
+   * replaces its prices completely or leaves yesterday's in place.
+   *
+   * Previously the delete was committed up front and rows were flushed
+   * incrementally, which meant any mid-run failure published a partial
+   * catalogue as if it were complete — a scraper that aborted at page 101 of
+   * 446 still left 34,000 rows behind, and the web app served them.
+   *
+   * Rows are still flushed in BATCH_SIZE chunks rather than accumulated and
+   * written at the end: buffering a whole store would hold ~100k rows per
+   * scraper in Node's heap, and with STORE_CONCURRENCY stores in flight that is
+   * enough to OOM the container. Postgres holds the uncommitted rows instead.
+   */
+  await db.transaction(async (tx) => {
+    // Clear stale data from previous runs. Rolled back with everything else if
+    // the scrape fails.
+    await tx.delete(schema.storePrices).where(eq(schema.storePrices.storeId, storeId));
+    await tx.delete(schema.unmatchedCards).where(eq(schema.unmatchedCards.storeId, storeId));
+    log.debug({ store: storeId }, "Cleared existing prices and unmatched cards");
 
-  async function flushHistory(): Promise<void> {
-    if (historyBatch.length === 0) return;
-    await db.insert(schema.priceHistory).values(historyBatch).onConflictDoNothing();
-    historyBatch.length = 0;
-  }
+    const priceBatch: PriceRow[] = [];
+    const historyBatch: HistoryRow[] = [];
+    const unmatchedBatch: UnmatchedRow[] = [];
 
-  for await (const card of scraper.scrapeAll()) {
-    total++;
-    const result = matcher.match(card);
-
-    byMatchType[result.matchType] = (byMatchType[result.matchType] ?? 0) + 1;
-
-    if (result.printingId) {
-      priceBatch.push(buildPriceRow(storeId, card, result.printingId));
-      historyBatch.push(buildHistoryRow(storeId, card, result.printingId, today));
-      totalConfidence += result.confidence;
-      matched++;
-    } else {
-      unmatchedBatch.push(buildUnmatchedRow(storeId, card));
-      unmatched++;
+    async function flushPrices(): Promise<void> {
+      if (priceBatch.length === 0) return;
+      await tx.insert(schema.storePrices).values(priceBatch);
+      priceBatch.length = 0;
     }
 
-    // Flush price and history batches together to keep them in sync
-    if (priceBatch.length >= BATCH_SIZE) {
-      await flushPrices();
-      await flushHistory();
+    async function flushHistory(): Promise<void> {
+      if (historyBatch.length === 0) return;
+      await tx.insert(schema.priceHistory).values(historyBatch).onConflictDoNothing();
+      historyBatch.length = 0;
     }
-  }
 
-  // Final flush
-  await flushPrices();
-  await flushHistory();
+    async function flushUnmatched(): Promise<void> {
+      if (unmatchedBatch.length === 0) return;
+      await tx.insert(schema.unmatchedCards).values(unmatchedBatch);
+      unmatchedBatch.length = 0;
+    }
 
-  if (unmatchedBatch.length > 0) {
-    await db.insert(schema.unmatchedCards).values(unmatchedBatch);
-  }
+    for await (const card of scraper.scrapeAll()) {
+      total++;
+      const result = matcher.match(card);
+
+      byMatchType[result.matchType] = (byMatchType[result.matchType] ?? 0) + 1;
+
+      if (result.printingId) {
+        priceBatch.push(buildPriceRow(storeId, card, result.printingId));
+        historyBatch.push(buildHistoryRow(storeId, card, result.printingId, today));
+        totalConfidence += result.confidence;
+        matched++;
+      } else {
+        unmatchedBatch.push(buildUnmatchedRow(storeId, card));
+        unmatched++;
+      }
+
+      // Flush price and history batches together to keep them in sync
+      if (priceBatch.length >= BATCH_SIZE) {
+        await flushPrices();
+        await flushHistory();
+      }
+      // Unmatched rows were previously held until the end of the run. A store
+      // that matches nothing would then buffer its entire catalogue.
+      if (unmatchedBatch.length >= BATCH_SIZE) {
+        await flushUnmatched();
+      }
+    }
+
+    // Final flush
+    await flushPrices();
+    await flushHistory();
+    await flushUnmatched();
+  });
 
   const rate = matchRate(matched, total);
   const issue: StoreHealth["issue"] =
@@ -207,28 +240,36 @@ export async function runAllStores(): Promise<void> {
     return;
   }
 
-  log.info({ stores: enabledStores.map((s) => s.id) }, "Starting store scrapes");
+  log.info(
+    { stores: enabledStores.map((s) => s.id), concurrency: STORE_CONCURRENCY },
+    "Starting store scrapes",
+  );
 
-  const health: StoreHealth[] = [];
-
-  for (const store of enabledStores) {
+  // Stores run concurrently so one slow store doesn't serialise the rest — the
+  // Games Cube alone takes ~1h against 33 stores that take minutes. Safe to
+  // share: `matcher` is read-only once built, each store writes only its own
+  // store_id rows, and BaseScraper's rate limiter is per-instance so every store
+  // keeps its own pacing against its own host.
+  //
+  // Errors are caught per store, never rethrown, so one failure can't abort the
+  // others via mapWithConcurrency's fail-fast.
+  const health = await mapWithConcurrency(enabledStores, STORE_CONCURRENCY, async (store) => {
     const factory = SCRAPERS[store.id];
     if (!factory) {
       log.warn({ store: store.id }, "No scraper registered for store — skipping");
-      health.push({ storeId: store.id, total: 0, matched: 0, issue: "error" });
-      continue;
+      return { storeId: store.id, total: 0, matched: 0, issue: "error" as const };
     }
 
     const scraper = factory();
     try {
-      health.push(await runStore(store.id, scraper, matcher));
+      return await runStore(store.id, scraper, matcher);
     } catch (err) {
       log.error({ err, store: store.id }, "Fatal error scraping store");
-      health.push({ storeId: store.id, total: 0, matched: 0, issue: "error" });
+      return { storeId: store.id, total: 0, matched: 0, issue: "error" as const };
     } finally {
       await scraper.close();
     }
-  }
+  });
 
   const unhealthy = health.filter((h) => h.issue !== "ok");
   log.info(

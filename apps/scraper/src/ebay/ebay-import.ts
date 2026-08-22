@@ -25,7 +25,7 @@
  */
 
 import { fileURLToPath } from "url";
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
 import { EBAY_STORE_ID, EBAY_DAILY_TARGET, BATCH_SIZE } from "../lib/config.js";
 import { todayISO, matchRate } from "../lib/utils.js";
@@ -243,6 +243,18 @@ export async function runEbayImport(): Promise<void> {
   log.info("Starting tiered eBay AU price import");
 
   const today = todayISO();
+
+  // Drop the previous run's unmatched listings before writing this run's.
+  //
+  // The store scrapers already do this per store (run-all.ts), but this path never
+  // did, so every eBay run appended and nothing was ever removed — the table reached
+  // 14.4M rows / 3.4GB, the third-largest object in the database, on disks that have
+  // no IO to spare. An unmatched listing is only useful for debugging the run that
+  // produced it: it names no printing, so nothing in the UI can reach it.
+  const cleared = await db
+    .delete(schema.unmatchedCards)
+    .where(eq(schema.unmatchedCards.storeId, EBAY_STORE_ID));
+  log.info({ store: EBAY_STORE_ID, cleared: cleared.count }, "Cleared previous unmatched listings");
 
   // Build card matcher index and set recognizer once
   log.info("Building card matcher index");

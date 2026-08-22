@@ -81,22 +81,25 @@ export async function getTopMovers(days: number): Promise<TopMover[]> {
   `;
 }
 
-/** Daily total set value (sum of cheapest non-foil price per unique card). Basic lands excluded. */
+/**
+ * Daily total set value (sum of cheapest non-foil price per unique card). Basic lands excluded.
+ *
+ * Reads set_card_daily, which the nightly market stats task pre-aggregates from
+ * price_history. Foils, buylist prices and basic lands are already filtered out
+ * there. The inner GROUP BY still collapses per card_id because a card can appear
+ * under more than one of the selected set codes (a main set and its extras subset
+ * share oracle ids) — taking MIN keeps it counted once, as it was before.
+ */
 export async function getSetPriceTimeline(setCodes: string[]): Promise<SetPriceTimelinePoint[]> {
   return sql<SetPriceTimelinePoint[]>`
     WITH daily_card_prices AS (
       SELECT
-        ph.recorded_at,
-        p.card_id,
-        MIN(ph.price_aud::numeric) AS min_price
-      FROM price_history ph
-      JOIN printings p ON p.id = ph.printing_id
-      JOIN cards c ON c.id = p.card_id
-      WHERE p.set_code = ANY(${setCodes})
-        AND ph.price_type = 'sell'
-        AND p.is_foil = false
-        AND c.type_line NOT ILIKE 'Basic Land%'
-      GROUP BY ph.recorded_at, p.card_id
+        scd.recorded_at,
+        scd.card_id,
+        MIN(scd.min_price) AS min_price
+      FROM set_card_daily scd
+      WHERE scd.set_code = ANY(${setCodes})
+      GROUP BY scd.recorded_at, scd.card_id
     )
     SELECT
       recorded_at::text AS date,
@@ -111,34 +114,27 @@ export async function getSetPriceTimeline(setCodes: string[]): Promise<SetPriceT
 /**
  * Per-card price performance: first recorded price vs current in-stock price.
  * Ordered by pct_change DESC (biggest gainers first). Basic lands excluded.
+ *
+ * The baseline half reads set_card_daily (see getSetPriceTimeline); the current-price
+ * half still reads store_prices, which is small and indexed by printing_id.
  */
 export async function getSetCardPerformance(setCodes: string[]): Promise<SetCardPerf[]> {
   return sql<SetCardPerf[]>`
-    WITH first_seen AS (
+    WITH daily_card_prices AS (
       SELECT
-        p.card_id,
-        MIN(ph.recorded_at) AS first_date
-      FROM price_history ph
-      JOIN printings p ON p.id = ph.printing_id
-      JOIN cards c ON c.id = p.card_id
-      WHERE p.set_code = ANY(${setCodes})
-        AND ph.price_type = 'sell'
-        AND p.is_foil = false
-        AND c.type_line NOT ILIKE 'Basic Land%'
-      GROUP BY p.card_id
+        scd.recorded_at,
+        scd.card_id,
+        MIN(scd.min_price) AS min_price
+      FROM set_card_daily scd
+      WHERE scd.set_code = ANY(${setCodes})
+      GROUP BY scd.recorded_at, scd.card_id
     ),
     first_price AS (
-      SELECT
-        fs.card_id,
-        MIN(ph.price_aud::numeric) AS price
-      FROM first_seen fs
-      JOIN printings p ON p.card_id = fs.card_id
-        AND p.set_code = ANY(${setCodes})
-        AND p.is_foil = false
-      JOIN price_history ph ON ph.printing_id = p.id
-        AND ph.recorded_at = fs.first_date
-        AND ph.price_type = 'sell'
-      GROUP BY fs.card_id
+      SELECT DISTINCT ON (card_id)
+        card_id,
+        min_price AS price
+      FROM daily_card_prices
+      ORDER BY card_id, recorded_at ASC
     ),
     current_price AS (
       SELECT
