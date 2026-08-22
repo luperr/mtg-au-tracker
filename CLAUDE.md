@@ -347,10 +347,15 @@ on every merge to `main` — the server never builds. Deploying is a pull:
 ./scripts/deploy.sh main-abc1234    # pin/rollback to a specific image tag
 ```
 
-`deploy.sh` runs `git pull` (refreshes compose + migration SQL) → `docker compose pull` →
-`db:migrate` (before restart) → `up -d`. `docker-compose.prod.yml` references images via
-`${IMAGE_REGISTRY:-ghcr.io/luperr}/scrymarket-{web,scraper}:${IMAGE_TAG:-latest}`; the
-`build:` blocks remain only as an emergency fallback. This is deliberately AWS-ready: the
+`deploy.sh` runs `git pull` (refreshes the compose file and the script itself — migrations
+are baked into the image, not read from the checkout) → `docker compose pull` → `db:migrate`
+(before restart) → `up -d`. The old web serves against the new schema during that window, so
+migrations must be backward-compatible with the running release.
+
+`docker-compose.prod.yml` references images via
+`${IMAGE_REGISTRY:-ghcr.io/luperr}/scrymarket-{web,scraper}:${IMAGE_TAG:-latest}`, with
+`pull_policy: always` so a failed pull fails the deploy instead of silently building on the
+server; the `build:` blocks remain only as an emergency fallback. This is deliberately AWS-ready: the
 image is the deploy artifact, migrations are a discrete command, and `IMAGE_REGISTRY` makes
 GHCR→ECR a config swap. Full runbook: `docs/prod-release.md`.
 
