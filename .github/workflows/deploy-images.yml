@@ -10,6 +10,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# One publish at a time per ref — two quick merges would otherwise race for :latest and
+# the slower build would win. Queue rather than cancel: every merged sha must get its own
+# main-<sha> image, or it stops being a rollback target.
+concurrency:
+  group: build-push-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-push:
     name: Build & push (${{ matrix.name }})
@@ -17,6 +24,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      actions: write            # required by cache-to: type=gha
     strategy:
       fail-fast: false
       matrix:
@@ -43,7 +51,7 @@ jobs:
         with:
           images: ${{ matrix.image }}
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=main-
           # main-<shortsha> is immutable — deploy.sh <tag> uses it to pin/rollback
 

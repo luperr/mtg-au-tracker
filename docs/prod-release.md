@@ -42,8 +42,10 @@ private, run once on the server:
 ./scripts/deploy.sh
 ```
 
-That's it — `deploy.sh` runs `git pull` (to refresh the compose file + migration SQL),
-`docker compose pull web scraper`, `db:migrate`, then `up -d` and prints `ps`. Then:
+That's it — `deploy.sh` runs `git pull` (which refreshes the compose file and the script
+itself; migrations are baked into the image, not read from the checkout),
+`docker compose pull web scraper`, `db:migrate`, then `up -d`, prunes dangling images and
+prints `ps`. Then:
 
 ```bash
 docker compose -f docker-compose.prod.yml logs web --tail=50
@@ -54,11 +56,16 @@ docker compose -f docker-compose.prod.yml logs scraper --tail=50
 
 ## Release with a DB migration
 
-`deploy.sh` **already runs `db:migrate` before `up -d`** on every deploy — the migration
-applies while the old web container keeps serving the old schema, then services restart.
-So a migration release is the same `./scripts/deploy.sh`. The migration SQL is baked into
-the pulled scraper image, so there is no "rebuild first" caveat anymore — the pulled image
-*is* the fixed image.
+`deploy.sh` **already runs `db:migrate` before `up -d`** on every deploy, so a migration
+release is the same `./scripts/deploy.sh`. The migration SQL is baked into the pulled scraper
+image, so there is no "rebuild first" caveat anymore — the pulled image *is* the fixed image.
+
+> **The old web keeps serving during the migration — against the *new* schema.** It is the
+> previous release's code, not the previous release's schema. Every migration must therefore
+> be backward-compatible with the release currently running: adding columns, tables and
+> indexes is safe; a `DROP COLUMN`, a rename or a `NOT NULL` backfill breaks production for
+> the migration + restart window. Split those into expand → deploy → contract across two
+> releases.
 
 For a migration you want to eyeball before restarting, run the steps by hand:
 
@@ -89,12 +96,17 @@ docker compose -f docker-compose.prod.yml ps
 ## Emergency: build on the server
 
 Building on the server is no longer the deploy path, but the `build:` blocks remain in
-`docker-compose.prod.yml` as a fallback (e.g. GHCR is down). To use it:
+`docker-compose.prod.yml` as a fallback (e.g. GHCR is down). The services carry
+`pull_policy: always`, so `up` must be told **not** to pull or it will just fail against the
+unreachable registry:
 
 ```bash
 docker compose -f docker-compose.prod.yml build web scraper
-docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d --pull never
 ```
+
+The locally built image is tagged with the same `${IMAGE_TAG:-latest}` ref, so the next
+ordinary `./scripts/deploy.sh` overwrites it with the real CI-built image.
 
 ---
 
@@ -135,6 +147,15 @@ Re-deploy the previous image tag — no rebuild, no revert commit needed. Find t
 `deploy.sh` still runs `db:migrate` on rollback; that's a no-op if the older image's
 migrations are already applied. Only revert the code in git if the bad change also needs
 backing out of `main`.
+
+Note that `deploy.sh` runs `git pull --ff-only` first, so a rollback pairs the **old image**
+with the **newest compose file**. That's usually fine, but if the bad release also changed
+`docker-compose.prod.yml`, check out the matching commit and skip the script:
+
+```bash
+git checkout <commit-of-good-release>
+IMAGE_TAG=main-abc1234 docker compose -f docker-compose.prod.yml up -d
+```
 
 ### Migration rollback
 
