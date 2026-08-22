@@ -31,6 +31,19 @@ export function positiveIntEnv(name: string, fallback: number): number {
   return parsed;
 }
 
+/**
+ * Read a string from the environment, treating blank as unset.
+ *
+ * `process.env.X ?? default` only falls back on undefined, so a variable that is
+ * declared-but-empty — which is exactly what Compose produces for
+ * `${USER_AGENT:-}` when .env doesn't set it — overrides the default with "".
+ * For USER_AGENT that means scraping with no User-Agent header at all.
+ */
+export function stringEnv(name: string, fallback: string): string {
+  const raw = process.env[name];
+  return raw === undefined || raw.trim() === "" ? fallback : raw;
+}
+
 // ── Database ─────────────────────────────────────────────────────────────────
 
 export const DATABASE_URL = process.env.DATABASE_URL;
@@ -38,10 +51,10 @@ export const DATABASE_URL = process.env.DATABASE_URL;
 // ── Scheduling ───────────────────────────────────────────────────────────────
 
 export const CRON_TIMEZONE = "Australia/Sydney";
-export const CRON_SCRYFALL = process.env.SCRAPE_CRON_SCRYFALL ?? "0 3 * * *";
-export const CRON_STORES = process.env.SCRAPE_CRON_STORES ?? "0 5 * * *";
-export const CRON_EBAY = process.env.SCRAPE_CRON_EBAY ?? "0 6 * * *";
-export const CRON_MARKET = process.env.SCRAPE_CRON_MARKET ?? "0 7 * * *"; // fallback after eBay import
+export const CRON_SCRYFALL = stringEnv("SCRAPE_CRON_SCRYFALL", "0 3 * * *");
+export const CRON_STORES = stringEnv("SCRAPE_CRON_STORES", "0 5 * * *");
+export const CRON_EBAY = stringEnv("SCRAPE_CRON_EBAY", "0 6 * * *");
+export const CRON_MARKET = stringEnv("SCRAPE_CRON_MARKET", "0 7 * * *"); // fallback after eBay import
 
 /**
  * Market stats (scrymarket prices, movers, set_card_daily, set values) are PAUSED
@@ -57,6 +70,20 @@ export const CRON_MARKET = process.env.SCRAPE_CRON_MARKET ?? "0 7 * * *"; // fal
  */
 export const MARKET_STATS_ENABLED = process.env.MARKET_STATS_ENABLED === "true";
 
+/**
+ * How long a day's row survives in set_card_daily.
+ *
+ * The table is a derived cache, and without this it grows forever: production adds
+ * roughly 29k rows a day (one per card per set that had a sell price), so a year is
+ * ~10.6M rows and five years is the beginning of a second price_history. Pruning the
+ * tail nightly bounds it at ~1GB.
+ *
+ * price_history remains the source of truth, so raising this and re-running the
+ * refresh backfills the extra days rather than losing them permanently. Anything
+ * dropped here disappears from the card price chart and the set-page timelines.
+ */
+export const SET_CARD_DAILY_RETENTION_DAYS = positiveIntEnv("SET_CARD_DAILY_RETENTION_DAYS", 365);
+
 // ── Batch processing ─────────────────────────────────────────────────────────
 
 /** Shared batch size for all DB bulk inserts (store prices, history, printings) */
@@ -64,9 +91,18 @@ export const BATCH_SIZE = 500;
 
 // ── Scryfall ─────────────────────────────────────────────────────────────────
 
-export const SCRYFALL_BULK_API_URL =
-  process.env.SCRYFALL_BULK_URL ?? "https://api.scryfall.com/bulk-data";
-export const SCRYFALL_OUTPUT_DIR = "/tmp/mtg-scraper";
+export const SCRYFALL_BULK_API_URL = stringEnv(
+  "SCRYFALL_BULK_URL",
+  "https://api.scryfall.com/bulk-data",
+);
+/**
+ * Where the Scryfall bulk file is downloaded to. Configurable because the default
+ * lands in /tmp, which is a tmpfs in the prod container — RAM, charged against the
+ * 2g cgroup. default_cards measured 624MB uncompressed (77MB gzipped) on
+ * 2026-08-22: it fits, but spends a third of the budget holding a file that is
+ * read once and discarded. Prod points this at the scraper_data volume instead.
+ */
+export const SCRYFALL_OUTPUT_DIR = stringEnv("SCRYFALL_OUTPUT_DIR", "/tmp/mtg-scraper");
 export const SCRYFALL_USER_AGENT = "Scrymarket/1.0 (learning project)";
 
 // ── eBay ─────────────────────────────────────────────────────────────────────
@@ -106,9 +142,10 @@ export const EBAY_TOKEN_URL = {
 
 // ── Browser / HTTP ───────────────────────────────────────────────────────────
 
-export const USER_AGENT =
-  process.env.USER_AGENT ??
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:120.0) Gecko/20100101 Firefox/120.0";
+export const USER_AGENT = stringEnv(
+  "USER_AGENT",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:120.0) Gecko/20100101 Firefox/120.0",
+);
 
 /**
  * Timeout for BaseScraper's plain fetch() paths. Node's fetch has no default
@@ -133,6 +170,9 @@ export const HTTP_RETRY_BACKOFF_MS = [2_000, 6_000];
 
 export const MTGMATE_BASE_URL = "https://www.mtgmate.com.au";
 export const MTGMATE_CONCURRENCY = 3;
+
+/** Days between full re-probes of every set code (vs. only those known to be valid). */
+export const MTGMATE_FULL_SCAN_DAYS = positiveIntEnv("MTGMATE_FULL_SCAN_DAYS", 7);
 
 // ── CrystalCommerce ──────────────────────────────────────────────────────────
 

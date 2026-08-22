@@ -6,8 +6,13 @@
  * After the first full run, only the hits need to be re-probed on subsequent runs.
  * A periodic full rescan detects newly added targets.
  *
+ * Backed by the `scraper_cache` table, one row per cache key. It used to be JSON files
+ * under apps/scraper/data; that made the scraper's local disk the only thing standing
+ * between it and being fully ephemeral, and a lost cache costs a full CrystalCommerce
+ * sweep (1.5-4h). Every scrape already requires the DB, so nothing new can fail here.
+ *
  * Usage:
- *   const cache = new ProbeCache({ filePath: "/data/foo-valid-keys.json", fullScanIntervalDays: 7 });
+ *   const cache = new ProbeCache({ key: "mtgmate-valid-sets", fullScanIntervalDays: 7 });
  *   await cache.load();
  *
  *   const isFullScan = cache.needsFullScan();
@@ -18,46 +23,51 @@
  *   if (isFullScan) await cache.save(hits);
  */
 
-import { readFile, writeFile, mkdir } from "fs/promises";
-import { dirname } from "path";
+import { eq } from "drizzle-orm";
+import { db, schema } from "./db.js";
 
 export interface ProbeCacheOptions {
-  /** Absolute or relative path to the JSON cache file. */
-  filePath: string;
+  /** Row key in `scraper_cache`, e.g. "crystalcommerce-games_cube-categories". */
+  key: string;
   /** How many days between full re-probes of all targets. Default: 7. */
   fullScanIntervalDays?: number;
 }
 
 interface ProbeCacheData {
-  lastFullScanAt: string; // ISO timestamp
+  lastFullScanAt: Date;
   validKeys: string[];
 }
 
 export class ProbeCache {
-  private readonly filePath: string;
+  private readonly key: string;
   private readonly fullScanIntervalMs: number;
   private data: ProbeCacheData | null = null;
 
   constructor(options: ProbeCacheOptions) {
-    this.filePath = options.filePath;
+    this.key = options.key;
     this.fullScanIntervalMs = (options.fullScanIntervalDays ?? 7) * 24 * 60 * 60 * 1000;
   }
 
   /**
-   * Load the cache from disk. Silent no-op if the file does not exist (first run).
+   * Load the cache row. Silent no-op when no row exists (first run).
    * Call this before needsFullScan() or getValidKeys().
    */
   async load(): Promise<void> {
     try {
-      const raw = await readFile(this.filePath, "utf-8");
-      this.data = JSON.parse(raw) as ProbeCacheData;
+      const rows = await db
+        .select({
+          lastFullScanAt: schema.scraperCache.lastFullScanAt,
+          validKeys: schema.scraperCache.validKeys,
+        })
+        .from(schema.scraperCache)
+        .where(eq(schema.scraperCache.key, this.key))
+        .limit(1);
+
+      this.data = rows[0] ?? null;
     } catch (err: unknown) {
-      // ENOENT = first run, treat as cache miss
-      const isNotFound = err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT";
-      if (!isNotFound) {
-        // Unexpected read/parse error — log and treat as cache miss so scrape still runs
-        process.stderr.write(`[probe-cache] Failed to read ${this.filePath}: ${String(err)}\n`);
-      }
+      // Treat any read failure as a cache miss so the scrape still runs — a full
+      // scan is slow but correct, whereas failing here would skip the store entirely.
+      process.stderr.write(`[probe-cache] Failed to read "${this.key}": ${String(err)}\n`);
       this.data = null;
     }
   }
@@ -81,15 +91,18 @@ export class ProbeCache {
   }
 
   /**
-   * Persist a new set of valid keys to disk, stamped with the current time.
+   * Persist a new set of valid keys, stamped with the current time.
    * Only call this after a full scan completes successfully.
    */
   async save(validKeys: string[]): Promise<void> {
-    const payload: ProbeCacheData = {
-      lastFullScanAt: new Date().toISOString(),
-      validKeys,
-    };
-    await mkdir(dirname(this.filePath), { recursive: true });
-    await writeFile(this.filePath, JSON.stringify(payload, null, 2));
+    const lastFullScanAt = new Date();
+    await db
+      .insert(schema.scraperCache)
+      .values({ key: this.key, lastFullScanAt, validKeys })
+      .onConflictDoUpdate({
+        target: schema.scraperCache.key,
+        set: { lastFullScanAt, validKeys },
+      });
+    this.data = { lastFullScanAt, validKeys };
   }
 }

@@ -28,7 +28,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../lib/db.js";
 import { logger } from "../lib/logger.js";
 import { updateSetValues } from "../stores/update-set-values.js";
-import { MARKET_STATS_ENABLED } from "../lib/config.js";
+import { MARKET_STATS_ENABLED, SET_CARD_DAILY_RETENTION_DAYS } from "../lib/config.js";
 import { TREND_UP_THRESHOLD, TREND_DOWN_THRESHOLD } from "@mtg-au/shared";
 
 const log = logger.child({ component: "compute-market-stats" });
@@ -301,24 +301,38 @@ async function computeMarketMovers(): Promise<void> {
  * present is recomputed as well — the nightly run can land while a store scrape is
  * still writing, so yesterday's row set may have grown since we last saw it.
  */
-async function refreshSetCardDaily(): Promise<void> {
+/**
+ * Exported and called independently of MARKET_STATS_ENABLED.
+ *
+ * Unlike computeScrymarketPrices() and computeMarketMovers(), this pass is
+ * incremental: one INSERT per recorded_at, each pruned to a single partition and
+ * driven by price_history_recorded_at_idx. It is not what saturated the disks, and
+ * both the set pages and the card price chart read the table it maintains — leaving
+ * it behind the pause flag is why set_card_daily sat empty in production.
+ */
+export async function refreshSetCardDaily(): Promise<void> {
   const pending = await db.execute(sql`
     SELECT DISTINCT ph.recorded_at::text AS recorded_at
     FROM price_history ph
     WHERE ph.recorded_at >= COALESCE((SELECT MAX(recorded_at) FROM set_card_daily), '-infinity'::date)
+      -- Also bounded by retention, so a first run against an empty table doesn't
+      -- spend hours inserting days the prune below would delete on the same pass.
+      AND ph.recorded_at >= CURRENT_DATE - ${SET_CARD_DAILY_RETENTION_DAYS}::int
     ORDER BY 1
   `);
 
   const dates = (pending as unknown as Array<{ recorded_at: string }>)
     .map((row) => row.recorded_at);
+
   if (dates.length === 0) {
     log.info("set_card_daily is already up to date");
-    return;
+  } else {
+    log.info({ dates: dates.length, from: dates[0], to: dates[dates.length - 1] },
+      "Refreshing set_card_daily");
   }
 
-  log.info({ dates: dates.length, from: dates[0], to: dates[dates.length - 1] },
-    "Refreshing set_card_daily");
-
+  // No early return when there is nothing to insert: the prune below still has to
+  // run, or a day with no new dates leaves the tail growing.
   for (const recordedAt of dates) {
     await db.execute(sql`
       INSERT INTO set_card_daily (set_code, card_id, recorded_at, min_price)
@@ -340,7 +354,18 @@ async function refreshSetCardDaily(): Promise<void> {
     `);
   }
 
-  log.info({ dates: dates.length }, "set_card_daily refreshed");
+  // Prune the tail. Without this the table grows by ~29k rows a day forever; it is a
+  // derived cache, and price_history still holds everything, so raising the retention
+  // and re-running backfills the days again rather than losing them.
+  const pruned = await db.execute(sql`
+    DELETE FROM set_card_daily
+    WHERE recorded_at < CURRENT_DATE - ${SET_CARD_DAILY_RETENTION_DAYS}::int
+  `);
+
+  log.info(
+    { dates: dates.length, retention_days: SET_CARD_DAILY_RETENTION_DAYS, pruned: pruned.count ?? 0 },
+    "set_card_daily refreshed",
+  );
 }
 
 // ─── Entry point ──────────────────────────────────────────────────────────────

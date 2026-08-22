@@ -55,6 +55,7 @@
     "scrape:gamescube": "tsx src/stores/run-store.ts games_cube",
     "compute:set-values": "tsx src/stores/compute-set-values.ts",
     "compute:market-stats": "tsx src/market/compute-market-stats.ts",
+    "refresh:set-card-daily": "tsx src/market/refresh-set-card-daily.ts",
 
     "test": "vitest run"
   },

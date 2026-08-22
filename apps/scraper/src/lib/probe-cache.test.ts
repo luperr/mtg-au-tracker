@@ -1,37 +1,84 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, readFile } from "fs/promises";
-import { join } from "path";
-import { tmpdir } from "os";
-import { ProbeCache } from "./probe-cache.js";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+
+// ─── DB stub ──────────────────────────────────────────────────────────────────
+//
+// ProbeCache is now backed by the `scraper_cache` table, so the tests stand in a
+// fake for the two Drizzle chains it uses. `eq` is stubbed to hand back the raw
+// value so the fake can key off it without interpreting real SQL objects.
+
+interface Row {
+  lastFullScanAt: Date;
+  validKeys: string[];
+}
+
+const rows = new Map<string, Row>();
+let failReads = false;
+
+vi.mock("drizzle-orm", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("drizzle-orm")>()),
+  eq: (_column: unknown, value: string) => ({ __eqValue: value }),
+}));
+
+vi.mock("./db.js", () => ({
+  schema: {
+    scraperCache: { key: "key", lastFullScanAt: "last_full_scan_at", validKeys: "valid_keys" },
+  },
+  db: {
+    select: () => ({
+      from: () => ({
+        where: (cond: { __eqValue: string }) => ({
+          limit: () => {
+            if (failReads) return Promise.reject(new Error("connection refused"));
+            const row = rows.get(cond.__eqValue);
+            return Promise.resolve(row ? [row] : []);
+          },
+        }),
+      }),
+    }),
+    insert: () => ({
+      values: (v: Row & { key: string }) => ({
+        onConflictDoUpdate: () => {
+          rows.set(v.key, { lastFullScanAt: v.lastFullScanAt, validKeys: v.validKeys });
+          return Promise.resolve();
+        },
+      }),
+    }),
+  },
+}));
+
+const { ProbeCache } = await import("./probe-cache.js");
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-let tmpDir: string;
-let cacheFile: string;
+const KEY = "test-cache";
 
-beforeEach(async () => {
-  tmpDir = await mkdtemp(join(tmpdir(), "probe-cache-test-"));
-  cacheFile = join(tmpDir, "test-cache.json");
+beforeEach(() => {
+  rows.clear();
+  failReads = false;
 });
 
-afterEach(async () => {
-  await rm(tmpDir, { recursive: true, force: true });
-});
+function makeCache(fullScanIntervalDays = 7, key = KEY) {
+  return new ProbeCache({ key, fullScanIntervalDays });
+}
 
-function makeCache(fullScanIntervalDays = 7): ProbeCache {
-  return new ProbeCache({ filePath: cacheFile, fullScanIntervalDays });
+function seed(key: string, daysAgo: number, validKeys: string[]): void {
+  rows.set(key, {
+    lastFullScanAt: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000),
+    validKeys,
+  });
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("ProbeCache", () => {
   describe("load()", () => {
-    it("silently handles missing file (first run)", async () => {
+    it("silently handles a missing row (first run)", async () => {
       const cache = makeCache();
       await expect(cache.load()).resolves.not.toThrow();
+      expect(cache.getValidKeys()).toEqual([]);
     });
 
-    it("reads valid cache file", async () => {
+    it("reads an existing row", async () => {
       const cache = makeCache();
       await cache.save(["a", "b", "c"]);
 
@@ -39,10 +86,29 @@ describe("ProbeCache", () => {
       await cache2.load();
       expect(cache2.getValidKeys()).toEqual(["a", "b", "c"]);
     });
+
+    it("treats a read failure as a cache miss rather than throwing", async () => {
+      seed(KEY, 1, ["a"]);
+      failReads = true;
+
+      const cache = makeCache();
+      await expect(cache.load()).resolves.not.toThrow();
+      // A full scan is slow but correct; failing here would skip the store entirely.
+      expect(cache.needsFullScan()).toBe(true);
+      expect(cache.getValidKeys()).toEqual([]);
+    });
+
+    it("only reads its own key", async () => {
+      seed("someone-elses-cache", 1, ["not", "mine"]);
+
+      const cache = makeCache();
+      await cache.load();
+      expect(cache.getValidKeys()).toEqual([]);
+    });
   });
 
   describe("needsFullScan()", () => {
-    it("returns true when no cache file exists", async () => {
+    it("returns true when no row exists", async () => {
       const cache = makeCache();
       await cache.load();
       expect(cache.needsFullScan()).toBe(true);
@@ -50,7 +116,7 @@ describe("ProbeCache", () => {
 
     it("returns false for a fresh cache (saved just now)", async () => {
       const cache = makeCache(7);
-      await cache.save(["x"]);
+      await cache.save(["a"]);
 
       const cache2 = makeCache(7);
       await cache2.load();
@@ -58,31 +124,17 @@ describe("ProbeCache", () => {
     });
 
     it("returns true when lastFullScanAt is older than the interval", async () => {
-      // Write a cache with a timestamp 8 days in the past
-      const stale = {
-        lastFullScanAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
-        validKeys: ["old"],
-      };
-      const cache = makeCache(7);
-      // Use save() indirectly — write the stale file manually
-      await import("fs/promises").then((fs) =>
-        fs.writeFile(cacheFile, JSON.stringify(stale))
-      );
+      seed(KEY, 8, ["old"]);
 
+      const cache = makeCache(7);
       await cache.load();
       expect(cache.needsFullScan()).toBe(true);
     });
 
-    it("returns false when cache is within the interval", async () => {
-      const recent = {
-        lastFullScanAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-        validKeys: ["recent"],
-      };
-      const cache = makeCache(7);
-      await import("fs/promises").then((fs) =>
-        fs.writeFile(cacheFile, JSON.stringify(recent))
-      );
+    it("returns false when the cache is within the interval", async () => {
+      seed(KEY, 3, ["recent"]);
 
+      const cache = makeCache(7);
       await cache.load();
       expect(cache.needsFullScan()).toBe(false);
     });
@@ -91,7 +143,7 @@ describe("ProbeCache", () => {
   describe("getValidKeys()", () => {
     it("returns [] when no cache is loaded", async () => {
       const cache = makeCache();
-      await cache.load(); // file missing
+      await cache.load();
       expect(cache.getValidKeys()).toEqual([]);
     });
 
@@ -106,7 +158,7 @@ describe("ProbeCache", () => {
   });
 
   describe("save()", () => {
-    it("round-trips validKeys through disk", async () => {
+    it("round-trips validKeys through the table", async () => {
       const keys = ["alpha", "beta", "gamma"];
       const cache = makeCache();
       await cache.save(keys);
@@ -116,37 +168,48 @@ describe("ProbeCache", () => {
       expect(cache2.getValidKeys()).toEqual(keys);
     });
 
-    it("writes valid JSON with lastFullScanAt and validKeys fields", async () => {
+    it("stamps lastFullScanAt with the current time", async () => {
+      const before = Date.now();
       const cache = makeCache();
       await cache.save(["x", "y"]);
 
-      const raw = JSON.parse(await readFile(cacheFile, "utf-8")) as {
-        lastFullScanAt: string;
-        validKeys: string[];
-      };
-      expect(raw.validKeys).toEqual(["x", "y"]);
-      expect(typeof raw.lastFullScanAt).toBe("string");
-      expect(new Date(raw.lastFullScanAt).getTime()).toBeGreaterThan(0);
+      const row = rows.get(KEY);
+      expect(row?.validKeys).toEqual(["x", "y"]);
+      expect(row?.lastFullScanAt.getTime()).toBeGreaterThanOrEqual(before);
     });
 
-    it("creates parent directories if they do not exist", async () => {
-      const nestedFile = join(tmpDir, "nested", "deep", "cache.json");
-      const cache = new ProbeCache({ filePath: nestedFile, fullScanIntervalDays: 7 });
-      await expect(cache.save(["a"])).resolves.not.toThrow();
-
-      const cache2 = new ProbeCache({ filePath: nestedFile, fullScanIntervalDays: 7 });
-      await cache2.load();
-      expect(cache2.getValidKeys()).toEqual(["a"]);
-    });
-
-    it("overwrites an existing cache file", async () => {
+    it("upserts over an existing row rather than adding a second one", async () => {
       const cache = makeCache();
       await cache.save(["old"]);
       await cache.save(["new1", "new2"]);
 
+      expect(rows.size).toBe(1);
       const cache2 = makeCache();
       await cache2.load();
       expect(cache2.getValidKeys()).toEqual(["new1", "new2"]);
+    });
+
+    it("keeps the in-memory state current, so no reload is needed", async () => {
+      const cache = makeCache(7);
+      await cache.load(); // miss — needsFullScan() is true
+      expect(cache.needsFullScan()).toBe(true);
+
+      await cache.save(["a"]);
+      expect(cache.needsFullScan()).toBe(false);
+      expect(cache.getValidKeys()).toEqual(["a"]);
+    });
+
+    it("keeps separate keys independent", async () => {
+      await makeCache(7, "cache-a").save(["a1"]);
+      await makeCache(7, "cache-b").save(["b1"]);
+
+      const a = makeCache(7, "cache-a");
+      await a.load();
+      const b = makeCache(7, "cache-b");
+      await b.load();
+
+      expect(a.getValidKeys()).toEqual(["a1"]);
+      expect(b.getValidKeys()).toEqual(["b1"]);
     });
   });
 });

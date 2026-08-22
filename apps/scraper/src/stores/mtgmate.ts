@@ -18,7 +18,7 @@
  *   After the first successful run, ProbeCache persists which set codes returned data.
  *   Daily runs probe only those ~100 codes instead of all ~697 (~2–4 min vs ~30 min).
  *   A full rescan runs every MTGMATE_FULL_SCAN_DAYS (default: 7) to pick up new sets.
- *   Cache file: SCRAPER_CACHE_DIR/mtgmate-valid-sets.json
+ *   Cache row: scraper_cache."mtgmate-valid-sets"
  *
  * Data notes:
  *   - price is in cents (integer): 800 = $8.00 AUD
@@ -28,21 +28,16 @@
  *   - quantity: 0 = out of stock
  */
 
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
 import { type ScrapedCard, normaliseCondition } from "@mtg-au/shared";
 import { BaseScraper } from "./base-scraper.js";
 import { logger } from "../lib/logger.js";
-import { MTGMATE_BASE_URL, MTGMATE_CONCURRENCY } from "../lib/config.js";
+import { MTGMATE_BASE_URL, MTGMATE_CONCURRENCY, MTGMATE_FULL_SCAN_DAYS } from "../lib/config.js";
 import { ProbeCache } from "../lib/probe-cache.js";
 
 const log = logger.child({ component: "mtgmate" });
 
 // Cache for known-good set codes. Avoids probing ~697 codes daily when only ~100 have data.
-const _dir = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_CACHE_DIR = join(_dir, "../../data");
-const CACHE_FILE = join(process.env.SCRAPER_CACHE_DIR ?? DEFAULT_CACHE_DIR, "mtgmate-valid-sets.json");
-const FULL_SCAN_DAYS = Number(process.env.MTGMATE_FULL_SCAN_DAYS ?? 7);
+const CACHE_KEY = "mtgmate-valid-sets";
 
 interface MtgMateCardEntry {
   uuid: string;
@@ -135,7 +130,7 @@ export class MtgMateScraper extends BaseScraper {
       return;
     }
 
-    const cache = new ProbeCache({ filePath: CACHE_FILE, fullScanIntervalDays: FULL_SCAN_DAYS });
+    const cache = new ProbeCache({ key: CACHE_KEY, fullScanIntervalDays: MTGMATE_FULL_SCAN_DAYS });
     await cache.load();
 
     const isFullScan = cache.needsFullScan();

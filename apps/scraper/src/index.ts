@@ -18,7 +18,7 @@ import { CRON_TIMEZONE, CRON_SCRYFALL, CRON_STORES, CRON_EBAY, CRON_MARKET } fro
 import { runScryfallImport } from "./scryfall/bulk-import.js";
 import { runAllStores } from "./stores/run-all.js";
 import { runEbayImport } from "./ebay/ebay-import.js";
-import { computeMarketStats } from "./market/compute-market-stats.js";
+import { computeMarketStats, refreshSetCardDaily } from "./market/compute-market-stats.js";
 import { logger } from "./lib/logger.js";
 
 const log = logger.child({ component: "scheduler" });
@@ -68,6 +68,17 @@ async function main(): Promise<void> {
   }, cronOptions);
 
   cron.schedule(CRON_MARKET, async () => {
+    // set_card_daily first, and deliberately outside the MARKET_STATS_ENABLED gate:
+    // it is the one incremental pass, and both the set pages and the card price chart
+    // read it. computeMarketStats() below still self-gates, so the two expensive
+    // whole-table passes stay paused.
+    log.info("Market cron — refreshing set_card_daily");
+    try {
+      await refreshSetCardDaily();
+    } catch (err) {
+      log.error({ err }, "set_card_daily refresh failed");
+    }
+
     log.info("Market cron — computing market stats");
     try {
       await computeMarketStats();

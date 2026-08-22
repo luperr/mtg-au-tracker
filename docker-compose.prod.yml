@@ -57,7 +57,10 @@ services:
         max-size: "20m"
         max-file: "5"
     tmpfs:
-      - /tmp
+      # Sized deliberately: the Scryfall bulk file lands here (624MB uncompressed,
+      # measured 2026-08-22) and tmpfs pages count against mem_limit. Unbounded, a
+      # growing upstream file would quietly eat the heap's budget instead of failing.
+      - /tmp:size=1g
     restart: always
     security_opt:
       - no-new-privileges:true
@@ -69,14 +72,27 @@ services:
       EBAY_ENV: ${EBAY_ENV:-production}
       EBAY_PAGES_PER_SET: ${EBAY_PAGES_PER_SET:-5}
       EBAY_PAGES_PER_CARD: ${EBAY_PAGES_PER_CARD:-1}
-      EBAY_RECENT_MONTHS: ${EBAY_RECENT_MONTHS:-12}
-      EBAY_HIGH_VALUE_USD: ${EBAY_HIGH_VALUE_USD:-10}
+      SCRAPE_CRON_SCRYFALL: ${SCRAPE_CRON_SCRYFALL:-0 3 * * *}
+      SCRAPE_CRON_STORES: ${SCRAPE_CRON_STORES:-0 5 * * *}
+      SCRAPE_CRON_EBAY: ${SCRAPE_CRON_EBAY:-0 6 * * *}
+      SCRAPE_CRON_MARKET: ${SCRAPE_CRON_MARKET:-0 7 * * *}
+      MARKET_STATS_ENABLED: ${MARKET_STATS_ENABLED:-}
+      EBAY_DAILY_TARGET: ${EBAY_DAILY_TARGET:-4500}
+      STORE_CONCURRENCY: ${STORE_CONCURRENCY:-3}
+      CC_CONCURRENCY: ${CC_CONCURRENCY:-3}
+      CC_FULL_SCAN_DAYS: ${CC_FULL_SCAN_DAYS:-7}
+      MTGMATE_FULL_SCAN_DAYS: ${MTGMATE_FULL_SCAN_DAYS:-7}
+      SET_CARD_DAILY_RETENTION_DAYS: ${SET_CARD_DAILY_RETENTION_DAYS:-365}
+      SCRYFALL_BULK_URL: ${SCRYFALL_BULK_URL:-https://api.scryfall.com/bulk-data}
+      USER_AGENT: ${USER_AGENT:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      NODE_OPTIONS: --max-old-space-size=4096
+      # Heap budget, not a wish. The 2g cgroup has to cover the Scryfall file sitting
+      # in the /tmp tmpfs (624MB) plus Chromium when a store hits a bot challenge, so
+      # the heap gets ~1GB of it. At the previous 4096, Node saw no reason to GC
+      # before 4GB and the kernel OOM-killed it first.
+      NODE_OPTIONS: --max-old-space-size=1024
     mem_limit: 2g
     memswap_limit: 2g
-    volumes:
-      - scraper_data:/app/apps/scraper/data   # persists downloaded Scryfall JSON between runs
     depends_on:
       db:
         condition: service_healthy
@@ -145,4 +161,7 @@ networks:
 
 volumes:
   pgdata:
-  scraper_data:
+  # scraper_data is gone: it held the probe-cache JSON (now the scraper_cache table)
+  # and, before that, the Scryfall download. The volume still exists on the prod host
+  # with a stale 528MB default_cards.json from March — reclaim with
+  # `docker volume rm mtg-au-tracker_scraper_data` once this is deployed.

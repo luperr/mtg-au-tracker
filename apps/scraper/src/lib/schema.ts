@@ -8,6 +8,7 @@
  *   store_prices    — current prices scraped from each store (refreshed each run)
  *   price_history   — daily price snapshots (append-only)
  *   unmatched_cards — scraped listings that couldn't be matched to a printing
+ *   scraper_cache   — probe-cache state for MTG Mate / CrystalCommerce discovery
  *
  * NOTE: price_history must be converted to a monthly partitioned table before
  * data starts accumulating. See memory/MEMORY.md for details.
@@ -290,5 +291,25 @@ export const setCardDaily = pgTable(
       table.recordedAt,
       table.cardId,
     ),
+    // The card price chart looks up by card, which the index above can't serve —
+    // its leading column is set_code. Without this the chart falls back to reading
+    // price_history directly, which cost 126,262 physical reads / 109s for a
+    // 100-printing card on the production disks.
+    index("set_card_daily_card_id_idx").on(table.cardId, table.recordedAt),
   ]
 );
+
+// Probe-cache state for scrapers that discover a large candidate key set and must
+// HTTP-probe each one (MTG Mate set codes, CrystalCommerce category slugs). One row
+// per cache key; valid_keys holds the hits from the last full scan.
+//
+// This lived in JSON files under apps/scraper/data until the scraper's local disk
+// became a liability: it was the only state keeping the container from being fully
+// ephemeral, and losing it forces a full CrystalCommerce category sweep — 1.5-4h.
+// The DB is already a hard dependency of every scrape, so it is the cheaper home.
+
+export const scraperCache = pgTable("scraper_cache", {
+  key: text("key").primaryKey(),
+  lastFullScanAt: timestamp("last_full_scan_at").notNull(),
+  validKeys: jsonb("valid_keys").$type<string[]>().notNull(),
+});
