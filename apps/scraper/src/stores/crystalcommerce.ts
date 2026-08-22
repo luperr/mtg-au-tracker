@@ -26,7 +26,7 @@
  *      Category cache: the same ProbeCache pattern MTG Mate uses. After a full
  *      scan, daily runs only revisit categories that had stock, and a full
  *      rescan every CC_FULL_SCAN_DAYS (default 7) picks up restocks and new
- *      sets. Cache file: SCRAPER_CACHE_DIR/crystalcommerce-{storeId}-categories.json
+ *      sets. Cache row: scraper_cache."crystalcommerce-{storeId}-categories"
  *   3. Parse each <li class="product">. The detail-layout .variants block
  *      carries every in-stock variant with its condition, language, price and
  *      quantity; the add-to-cart form's data-* attributes carry the set name.
@@ -43,8 +43,6 @@
  *     BaseScraper's 500ms pacing.
  */
 
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
 import * as cheerio from "cheerio";
 import { type ScrapedCard, normaliseCondition, isKnownCondition } from "@mtg-au/shared";
 import { BaseScraper } from "./base-scraper.js";
@@ -57,10 +55,7 @@ import type { CrystalCommerceStoreConfig } from "./stores.config.js";
 const log = logger.child({ component: "crystalcommerce" });
 
 // Cache of category IDs that actually had stock, so daily runs skip the empty ones.
-const _dir = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_CACHE_DIR = join(_dir, "../../data");
-const cacheFile = (storeId: string) =>
-  join(process.env.SCRAPER_CACHE_DIR ?? DEFAULT_CACHE_DIR, `crystalcommerce-${storeId}-categories.json`);
+const cacheKey = (storeId: string) => `crystalcommerce-${storeId}-categories`;
 
 // ── Title suffix vocabulary ───────────────────────────────────────────────────
 // Trailing " - X" segments are only stripped when X is one of these. Anything
@@ -386,7 +381,7 @@ export class CrystalCommerceScraper extends BaseScraper {
     // that an empty category here is transient (sold out), not a permanent 404 —
     // so the weekly full scan is what brings a restocked category back.
     const cache = new ProbeCache({
-      filePath: cacheFile(this.config.id),
+      key: cacheKey(this.config.id),
       fullScanIntervalDays: CC_FULL_SCAN_DAYS,
     });
     await cache.load();

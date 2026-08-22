@@ -71,6 +71,9 @@ Pure functions for name matching:
 
 ### `packages/shared/src/utils/currency.ts`
 AUD/USD conversion using a static rate from `AUD_USD_RATE` env var (defaults to 0.65).
+**Currently unused** — `getAudPerUsd()` is exported but has no callers, so setting the env var
+changes nothing. It is not in `.env.example` for that reason; add it back when the live-rate
+roadmap item lands.
 
 ---
 
@@ -111,6 +114,7 @@ Tables:
 - **`price_history`** — Daily snapshots. Append-only.
 - **`unmatched_cards`** — Scraped listings that couldn't be matched to a Scryfall printing. **Current run only** — every writer clears its own rows before inserting (`run-all.ts` per store, `ebay-import.ts` for `ebay_au`). An unmatched listing names no printing, so nothing in the UI can reach it; it's only useful for debugging the run that produced it. The eBay path used to append without ever deleting, which is how the table reached 14.4M rows / 3.4GB.
 - **`ebay_search_log`** — Tracks when each card name was last searched on eBay + result count. Drives tiered eBay scheduler.
+- **`scraper_cache`** — Probe-cache state for the discover-then-probe scrapers (MTG Mate set codes, CrystalCommerce category slugs). One row per cache key holding the hits from the last full scan. Lives here rather than in JSON files on the scraper's disk: it was the only local state the container had, and losing it forces a full CrystalCommerce sweep (1.5–4h).
 - **`card_searches`** — Append-only log of user search queries. `card_id` FK populated from top search result. Powers demand-gap analytics (cards searched but not in stock anywhere).
 - **`set_card_daily`** — Pre-aggregated cheapest non-foil sell price per (set, card, day), built nightly from `price_history` by `computeMarketStats()`. Exists because `price_history` carries no `set_code`, so the set pages' aggregates had to scan all ~18GB of it per request. Foils and basic lands are filtered at build time. See [Set pages read pre-aggregated data](#set-pages-read-pre-aggregated-data).
 
@@ -169,7 +173,7 @@ discovery is a single request. Each category is then paged through with
 dropping them roughly halves the pages. `ProbeCache` (same pattern as MTG Mate) then means daily
 runs only revisit categories that had stock, with a full rescan every `CC_FULL_SCAN_DAYS`
 (default 7) to pick up restocks and new sets.
-Cache file: `SCRAPER_CACHE_DIR/crystalcommerce-{storeId}-categories.json`.
+Cache row: `scraper_cache."crystalcommerce-{storeId}-categories"`.
 
 **It's a big job, and there is no bulk shortcut.** 30 products/page is a hard cap (`per_page`
 and `limit` are ignored) and The Games Cube stocks ~93k listings, so a full sweep is ~3,500
@@ -239,12 +243,16 @@ Full eBay AU import pipeline:
 - `transform.ts` — Parses messy eBay titles into `ScrapedCard` objects
 - `ebay-import.ts` — Orchestrates: search → parse → match → upsert. Quota-filling approach: always searches `EBAY_DAILY_TARGET` (default 4500) stalest cards per run.
 
-eBay import deletes all `store_prices` rows for `ebay_au` at start of each run, then repopulates. If interrupted, re-run to repopulate.
+eBay prices are replaced **per card, inside a transaction** — `atomicSwapCardPrices()` deletes
+that card's `ebay_au` rows and inserts the fresh ones in one statement pair, so readers never
+see a zero-price window. An interrupted run therefore leaves already-processed cards fresh and
+the rest merely stale; re-run to finish the remainder. (This used to be a delete-everything-then-
+repopulate run, which is where the "re-run to repopulate" advice came from.)
 
 **eBay API quota notes:**
 - ~5,000 calls/day on production app key. Resets midnight Pacific time.
 - `REQUEST_DELAY_MS = 500` in `browse-client.ts`. On 429, retries 3x with 5s/15s/30s backoff.
-- Current config: `EBAY_RECENT_MONTHS=3`, `EBAY_HIGH_VALUE_USD=50`
+- `EBAY_DAILY_TARGET` (default 4500) is the per-run search budget, deliberately under the cap.
 
 ---
 
@@ -321,15 +329,14 @@ See `.env.example` for all variables. Key ones:
 | `SCRAPE_CRON_SCRYFALL` | Cron for Scryfall import | `0 3 * * *` |
 | `SCRAPE_CRON_STORES` | Cron for store scrapers | `0 5 * * *` |
 | `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET` | eBay API credentials | — |
-| `EBAY_RECENT_MONTHS` | How far back to search by card name | `3` |
-| `EBAY_HIGH_VALUE_USD` | USD threshold for card-name search pass | `50` |
 | `EBAY_DAILY_TARGET` | Max eBay searches per daily run | `4500` |
 | `MARKET_STATS_ENABLED` | Set to `true` to un-pause the nightly market stats job | unset (paused) |
 | `STORE_CONCURRENCY` | Stores scraped in parallel by `runAllStores()` | `3` |
 | `CC_CONCURRENCY` | CrystalCommerce categories in flight (do not exceed 3) | `3` |
 | `CC_FULL_SCAN_DAYS` | Days between full CrystalCommerce category rescans | `7` |
 | `USER_AGENT` | HTTP User-Agent for scraping | `Scrymarket/1.0` |
-| `AUD_USD_RATE` | Static USD→AUD rate | `0.65` |
+| `SCRYFALL_OUTPUT_DIR` | Where the Scryfall bulk file downloads to | `/tmp/mtg-scraper` |
+| `MTGMATE_FULL_SCAN_DAYS` | Days between full MTG Mate set-code rescans | `7` |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Token for `cloudflared` tunnel service | — |
 
 ---
@@ -402,18 +409,19 @@ Phases are gated — nothing from Phase N+1 starts until Phase N exit criteria a
 - [x] Wire `pino` structured logging to scraper and web — structured JSON to stdout, Promtail ships to Loki with `service`, `component`, `level`, `store` labels
 - [x] Add DB indexes on FK columns (`printing_id`, `store_id`) on `store_prices` and `price_history`
 - [ ] Add UNIQUE constraints to `price_history` and `store_prices` — deferred; delete-then-insert pattern is sufficient guard for now
-- [x] Vitest unit tests — 160 tests across card-matcher (all 6 match levels), normalizeName, Scryfall transform, eBay title parser, Shopify parser. Co-located `.test.ts` files, `pnpm test` from repo root (2026-04-02)
+- [x] Vitest unit tests — 405 tests across card-matcher (all 6 match levels), normalizeName, Scryfall transform, eBay title parser, Shopify parser. Co-located `.test.ts` files, `pnpm test` from repo root (2026-04-02)
 - [ ] Pin `:latest` image tags in docker-compose — `promtail`, `cloudflared`, `cadvisor`
 
 ### Phase 2 — Observability & Data Quality
 *Visibility before growth.*
 
 - [x] Deploy Prometheus + Grafana + Pushgateway on monitoring LXC (`vmbr2`) — live on vmbr2, scrapes cAdvisor at `10.10.20.10:8080`
-- [x] `prom-client` gauges: `cards_scraped`, `match_rate`, `scrape_duration_seconds` — per-store match rate catches silent regressions
-- [ ] MTG Mate set code cache — save valid codes to `data/mtgmate-valid-sets.json`, weekly full rescan (~30 min → ~3 min)
+- [ ] `prom-client` gauges: `cards_scraped`, `match_rate`, `scrape_duration_seconds` — per-store match rate would catch silent regressions. **Not started** — there is no `prom-client` dependency in the repo; this was ticked in error.
+- [x] MTG Mate set code cache — valid codes live in `scraper_cache`, full rescan every `MTGMATE_FULL_SCAN_DAYS` (~30 min → ~3 min)
 - [ ] Live AUD/USD rate (RBA or Open Exchange Rates API) — replace static `AUD_USD_RATE` env var
-- [ ] eBay atomic swap — staging table → `TRUNCATE + INSERT` in transaction, eliminates zero-price window on interrupted runs
-- [ ] Scryfall import streaming — replace `readFile` + `JSON.parse` (peaks at ~2GB heap) with a streaming JSON parser (e.g. `node-json-stream-parser`) so the 300MB bulk file is processed incrementally; workaround is `NODE_OPTIONS=--max-old-space-size=4096` in scraper env
+- [x] eBay atomic swap — done differently and better than planned: `atomicSwapCardPrices()` does a per-card DELETE+INSERT inside `db.transaction()`, so there is no zero-price window and no staging table
+- [x] Scryfall import streaming — reads Scryfall's `jsonl_download_uri`, gunzips through `pipeline()` to disk, then parses one line at a time via `createInterface`. No whole-file parse
+- [ ] Scryfall import — batch the upserts. Parsing streams, but `importData()` still accumulates every card and printing in memory before writing, which is what actually sets the heap floor now
 - [ ] GitHub Actions CI — typecheck + `pnpm audit` + `pnpm test` on PR
 - [ ] Proxmox network hardening — move Docker LXC to vmbr1 (Services VLAN), SSH hardening + fail2ban, 2FA
 
@@ -452,8 +460,13 @@ Drizzle produces plain SQL, is fast, and keeps the schema in TypeScript with no 
 **Why async generators for scrapers?**
 `scrapeAll()` returns `AsyncGenerator<ScrapedCard>` so the orchestrator processes results incrementally rather than waiting for a full scrape to finish.
 
-**Why delete-then-insert for eBay prices?**
-`store_prices` has no unique constraint on `(printing_id, store_id, price_type)`. We delete all `ebay_au` rows at the start of each run and bulk-insert fresh data. Safe because eBay prices are fully refreshed each run.
+**Why per-card delete-then-insert for eBay prices?**
+`store_prices` has no unique constraint on `(printing_id, store_id, price_type)`, so a refresh is
+a delete followed by an insert. Doing that for the whole store at once opens a window where eBay
+has no prices at all, and an interrupted run leaves it that way until tomorrow. Scoping the pair
+to one card and wrapping it in a transaction removes the window entirely, at the cost of many
+small transactions instead of one big one — a trade worth making when the run takes hours and can
+be interrupted.
 
 **Why Cloudflare tunnel instead of open ports?**
 Zero inbound ports exposed. All public traffic goes Cloudflare edge → encrypted tunnel → Docker container. No firewall rules to manage, free TLS, DDoS protection included.
