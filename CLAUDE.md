@@ -89,8 +89,12 @@ Runs as a long-lived Docker service. Stores are scraped `STORE_CONCURRENCY` at a
 
 Also runs an initial Scryfall import on startup if the DB is empty.
 
-**Market stats are paused.** `computeMarketStats()` returns immediately unless
-`MARKET_STATS_ENABLED=true`. Its first two passes read the whole of `price_history`
+**Market stats are paused — except `set_card_daily`.** `computeMarketStats()` returns
+immediately unless `MARKET_STATS_ENABLED=true`. `refreshSetCardDaily()` is deliberately
+**outside** that gate and runs every night from the 7 AM cron, because both the set pages
+and the card price chart read the table it maintains; leaving it gated is why
+`set_card_daily` sat empty in production while the docs described it as the fast path.
+It is also the only pass written incrementally, so it is not what saturated the disks. Its first two passes read the whole of `price_history`
 and saturate the production disks for hours — one run was measured still going 5h42m
 in, with every other query on the box stalled behind it. While paused,
 `cards.scrymarket_price`, `cards.price_trend`, `market_movers`, `set_card_daily` and
@@ -116,7 +120,7 @@ Tables:
 - **`ebay_search_log`** — Tracks when each card name was last searched on eBay + result count. Drives tiered eBay scheduler.
 - **`scraper_cache`** — Probe-cache state for the discover-then-probe scrapers (MTG Mate set codes, CrystalCommerce category slugs). One row per cache key holding the hits from the last full scan. Lives here rather than in JSON files on the scraper's disk: it was the only local state the container had, and losing it forces a full CrystalCommerce sweep (1.5–4h).
 - **`card_searches`** — Append-only log of user search queries. `card_id` FK populated from top search result. Powers demand-gap analytics (cards searched but not in stock anywhere).
-- **`set_card_daily`** — Pre-aggregated cheapest non-foil sell price per (set, card, day), built nightly from `price_history` by `computeMarketStats()`. Exists because `price_history` carries no `set_code`, so the set pages' aggregates had to scan all ~18GB of it per request. Foils and basic lands are filtered at build time. See [Set pages read pre-aggregated data](#set-pages-read-pre-aggregated-data).
+- **`set_card_daily`** — Pre-aggregated cheapest non-foil sell price per (set, card, day), built nightly from `price_history` by `computeMarketStats()`. Exists because `price_history` carries no `set_code`, so the set pages' aggregates had to scan all ~18GB of it per request. Foils and basic lands are filtered at build time. Also backs the card detail price chart — see [Set pages read pre-aggregated data](#set-pages-read-pre-aggregated-data). Pruned to `SET_CARD_DAILY_RETENTION_DAYS` (default 365) on each refresh; without that it grows ~29k rows/day forever.
 
 ### `apps/scraper/src/stores/shopify.ts` + `stores.config.ts`
 Generic Shopify scraper — one class drives all Shopify-based stores via config. Reads the
@@ -330,7 +334,8 @@ See `.env.example` for all variables. Key ones:
 | `SCRAPE_CRON_STORES` | Cron for store scrapers | `0 5 * * *` |
 | `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET` | eBay API credentials | — |
 | `EBAY_DAILY_TARGET` | Max eBay searches per daily run | `4500` |
-| `MARKET_STATS_ENABLED` | Set to `true` to un-pause the nightly market stats job | unset (paused) |
+| `MARKET_STATS_ENABLED` | Set to `true` to un-pause the nightly market stats job (does **not** gate `set_card_daily`) | unset (paused) |
+| `SET_CARD_DAILY_RETENTION_DAYS` | Days of `set_card_daily` to keep before pruning | `365` |
 | `STORE_CONCURRENCY` | Stores scraped in parallel by `runAllStores()` | `3` |
 | `CC_CONCURRENCY` | CrystalCommerce categories in flight (do not exceed 3) | `3` |
 | `CC_FULL_SCAN_DAYS` | Days between full CrystalCommerce category rescans | `7` |
@@ -494,12 +499,24 @@ rewritten queries were diffed against the originals across a multi-set selection
 
 Consequences worth remembering:
 - **`price_history` is still the source of truth.** `set_card_daily` is a derived cache and
-  can be rebuilt by truncating it — `refreshSetCardDaily()` backfills every missing date.
+  can be rebuilt by truncating it — `refreshSetCardDaily()` backfills every missing date
+  (`pnpm --filter @mtg-au/scraper refresh:set-card-daily`), bounded by
+  `SET_CARD_DAILY_RETENTION_DAYS`. Budget hours for a rebuild from empty: on prod that is
+  ~162 dates of ~764k rows each. It resumes from `MAX(recorded_at)` if interrupted.
 - **It backfills one `recorded_at` per statement, on purpose.** Each is pruned to a single
   partition and driven by `price_history_recorded_at_idx`. A single whole-table statement
   would be the multi-hour scan this change exists to avoid.
 - **The newest existing date is always recomputed**, since the nightly task can run while a
   store scrape is still writing that day's rows.
+- **The card detail chart reads it too, as of the card-page performance work.** Its query
+  used to read `price_history` directly with no date bound at all: 49 partitions probed (43
+  of them empty, pre-created through 2028), **126,262 physical reads and 109s** for a
+  100-printing card on a cold cache. Against `set_card_daily` the same chart costs **732
+  buffers, 1.8ms**. The series are per-set rather than per-printing because that is the
+  grain this table holds, and foils are excluded for the same reason.
+- **The chart is also streamed rather than awaited.** `page.tsx` renders from `printings` +
+  `store_prices` (3ms warm) and the chart arrives behind a `<Suspense>` boundary
+  (`PriceChartSection.tsx`), so a slow history query can never again hold the whole page.
 - **Anything new that needs per-set history should extend this table, not re-query
   `price_history`.** `getSymbioticMovers()` is the remaining live-scan query; it is bounded
   to a 30-day pre-release window and currently has no callers.

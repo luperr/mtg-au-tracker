@@ -291,6 +291,11 @@ export const setCardDaily = pgTable(
       table.recordedAt,
       table.cardId,
     ),
+    // The card price chart looks up by card, which the index above can't serve —
+    // its leading column is set_code. Without this the chart falls back to reading
+    // price_history directly, which cost 126,262 physical reads / 109s for a
+    // 100-printing card on the production disks.
+    index("set_card_daily_card_id_idx").on(table.cardId, table.recordedAt),
   ]
 );
 

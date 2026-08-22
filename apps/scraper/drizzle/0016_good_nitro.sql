@@ -1,0 +1,1 @@
+CREATE INDEX "set_card_daily_card_id_idx" ON "set_card_daily" USING btree ("card_id","recorded_at");

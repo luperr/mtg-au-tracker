@@ -3,9 +3,10 @@ export const revalidate = 3600;
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { getCard, getCardMetadata, getPrintingsWithPrices, getCardTrend, getCardPriceHistory, type PrintingWithPrices } from "@/lib/db";
+import { getCard, getCardMetadata, getPrintingsWithPrices, getCardTrend, type PrintingWithPrices } from "@/lib/db";
 import { getAudPerUsd } from "@/lib/exchange-rate";
 import { CardDetailView } from "./CardDetailView";
+import { PriceChartSection, PriceChartSkeleton } from "./PriceChartSection";
 import { CardBreadcrumb } from "@/app/CardBreadcrumb";
 import { Breadcrumb } from "@/app/Breadcrumb";
 
@@ -71,10 +72,14 @@ export default async function CardPage({
   const card = await getCard(slug);
   if (!card) notFound();
 
-  const [rawPrintings, trend, history, audPerUsd] = await Promise.all([
+  // getCardPriceHistory is deliberately NOT awaited here. It is the only query on
+  // this route that reads price_history (19GB, monthly partitions) instead of
+  // store_prices, and on a cold cache it costs tens of seconds — measured at 58s
+  // for Sol Ring. Everything below renders from printings + store_prices, which is
+  // ~3ms warm, so the chart streams in afterwards rather than holding the page.
+  const [rawPrintings, trend, audPerUsd] = await Promise.all([
     getPrintingsWithPrices(card.id),
     getCardTrend(card.id),
-    getCardPriceHistory(card.id),
     getAudPerUsd(),
   ]);
 
@@ -116,7 +121,18 @@ export default async function CardPage({
       <Suspense fallback={<Breadcrumb items={[{ label: "Search", href: "/" }, { label: card!.name }]} />}>
         <CardBreadcrumb cardName={card!.name} />
       </Suspense>
-      <CardDetailView card={card!} cardSlug={slug} printings={printings} trend={trend} history={history} audPerUsd={audPerUsd} />
+      <CardDetailView
+        card={card!}
+        cardSlug={slug}
+        printings={printings}
+        trend={trend}
+        audPerUsd={audPerUsd}
+        chart={
+          <Suspense fallback={<PriceChartSkeleton />}>
+            <PriceChartSection cardId={card!.id} />
+          </Suspense>
+        }
+      />
     </div>
   );
 }

@@ -43,16 +43,23 @@ export type SymbioticMover = {
 };
 
 export type PriceHistoryPoint = { date: string; price: number };
-export type PrintingHistory = {
-  printingId: string;
-  setName: string;
+/**
+ * One series per set the card was printed in.
+ *
+ * Was one series per printing, sourced from raw price_history. It is now per-set
+ * because that is the grain set_card_daily holds — and the chart already labelled
+ * every series with setName, so two printings from one set used to draw two lines
+ * carrying the same label. Foils are excluded: set_card_daily filters them at build
+ * time to match the set-page queries.
+ */
+export type SetHistory = {
   setCode: string;
-  isFoil: boolean;
+  setName: string;
   data: PriceHistoryPoint[];
 };
 export type CardPriceHistory = {
   aggregate: PriceHistoryPoint[];
-  byPrinting: PrintingHistory[];
+  bySet: SetHistory[];
 };
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
@@ -252,31 +259,41 @@ export async function getSymbioticMovers(setCode: string, releasedAt: string): P
   `;
 }
 
+/**
+ * Price history for the card detail chart.
+ *
+ * Reads set_card_daily, the nightly pre-aggregate, rather than price_history itself.
+ * price_history holds one row per printing per store per day — ~89M rows across 19GB
+ * of monthly partitions — so drawing ~160 points meant fetching every raw row behind
+ * them. Measured on prod for Counterspell (100 printings): 126,262 physical reads and
+ * 109s cold, because those rows are scattered and the disks manage ~40 IOPS.
+ *
+ * set_card_daily already holds the answer at (set_code, card_id, recorded_at) grain,
+ * which is why the series are per-set rather than per-printing. `sets` is ~987 rows,
+ * so the name join is free.
+ */
 export async function getCardPriceHistory(cardId: string): Promise<CardPriceHistory> {
   const rows = await sql<{
-    printing_id: string;
-    set_name: string;
     set_code: string;
-    is_foil: boolean;
+    set_name: string;
     date: string;
     price: string;
   }[]>`
     SELECT
-      p.id AS printing_id,
-      p.set_name,
-      p.set_code,
-      p.is_foil,
-      ph.recorded_at::text AS date,
-      MIN(ph.price_aud::numeric)::text AS price
-    FROM price_history ph
-    JOIN printings p ON p.id = ph.printing_id
-    WHERE p.card_id = ${cardId}
-      AND ph.price_type = 'sell'
-    GROUP BY p.id, p.set_name, p.set_code, p.is_foil, ph.recorded_at
-    ORDER BY ph.recorded_at, p.set_name, p.is_foil
+      scd.set_code,
+      -- LEFT JOIN: sets and set_card_daily are both filled from the Scryfall import,
+      -- so a gap shouldn't happen, but an inner join would silently drop a whole
+      -- series from the chart if one ever did.
+      COALESCE(s.set_name, scd.set_code) AS set_name,
+      scd.recorded_at::text AS date,
+      scd.min_price::text AS price
+    FROM set_card_daily scd
+    LEFT JOIN sets s ON s.set_code = scd.set_code
+    WHERE scd.card_id = ${cardId}
+    ORDER BY scd.recorded_at, 2
   `;
 
-  // Build aggregate (cheapest across all printings per day)
+  // Aggregate: cheapest across every set that day.
   const aggMap = new Map<string, number>();
   for (const row of rows) {
     const p = parseFloat(row.price);
@@ -287,22 +304,19 @@ export async function getCardPriceHistory(cardId: string): Promise<CardPriceHist
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, price]) => ({ date, price }));
 
-  // Build per-printing
-  const printingMap = new Map<string, PrintingHistory>();
+  const setMap = new Map<string, SetHistory>();
   for (const row of rows) {
-    if (!printingMap.has(row.printing_id)) {
-      printingMap.set(row.printing_id, {
-        printingId: row.printing_id,
-        setName: row.set_name,
+    if (!setMap.has(row.set_code)) {
+      setMap.set(row.set_code, {
         setCode: row.set_code,
-        isFoil: row.is_foil,
+        setName: row.set_name,
         data: [],
       });
     }
-    printingMap.get(row.printing_id)!.data.push({ date: row.date, price: parseFloat(row.price) });
+    setMap.get(row.set_code)!.data.push({ date: row.date, price: parseFloat(row.price) });
   }
-  // Only include printings that have at least 2 data points
-  const byPrinting = Array.from(printingMap.values()).filter((p) => p.data.length >= 2);
+  // A single point draws no line.
+  const bySet = Array.from(setMap.values()).filter((p) => p.data.length >= 2);
 
-  return { aggregate, byPrinting };
+  return { aggregate, bySet };
 }

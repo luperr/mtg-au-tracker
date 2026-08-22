@@ -70,6 +70,20 @@ export const CRON_MARKET = stringEnv("SCRAPE_CRON_MARKET", "0 7 * * *"); // fall
  */
 export const MARKET_STATS_ENABLED = process.env.MARKET_STATS_ENABLED === "true";
 
+/**
+ * How long a day's row survives in set_card_daily.
+ *
+ * The table is a derived cache, and without this it grows forever: production adds
+ * roughly 29k rows a day (one per card per set that had a sell price), so a year is
+ * ~10.6M rows and five years is the beginning of a second price_history. Pruning the
+ * tail nightly bounds it at ~1GB.
+ *
+ * price_history remains the source of truth, so raising this and re-running the
+ * refresh backfills the extra days rather than losing them permanently. Anything
+ * dropped here disappears from the card price chart and the set-page timelines.
+ */
+export const SET_CARD_DAILY_RETENTION_DAYS = positiveIntEnv("SET_CARD_DAILY_RETENTION_DAYS", 365);
+
 // ── Batch processing ─────────────────────────────────────────────────────────
 
 /** Shared batch size for all DB bulk inserts (store prices, history, printings) */

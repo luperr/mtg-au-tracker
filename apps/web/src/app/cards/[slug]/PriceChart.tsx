@@ -33,7 +33,7 @@ const LINE_COLORS = [
   "#a8c0e0", // periwinkle
 ];
 
-const MAX_PRINTINGS = 16;
+const MAX_SERIES = 16;
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr);
@@ -41,15 +41,15 @@ function formatDate(dateStr: string) {
 }
 
 
-function mergeByPrinting(byPrinting: CardPriceHistory["byPrinting"]) {
+function mergeBySet(bySet: CardPriceHistory["bySet"]) {
   const allDates = new Set<string>();
-  for (const p of byPrinting) for (const d of p.data) allDates.add(d.date);
+  for (const p of bySet) for (const d of p.data) allDates.add(d.date);
   const sorted = Array.from(allDates).sort();
   return sorted.map((date) => {
     const point: Record<string, string | number> = { date };
-    for (const p of byPrinting) {
+    for (const p of bySet) {
       const match = p.data.find((d) => d.date === date);
-      if (match) point[p.printingId] = match.price;
+      if (match) point[p.setCode] = match.price;
     }
     return point;
   });
@@ -68,27 +68,27 @@ export function PriceChart({ history }: { history: CardPriceHistory }) {
   const [view, setView] = useState<"aggregate" | "printing">("aggregate");
 
   const hasHistory = history.aggregate.length >= 2;
-  const topPrintings = useMemo(
+  const topSets = useMemo(
     () =>
-      [...history.byPrinting]
+      [...history.bySet]
         .sort((a, b) => b.data.length - a.data.length)
-        .slice(0, MAX_PRINTINGS),
-    [history.byPrinting]
+        .slice(0, MAX_SERIES),
+    [history.bySet]
   );
-  const hasPrintingHistory = topPrintings.length >= 1;
+  const hasSetHistory = topSets.length >= 1;
 
-  const mergedPrintingData = useMemo(() => mergeByPrinting(topPrintings), [topPrintings]);
+  const mergedSetData = useMemo(() => mergeBySet(topSets), [topSets]);
 
   const yDomain = useMemo(() => {
     const allPrices =
       view === "aggregate"
         ? history.aggregate.map((d) => d.price)
-        : topPrintings.flatMap((p) => p.data.map((d) => d.price));
+        : topSets.flatMap((p) => p.data.map((d) => d.price));
     const min = Math.min(...allPrices);
     const max = Math.max(...allPrices);
     const pad = (max - min) * 0.15 || 1;
     return [Math.max(0, min - pad), max + pad] as [number, number];
-  }, [view, history, topPrintings]);
+  }, [view, history, topSets]);
 
   if (!hasHistory) {
     return (
@@ -102,7 +102,7 @@ export function PriceChart({ history }: { history: CardPriceHistory }) {
     <div className="mt-8">
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs font-medium text-cream-dim/60 uppercase tracking-wider">Price History</span>
-        {hasPrintingHistory && <div className="flex gap-1">
+        {hasSetHistory && <div className="flex gap-1">
           {(["aggregate", "printing"] as const).map((v) => (
             <button
               key={v}
@@ -113,7 +113,7 @@ export function PriceChart({ history }: { history: CardPriceHistory }) {
                   : "bg-muted text-cream-dim/50 border border-subtle hover:text-cream-dim"
               }`}
             >
-              {v === "aggregate" ? "Overall" : "By printing"}
+              {v === "aggregate" ? "Overall" : "By set"}
             </button>
           ))}
         </div>}
@@ -135,19 +135,19 @@ export function PriceChart({ history }: { history: CardPriceHistory }) {
               <Area type="monotone" dataKey="price" stroke="#7eb8d4" strokeWidth={1.5} fill="url(#priceGrad)" dot={false} />
             </AreaChart>
           ) : (
-            <LineChart data={mergedPrintingData} margin={{ top: 10, right: 8, bottom: 0, left: -10 }}>
+            <LineChart data={mergedSetData} margin={{ top: 10, right: 8, bottom: 0, left: -10 }}>
               <XAxis dataKey="date" tickFormatter={formatDate} tick={tickStyle} tickLine={false} axisLine={false} interval="preserveStartEnd" />
               <YAxis domain={yDomain} tickFormatter={(v) => `$${v.toFixed(0)}`} tick={tickStyle} tickLine={false} axisLine={false} width={32} />
               <Tooltip
                 contentStyle={tooltipStyle}
                 formatter={((value: number, _name: string, props: { dataKey: string }) => {
-                  const p = topPrintings.find((p) => p.printingId === props.dataKey);
-                  return [fmtAUD(value || 0), p ? `${p.setName}${p.isFoil ? " ✦" : ""}` : props.dataKey];
+                  const p = topSets.find((p) => p.setCode === props.dataKey);
+                  return [fmtAUD(value || 0), p ? p.setName : props.dataKey];
                 }) as never}
                 labelFormatter={formatDate as never}
               />
-              {topPrintings.map((p, i) => (
-                <Line key={p.printingId} type="monotone" dataKey={p.printingId} stroke={LINE_COLORS[i % LINE_COLORS.length]} strokeWidth={1.5} dot={false} connectNulls />
+              {topSets.map((p, i) => (
+                <Line key={p.setCode} type="monotone" dataKey={p.setCode} stroke={LINE_COLORS[i % LINE_COLORS.length]} strokeWidth={1.5} dot={false} connectNulls />
               ))}
             </LineChart>
           )}
@@ -156,11 +156,11 @@ export function PriceChart({ history }: { history: CardPriceHistory }) {
         {/* Custom legend for by-printing view */}
         {view === "printing" && (
           <div className="px-3 pb-2.5 flex flex-wrap gap-x-3 gap-y-1">
-            {topPrintings.map((p, i) => (
-              <div key={p.printingId} className="flex items-center gap-1">
+            {topSets.map((p, i) => (
+              <div key={p.setCode} className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: LINE_COLORS[i % LINE_COLORS.length] }} />
                 <span className="text-[9px] text-cream-dim/60 truncate max-w-[80px]">
-                  {p.setName}{p.isFoil ? " ✦" : ""}
+                  {p.setName}
                 </span>
               </div>
             ))}

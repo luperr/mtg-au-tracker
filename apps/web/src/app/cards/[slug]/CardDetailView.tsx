@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { CardRow, PrintingWithPrices, CardPriceHistory } from "@/lib/db";
+import type { ReactNode } from "react";
+import type { CardRow, PrintingWithPrices } from "@/lib/db";
 import { PricesTable } from "./PricesTable";
-import { PriceChart } from "./PriceChart";
 import { ColorSymbols } from "@/app/ColorSymbols";
 import { TrendBadge } from "@/app/TrendBadge";
 import { fmtAUD } from "@/lib/utils";
@@ -20,14 +20,15 @@ export function CardDetailView({
   cardSlug,
   printings,
   trend,
-  history,
+  chart,
   audPerUsd,
 }: {
   card: CardRow;
   cardSlug: string;
   printings: PrintingWithPrices[];
   trend: "up" | "down" | "neutral" | null;
-  history: CardPriceHistory;
+  /** Streamed in separately — see PriceChartSection. */
+  chart: ReactNode;
   audPerUsd: number;
 }) {
   const defaultImage =
@@ -168,7 +169,7 @@ export function CardDetailView({
             cardName={card.name}
           />
         )}
-        <PriceChart history={history} />
+        {chart}
       </div>
     </div>
   );
