@@ -91,16 +91,22 @@ Also runs an initial Scryfall import on startup if the DB is empty.
 
 **Market stats are paused — except `set_card_daily`.** `computeMarketStats()` returns
 immediately unless `MARKET_STATS_ENABLED=true`. `refreshSetCardDaily()` is deliberately
-**outside** that gate and runs every night from the 7 AM cron, because both the set pages
-and the card price chart read the table it maintains; leaving it gated is why
-`set_card_daily` sat empty in production while the docs described it as the fast path.
-It is also the only pass written incrementally, so it is not what saturated the disks. Its first two passes read the whole of `price_history`
-and saturate the production disks for hours — one run was measured still going 5h42m
-in, with every other query on the box stalled behind it. While paused,
-`cards.scrymarket_price`, `cards.price_trend`, `market_movers`, `set_card_daily` and
-`sets.set_value_aud` all go stale. Re-enabling needs those passes reworked to be
-incremental first; `refreshSetCardDaily()` is already written that way, the others
-are not.
+**outside** that gate and runs every night from the 7 AM cron, because the card detail
+price chart reads the table it maintains; leaving it gated is why `set_card_daily` sat
+empty in production while the docs described it as the fast path. It is also the only
+pass written incrementally, so it is not what saturated the disks.
+
+The one pass still behind the flag is `computeScrymarketPrices()`. It reads the whole of
+`price_history` and saturates the production disks for hours — one run was measured still
+going 5h42m in, with every other query on the box stalled behind it. While paused,
+`cards.scrymarket_price` and `cards.price_trend` go stale, which means the search page
+price and both trend badges freeze. Re-enabling needs it reworked to be incremental first;
+`refreshSetCardDaily()` is already written that way, it is not.
+
+The two other passes that used to live here — `computeMarketMovers()` and
+`updateSetValues()` — were deleted with the /sets pages that were their only readers. Their
+`market_movers` table and `sets.set_value_aud` column still exist but have no writer; both
+are marked ORPHANED in `schema.ts` and are slated for a drop migration.
 
 The flag gates the function rather than the cron registration, because the eBay
 import calls it too (`ebay-import.ts`). Running the script by hand
@@ -120,7 +126,8 @@ Tables:
 - **`ebay_search_log`** — Tracks when each card name was last searched on eBay + result count. Drives tiered eBay scheduler.
 - **`scraper_cache`** — Probe-cache state for the discover-then-probe scrapers (MTG Mate set codes, CrystalCommerce category slugs). One row per cache key holding the hits from the last full scan. Lives here rather than in JSON files on the scraper's disk: it was the only local state the container had, and losing it forces a full CrystalCommerce sweep (1.5–4h).
 - **`card_searches`** — Append-only log of user search queries. `card_id` FK populated from top search result. Powers demand-gap analytics (cards searched but not in stock anywhere).
-- **`set_card_daily`** — Pre-aggregated cheapest non-foil sell price per (set, card, day), built nightly from `price_history` by `computeMarketStats()`. Exists because `price_history` carries no `set_code`, so the set pages' aggregates had to scan all ~18GB of it per request. Foils and basic lands are filtered at build time. Also backs the card detail price chart — see [Set pages read pre-aggregated data](#set-pages-read-pre-aggregated-data). Pruned to `SET_CARD_DAILY_RETENTION_DAYS` (default 365) on each refresh; without that it grows ~29k rows/day forever.
+- **`set_card_daily`** — Pre-aggregated cheapest non-foil sell price per (set, card, day), built nightly from `price_history` by `refreshSetCardDaily()`. Backs the card detail price chart — see [The card price chart reads pre-aggregated data](#the-card-price-chart-reads-pre-aggregated-data). Exists because `price_history` carries no `set_code`, so answering "cheapest per card per day, per set" live meant scanning all ~18GB of it per request. Foils and basic lands are filtered at build time. Pruned to `SET_CARD_DAILY_RETENTION_DAYS` (default 365) on each refresh; without that it grows ~29k rows/day forever.
+- **`market_movers`** — **Orphaned.** Fed the /sets top-movers leaderboard; that page and its writer are gone. Slated for a drop migration.
 
 ### `apps/scraper/src/stores/shopify.ts` + `stores.config.ts`
 Generic Shopify scraper — one class drives all Shopify-based stores via config. Reads the
@@ -509,20 +516,19 @@ The Want List optimiser solves an Uncapacitated Facility Location Problem: which
 **Why store `card_id` on `card_searches` from the top search result?**
 The demand-gap report needs to join user searches against store inventory. At search time, the top result is the most likely intended card. Null is used when no results are returned. This is a best-effort attribution — accurate enough for aggregate demand analytics.
 
-### Set pages read pre-aggregated data
+### The card price chart reads pre-aggregated data
 
-`/sets/[setCode]` used to aggregate `price_history` live on every request, and its
-`opengraph-image` route ran the same two queries again for every crawler fetch. Because
-`price_history` has no `set_code`, filtering to one set meant scanning all seven monthly
-partitions — ~18GB. The database lives on a ZFS mirror of USB-attached spinning disks
-(~40 IOPS; moving it to the NVMe isn't possible on this hardware), so each of those took
-minutes, and requests arrived faster than they drained: a dozen backends piling up on the
-same scan drove host-wide IO pressure to 96% and load to 25.
+The now-deleted `/sets/[setCode]` pages used to aggregate `price_history` live on every
+request. Because `price_history` has no `set_code`, filtering to one set meant scanning all
+seven monthly partitions — ~18GB. The database lives on a ZFS mirror of USB-attached
+spinning disks (~40 IOPS; moving it to the NVMe isn't possible on this hardware), so each
+of those took minutes, and requests arrived faster than they drained: a dozen backends
+piling up on the same scan drove host-wide IO pressure to 96% and load to 25.
 
-So the aggregate is now computed once a night into `set_card_daily` and the set pages read
-that instead. Measured on the dev dataset (3.9M `price_history` rows — prod holds ~84M), the
-timeline query drops from **45,856 disk block reads to 85**. Results are identical; both
-rewritten queries were diffed against the originals across a multi-set selection.
+The fix was to compute the aggregate once a night into `set_card_daily` and read that
+instead. The set pages are gone, but **the card detail price chart inherited the same
+table**, and that is now the sole reason `set_card_daily` and its nightly refresh exist —
+do not assume they went away with /sets.
 
 Consequences worth remembering:
 - **`price_history` is still the source of truth.** `set_card_daily` is a derived cache and
@@ -535,18 +541,18 @@ Consequences worth remembering:
   would be the multi-hour scan this change exists to avoid.
 - **The newest existing date is always recomputed**, since the nightly task can run while a
   store scrape is still writing that day's rows.
-- **The card detail chart reads it too, as of the card-page performance work.** Its query
-  used to read `price_history` directly with no date bound at all: 49 partitions probed (43
-  of them empty, pre-created through 2028), **126,262 physical reads and 109s** for a
-  100-printing card on a cold cache. Against `set_card_daily` the same chart costs **732
-  buffers, 1.8ms**. The series are per-set rather than per-printing because that is the
-  grain this table holds, and foils are excluded for the same reason.
+- **The card detail chart is the only reader.** Its query used to read `price_history`
+  directly with no date bound at all: 49 partitions probed (43 of them empty, pre-created
+  through 2028), **126,262 physical reads and 109s** for a 100-printing card on a cold
+  cache. Against `set_card_daily` the same chart costs **732 buffers, 1.8ms**. The series
+  are per-set rather than per-printing because that is the grain this table holds, and
+  foils are excluded for the same reason.
 - **The chart is also streamed rather than awaited.** `page.tsx` renders from `printings` +
   `store_prices` (3ms warm) and the chart arrives behind a `<Suspense>` boundary
   (`PriceChartSection.tsx`), so a slow history query can never again hold the whole page.
 - **Anything new that needs per-set history should extend this table, not re-query
-  `price_history`.** `getSymbioticMovers()` is the remaining live-scan query; it is bounded
-  to a 30-day pre-release window and currently has no callers.
+  `price_history`.** There are no live `price_history` scans left in the web app — the last
+  one, `getSymbioticMovers()`, went with the /sets removal. Keep it that way.
 
 ---
 

@@ -279,32 +279,22 @@ Verify:
 ```bash
 docker compose -f docker-compose.prod.yml exec db \
   psql -U mtg -d mtg_tracker -c \
-  "SELECT COUNT(*) AS cards_with_price FROM cards WHERE scrymarket_price IS NOT NULL;
-   SELECT COUNT(*) AS movers FROM market_movers;"
-# Expected: ~30k cards_with_price, 18 movers
+  "SELECT COUNT(*) AS cards_with_price FROM cards WHERE scrymarket_price IS NOT NULL;"
+# Expected: ~30k cards_with_price
 ```
+
+> **Superseded:** `market_movers` no longer has a writer — it fed the /sets top-movers
+> leaderboard, and that page plus `computeMarketMovers()` were removed. The table is
+> orphaned pending a drop migration; don't check its row count.
 
 ---
 
-### set_value_aud column (migration 0009)
+### set_value_aud column (migration 0009) — obsolete
 
-This adds `set_value_aud` to the `sets` table. The column is NULL until the first store scrape runs after migration. The `/sets` listing shows "—" until then, which is fine.
-
-1. Pull and migrate (standard release steps)
-2. Rebuild and restart — no Scryfall re-import needed
-3. Trigger a manual store scrape to populate values immediately:
-   ```bash
-   docker compose -f docker-compose.prod.yml run --rm scraper \
-     pnpm --filter @mtg-au/scraper scrape:stores
-   ```
-4. Verify:
-   ```bash
-   docker compose -f docker-compose.prod.yml exec db \
-     psql -U mtg -d mtg_tracker -c \
-     "SELECT set_code, set_name, set_value_aud FROM sets
-      WHERE parent_set_code IS NULL AND set_value_aud IS NOT NULL
-      ORDER BY released_at DESC LIMIT 10;"
-   ```
+This added `set_value_aud` to the `sets` table for the `/sets` listing. Both the listing
+and `updateSetValues()`, its only writer, have since been removed, so the column is
+orphaned and holds whatever the last scrape wrote. No deploy steps apply; it is pending a
+drop migration.
 
 ---
 
@@ -324,7 +314,7 @@ docker compose -f docker-compose.prod.yml exec db \
   psql -U mtg -d mtg_tracker -c \
   "SELECT set_code, set_name, parent_set_code
    FROM sets WHERE parent_set_code IS NOT NULL LIMIT 10;"
-
-# /sets listing excludes promos and tokens
-# Visit /sets in browser — no "Promo Pack" or token-only sets should appear
 ```
+
+The `sets` table itself is still live: `getCardPriceHistory()` joins it for the card
+detail chart's series labels.
