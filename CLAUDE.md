@@ -48,32 +48,44 @@ mtg-au-tracker/
 
 Everything here is pure TypeScript with no runtime dependencies. Both `apps/scraper` and `apps/web` import from `@mtg-au/shared`.
 
-### `packages/shared/src/types/card.ts`
-Core data shapes mirroring the DB schema:
-- **`Card`** — Abstract game object. "Lightning Bolt" is one Card regardless of how many sets it appears in. Keyed by Scryfall `oracle_id`.
-- **`Printing`** — A specific physical version. "Lightning Bolt from M11, non-foil" is one Printing. Keyed by Scryfall card `id`.
-- **`StorePrice`** — A price for a Printing at a specific Store, scraped at a point in time.
-- **`PriceHistory`** — Daily snapshot of a price (append-only, one row per printing/store/day).
-- **`Store`** — A retailer (MTG Mate, eBay AU, etc.).
+The DB row shapes are **not** here — `apps/scraper/src/lib/schema.ts` is the single source
+of truth for those, and the web app types its queries at the call site. Shared holds only
+what both apps genuinely need.
 
 ### `packages/shared/src/types/scraper.ts`
 The scraper contract:
-- **`ScrapedCard`** — Raw data extracted from a store before it's matched to Scryfall. Has `rawName`, `setName` (may be null), `price`, `priceType` (sell/buylist), `condition`, `isFoil`, `inStock`, `sourceUrl`.
-- **`StoreScraper`** — Interface all HTML store scrapers must implement. Requires `scrapeAll()` (async generator of ScrapedCard) and `healthCheck()`.
-- **`MatchResult`** — Result of trying to match a ScrapedCard to a Printing. Has `matchType` (exact / name_only / fuzzy / unmatched) and `confidence` (0–1).
+- **`ScrapedCard`** — Raw data extracted from a store before it's matched to Scryfall. Has `rawName`, `setCode`/`setName`/`collectorNumber` (each may be null), `price`, `priceType` (sell/buylist), `condition`, `isFoil`, optional `finish` and `treatment`, `inStock`, `sourceUrl`, optional `shippingCost`.
+- **`StoreScraper`** — Interface all store scrapers implement. One method: `scrapeAll()`, an async generator of `ScrapedCard`.
+
+`MatchResult` is **not** here — it lives in `apps/scraper/src/matching/card-matcher.ts`,
+since only the scraper matches.
 
 ### `packages/shared/src/utils/matching.ts`
 Pure functions for name matching:
 - **`normalizeName(name)`** — Lowercases, strips accents, removes punctuation, collapses spaces.
+- **`stripVariant(name)`** — Removes variant/treatment suffixes from a card name.
 - **`levenshteinDistance(a, b)`** — Edit distance for fuzzy matching.
 - **`normalizeSetName(name)`** — Same idea for set names.
-- **`SET_ALIASES`** — Map of store set name variants → Scryfall set codes.
+- **`extractTreatment(text)`** — Canonical treatment (`borderless` / `showcase` / `extendedart` / `fullart`) from a title or tag.
+
+### `packages/shared/src/utils/condition.ts`
+`CARD_CONDITIONS` + `CardCondition`, `isKnownCondition()`, and `normaliseCondition()` —
+maps the many store spellings of NM/LP/MP/HP/DMG onto one vocabulary.
 
 ### `packages/shared/src/utils/currency.ts`
-AUD/USD conversion using a static rate from `AUD_USD_RATE` env var (defaults to 0.65).
-**Currently unused** — `getAudPerUsd()` is exported but has no callers, so setting the env var
-changes nothing. It is not in `.env.example` for that reason; add it back when the live-rate
-roadmap item lands.
+`getAudPerUsd()` fetches the **live** USD→AUD rate from the Frankfurter API (free, no key,
+ECB-sourced), falling back to the `AUD_USD_RATE` env var (default 0.65) if the fetch fails.
+It takes an optional `RequestInit` so callers can add framework caching; the web app wraps
+it in `apps/web/src/lib/exchange-rate.ts` with `next: { revalidate }` for hourly caching.
+`AUD_USD_RATE` is absent from `.env.example` deliberately — it is only the failure fallback.
+
+### `packages/shared/src/constants.ts`
+`TREND_UP_THRESHOLD` / `TREND_DOWN_THRESHOLD` — the ±1% band shared by the scraper's trend
+computation and the web `TrendBadge`, so both agree on what counts as a move.
+
+### `packages/shared/src/utils/logger.ts`
+`createLogger(service)` — pino, pretty-printed in dev via a `pino-pretty` transport, plain
+NDJSON to stdout in production for Promtail → Loki.
 
 ---
 
@@ -171,11 +183,13 @@ product beyond it. Measured: Cardhouse 41,210 printings (was 22,355), Plenty of 
 - `quantityAvailable` needs an inventory scope we don't have; `inventory_quantity` is set to 0
   and `isInStock()` reads `availableForSale` instead.
 
-`stores.config.ts` is the single source of truth for store registration — see [Adding a new Shopify store scraper](#adding-a-new-shopify-store-scraper) below. `shopifyStores()` derives the active Shopify store list (currently 32) from `STORE_REGISTRY`; `seedStores()` (`apps/scraper/src/seed.ts`) and the web app's shipping fallback (`apps/web/src/lib/store-shipping.ts`) derive from the same file, so a store exists in exactly one place.
+`stores.config.ts` is the single source of truth for store registration — see [Adding a new Shopify store scraper](#adding-a-new-shopify-store-scraper) below. `shopifyStores()` derives the active Shopify store list (currently 35) from `STORE_REGISTRY`; `seedStores()` (`apps/scraper/src/seed.ts`) and the web app's shipping fallback (`apps/web/src/lib/store-shipping.ts`) derive from the same file, so a store exists in exactly one place.
 
 ### `apps/scraper/src/stores/crystalcommerce.ts`
 Generic CrystalCommerce scraper — one class drives all stores on the CrystalCommerce
-platform (Rails), config-driven the same way `shopify.ts` is. First store on it: The Games Cube.
+platform (Rails), config-driven the same way `shopify.ts` is. First store on it: The Games Cube —
+built and verified, but currently `scraperEnabled: false` pending the store's permission, so no
+CrystalCommerce store is scraped in practice today.
 
 CrystalCommerce has no products API, so this is HTML scraping via Cheerio. Every MTG singles
 category is linked from the homepage nav mega-menu (~437 for The Games Cube), so category
@@ -272,21 +286,21 @@ repopulate run, which is where the "re-run to repopulate" advice came from.)
 ### Search page (`apps/web/src/app/page.tsx`)
 - Full-text card search with infinite scroll (20 results/page)
 - Scrymarket price: median of cheapest printing's in-stock sell prices
-- Trend badge (↑/↓/→) vs `price_history`
+- Trend badge (↑/↓/→) from the pre-computed `cards.price_trend`
 - Card thumbnails (63×88px), color identity pips, CardMagnifier on hover
 - Drag-to-search: drag any Scryfall card image onto the app
 - Umami events: `card-search` on new query, `card-click` on row click
 
-### Card detail page (`apps/web/src/app/cards/[id]/page.tsx`)
+### Card detail page (`apps/web/src/app/cards/[slug]/page.tsx`)
 - Two-column layout: sticky card image + info/table/chart
 - Market snapshot: Low / Scrymarket / High AUD, USD reference, trend badge
 - Prices table: flat rows (printing × store), filter dropdowns, pagination
 - Set symbols: Scryfall SVGs tinted by rarity, `❖` fallback for missing
 - Row hover changes card image to that printing's art
-- Price history chart: area chart (overall) + line chart by printing (max 8)
+- Price history chart: area chart (overall) + line chart **per set** (not per printing — that is the grain `set_card_daily` holds). Streamed behind `<Suspense>` via `PriceChartSection.tsx`
 
 ### Want List (`apps/web/src/app/want-list/WantListView.tsx`)
-- Route: `/want-list`, context: `WantListContext.tsx`, badge: `WantListBadge.tsx`
+- Route: `/want-list`, context: `src/app/WantListContext.tsx`, badge: `src/app/WantListBadge.tsx`
 - localStorage keys: `scrymarket_buy_list` (items), `scrymarket_shipping_overrides` (per-store postage)
 - Per-store collapsible sections with store total shown in header when collapsed
 - Printing selector shows all in-stock printings across ALL stores, sorted cheapest first
@@ -424,8 +438,8 @@ product URL (`/catalog/magic_singles-standard-bloomburrow/card_name/693640` → 
 - [x] Scryfall bulk import (~32k cards, ~141k printings)
 - [x] Card matcher with exact / name-only / fuzzy / collector-number matching
 - [x] eBay AU import pipeline (OAuth → Browse API → title parser → DB)
-- [x] Generic Shopify scraper — 21 AU stores, config-driven
-- [x] Generic CrystalCommerce scraper — config-driven, The Games Cube
+- [x] Generic Shopify scraper — 35 AU stores, config-driven
+- [x] Generic CrystalCommerce scraper — config-driven, The Games Cube (built and verified; disabled pending store permission)
 - [x] MTG Mate HTML scraper
 - [x] Next.js web UI — search, card detail, price history charts
 - [x] Want List with per-store postage editing and Branch-and-Bound optimiser
@@ -457,11 +471,11 @@ Phases are gated — nothing from Phase N+1 starts until Phase N exit criteria a
 - [x] Deploy Prometheus + Grafana + Pushgateway on monitoring LXC (`vmbr2`) — live on vmbr2, scrapes cAdvisor at `10.10.20.10:8080`
 - [ ] `prom-client` gauges: `cards_scraped`, `match_rate`, `scrape_duration_seconds` — per-store match rate would catch silent regressions. **Not started** — there is no `prom-client` dependency in the repo; this was ticked in error.
 - [x] MTG Mate set code cache — valid codes live in `scraper_cache`, full rescan every `MTGMATE_FULL_SCAN_DAYS` (~30 min → ~3 min)
-- [ ] Live AUD/USD rate (RBA or Open Exchange Rates API) — replace static `AUD_USD_RATE` env var
+- [x] Live AUD/USD rate — `getAudPerUsd()` reads the Frankfurter API (ECB, free, no key); `AUD_USD_RATE` is now only the fetch-failure fallback
 - [x] eBay atomic swap — done differently and better than planned: `atomicSwapCardPrices()` does a per-card DELETE+INSERT inside `db.transaction()`, so there is no zero-price window and no staging table
 - [x] Scryfall import streaming — reads Scryfall's `jsonl_download_uri`, gunzips through `pipeline()` to disk, then parses one line at a time via `createInterface`. No whole-file parse
 - [ ] Scryfall import — batch the upserts. Parsing streams, but `importData()` still accumulates every card and printing in memory before writing, which is what actually sets the heap floor now
-- [ ] GitHub Actions CI — typecheck + `pnpm audit` + `pnpm test` on PR
+- [x] GitHub Actions CI — `.github/workflows/ci.yml` runs typecheck (both workspaces), `pnpm test`, and a Docker build of each image on every PR. `pnpm audit` is still not wired in
 - [ ] Proxmox network hardening — move Docker LXC to vmbr1 (Services VLAN), SSH hardening + fail2ban, 2FA
 
 ### Phase 3 — Analytics & User Features
