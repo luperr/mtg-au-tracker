@@ -52,6 +52,7 @@
     "scrape:thegamesdistrict": "tsx src/stores/run-store.ts the_games_district",
     "scrape:thehallofheroes": "tsx src/stores/run-store.ts the_hall_of_heroes",
     "scrape:cherrycollectables": "tsx src/stores/run-store.ts cherry_collectables",
+    "scrape:spellroo": "tsx src/stores/run-store.ts spellroo_gaming",
     "scrape:gamescube": "tsx src/stores/run-store.ts games_cube",
     "compute:set-values": "tsx src/stores/compute-set-values.ts",
     "compute:market-stats": "tsx src/market/compute-market-stats.ts",
