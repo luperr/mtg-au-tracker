@@ -13,7 +13,6 @@
     "test:ebay:oauth": "tsx src/ebay/oauth.ts",
     "test:ebay:browse": "tsx src/ebay/browse-client.ts",
     "test:ebay:transform": "tsx src/ebay/transform.ts",
-    "validate:goodgames": "tsx src/stores/validate-goodgames.ts",
     "seed": "tsx src/seed.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
