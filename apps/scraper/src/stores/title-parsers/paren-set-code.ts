@@ -18,8 +18,7 @@
  */
 
 import { stripVariant } from "@mtg-au/shared";
-import type { ShopifyProduct } from "../shopify-types.js";
-import type { DialectTitleResult } from "./types.js";
+import type { ShopifyProduct, DialectTitleResult } from "../shopify-types.js";
 
 /**
  * "(BLB - 52)" / "(LIST - 151/249)". The "/249" is the set size printed on The

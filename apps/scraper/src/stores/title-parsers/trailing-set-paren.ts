@@ -17,8 +17,7 @@
  * option axis is Condition, so there is no per-variant foil signal to read.
  */
 
-import type { ShopifyProduct } from "../shopify-types.js";
-import type { DialectTitleResult } from "./types.js";
+import type { ShopifyProduct, DialectTitleResult } from "../shopify-types.js";
 
 /**
  * Greedy name group so the collector number binds to the LAST number before the

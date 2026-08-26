@@ -30,7 +30,7 @@
 import { type ScrapedCard, normaliseCondition, extractTreatment } from "@mtg-au/shared";
 import { BaseScraper } from "./base-scraper.js";
 import type { ShopifyStoreConfig } from "./stores.config.js";
-import type { ShopifyOption, ShopifyProduct, ShopifyVariant } from "./shopify-types.js";
+import type { ShopifyOption, ShopifyProduct, ShopifyVariant, DialectTitleResult } from "./shopify-types.js";
 import {
   COLLECTION_QUERY,
   PRODUCTS_QUERY,
@@ -55,7 +55,6 @@ import { parseAllInTitleFormat } from "./title-parsers/all-in-title.js";
 import { parseParenSetCodeTitle } from "./title-parsers/paren-set-code.js";
 import { parseFlagPrefixTitle } from "./title-parsers/flag-prefix.js";
 import { parseTrailingSetParenTitle } from "./title-parsers/trailing-set-paren.js";
-import type { DialectTitleResult } from "./title-parsers/types.js";
 import { logger } from "../lib/logger.js";
 
 export { parseProductTitle, isSkippedVariant } from "./title-parsers/standard.js";

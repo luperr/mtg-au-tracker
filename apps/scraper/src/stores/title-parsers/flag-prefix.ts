@@ -28,8 +28,7 @@
  */
 
 import { stripVariant } from "@mtg-au/shared";
-import type { ShopifyProduct } from "../shopify-types.js";
-import type { DialectTitleResult } from "./types.js";
+import type { ShopifyProduct, DialectTitleResult } from "../shopify-types.js";
 
 /** Bracketed flags: "[FOIL]", "[ EF ]" (etched foil), "[ BL ]" (borderless). */
 const BRACKET_FLAG_RE = /^\s*\[([^\]]*)\]\s*/;
