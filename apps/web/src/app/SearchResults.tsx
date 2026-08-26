@@ -91,7 +91,7 @@ function GridCard({ card, query }: { card: CardSearchResult; query: string }) {
     <div className="flex flex-col rounded-lg overflow-hidden border border-subtle bg-surface hover:border-accent transition-colors group">
       {/* Card image — use normal-size image; small (146px) blurs at 4-col grid widths */}
       <a
-        href={cardHref(card.slug, card.id, undefined, query)}
+        href={cardHref(card.slug, card.id, query)}
         onClick={() => trackEvent("card-click", { card: card.name })}
         className="block w-full overflow-hidden"
       >
@@ -116,7 +116,7 @@ function GridCard({ card, query }: { card: CardSearchResult; query: string }) {
       {/* Footer: name · price · want-list */}
       <div className="px-2 pt-1.5 pb-2 flex flex-col gap-1 bg-surface">
         <a
-          href={cardHref(card.slug, card.id, undefined, query)}
+          href={cardHref(card.slug, card.id, query)}
           onClick={() => trackEvent("card-click", { card: card.name })}
           className="text-xs font-medium text-cream truncate hover:text-accent-light transition-colors"
         >
@@ -146,7 +146,7 @@ function CardRow({ card, query }: { card: CardSearchResult; query: string }) {
   return (
     <div className="relative flex items-center rounded-lg border border-subtle bg-surface hover:border-accent hover:bg-muted transition-colors overflow-hidden">
       <a
-        href={cardHref(card.slug, card.id, undefined, query)}
+        href={cardHref(card.slug, card.id, query)}
         onClick={() => trackEvent("card-click", { card: card.name })}
         className="flex flex-1 items-center gap-3 min-w-0 pr-14"
       >
@@ -199,7 +199,7 @@ function TextRow({ card, query }: { card: CardSearchResult; query: string }) {
   return (
     <div className="relative flex items-center rounded-lg border border-subtle bg-surface hover:border-accent hover:bg-muted transition-colors">
       <a
-        href={cardHref(card.slug, card.id, undefined, query)}
+        href={cardHref(card.slug, card.id, query)}
         onClick={() => trackEvent("card-click", { card: card.name })}
         className="flex flex-1 items-center gap-3 px-3 py-2 min-w-0 pr-12"
       >

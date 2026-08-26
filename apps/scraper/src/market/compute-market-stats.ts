@@ -2,32 +2,29 @@
  * Nightly market stats computation.
  *
  * Runs after all scrapers (stores + eBay) have completed so that all price
- * data is fresh before we compute. Three operations in order:
+ * data is fresh before we compute. Two operations in order:
  *
  *   1. computeScrymarketPrices() — bulk UPDATE cards.scrymarket_price and
- *      cards.price_trend from current store_prices and price_history.
+ *      cards.price_trend from current store_prices and price_history. Read by
+ *      the search page price + trend badge and the card detail trend badge.
  *
- *   2. computeMarketMovers() — TRUNCATE + INSERT market_movers for 7/14/30 day
- *      windows (18 rows total). Runs inside one transaction so readers never
- *      see a partial result.
+ *   2. refreshSetCardDaily() — incremental fill of set_card_daily, which backs
+ *      the card detail price chart.
  *
- *   3. updateSetValues() — unchanged logic, moved here from run-all.ts for
- *      cohesion. Updates sets.set_value_aud.
+ * Both store their results in Postgres so the web side is a trivial SELECT
+ * against pre-computed values. No runtime aggregation on the web side.
  *
- * All of these store their results in Postgres so web API routes are trivial
- * SELECTs against pre-computed values. No runtime aggregation on the web side.
- *
- * CURRENTLY PAUSED — see MARKET_STATS_ENABLED in lib/config.ts. These passes read
- * the whole of price_history and saturate the production disks for hours. Turning
- * them back on needs the work to become incremental first; refreshSetCardDaily()
- * below is already written that way, the two above it are not.
+ * computeScrymarketPrices() is CURRENTLY PAUSED — see MARKET_STATS_ENABLED in
+ * lib/config.ts. It reads the whole of price_history and saturates the production
+ * disks for hours; turning it back on needs it reworked to be incremental first.
+ * refreshSetCardDaily() is already written that way, which is why index.ts calls
+ * it outside the gate.
  */
 
 import { fileURLToPath } from "node:url";
 import { sql } from "drizzle-orm";
 import { db } from "../lib/db.js";
 import { logger } from "../lib/logger.js";
-import { updateSetValues } from "../stores/update-set-values.js";
 import { MARKET_STATS_ENABLED, SET_CARD_DAILY_RETENTION_DAYS } from "../lib/config.js";
 import { TREND_UP_THRESHOLD, TREND_DOWN_THRESHOLD } from "@mtg-au/shared";
 
@@ -115,200 +112,24 @@ async function computeScrymarketPrices(): Promise<void> {
   log.info("Scrymarket prices and trends updated");
 }
 
-// ─── Market movers ────────────────────────────────────────────────────────────
-
-/**
- * TRUNCATE + INSERT market_movers for all three windows inside one transaction.
- * Produces exactly 18 rows: 3 windows × 2 directions × 3 ranks.
- * Readers always see either the old complete set or the new complete set.
- */
-async function computeMarketMovers(): Promise<void> {
-  log.info("Computing market movers for 7d / 14d / 30d windows");
-
-  await db.transaction(async (tx) => {
-    await tx.execute(sql`TRUNCATE market_movers`);
-
-    for (const days of [7, 14, 30]) {
-      // Gainers (direction = 'up')
-      await tx.execute(sql`
-        INSERT INTO market_movers
-          (window_days, direction, rank, card_id, set_code, set_name, name, slug, image_uri,
-           start_price, current_price, pct_change)
-        WITH baseline AS (
-          SELECT DISTINCT ON (p.card_id)
-            p.card_id,
-            ph.price_aud::numeric AS price
-          FROM price_history ph
-          JOIN printings p ON p.id = ph.printing_id
-          WHERE p.is_foil = false
-            AND ph.price_type = 'sell'
-            AND ph.recorded_at >= NOW() - (${days} * INTERVAL '1 day')
-          ORDER BY p.card_id, ph.recorded_at ASC
-        ),
-        current_price AS (
-          SELECT
-            p.card_id,
-            MIN(sp.price_aud::numeric) AS price,
-            (
-              SELECT p2.set_code
-              FROM store_prices sp2
-              JOIN printings p2 ON p2.id = sp2.printing_id
-              WHERE p2.card_id = p.card_id
-                AND p2.is_foil = false
-                AND sp2.in_stock = true
-                AND sp2.price_type = 'sell'
-              ORDER BY sp2.price_aud ASC
-              LIMIT 1
-            ) AS set_code
-          FROM store_prices sp
-          JOIN printings p ON p.id = sp.printing_id
-          WHERE p.is_foil = false
-            AND sp.in_stock = true
-            AND sp.price_type = 'sell'
-          GROUP BY p.card_id
-        ),
-        movers AS (
-          SELECT
-            cp.set_code,
-            b.card_id,
-            b.price AS start_price,
-            cp.price AS current_price,
-            ROUND(((cp.price - b.price) / b.price * 100)::numeric, 1) AS pct_change
-          FROM baseline b
-          JOIN current_price cp ON cp.card_id = b.card_id
-          WHERE b.price >= 2.0
-            AND cp.set_code IS NOT NULL
-            AND cp.price != b.price
-            AND cp.price > b.price
-        ),
-        ranked AS (
-          SELECT
-            m.card_id, m.set_code, s.set_name, c.name, c.slug,
-            (
-              SELECT p2.image_uri FROM printings p2
-              WHERE p2.card_id = m.card_id
-                AND p2.image_uri IS NOT NULL
-                AND p2.is_foil = false
-              ORDER BY p2.released_at DESC
-              LIMIT 1
-            ) AS image_uri,
-            m.start_price, m.current_price, m.pct_change,
-            ROW_NUMBER() OVER (ORDER BY m.pct_change DESC) AS rn
-          FROM movers m
-          JOIN cards c ON c.id = m.card_id
-          JOIN sets s ON s.set_code = m.set_code
-        )
-        SELECT
-          ${days}, 'up', rn::int, card_id, set_code, set_name, name, slug, image_uri,
-          start_price, current_price, pct_change
-        FROM ranked
-        WHERE rn <= 3
-      `);
-
-      // Losers (direction = 'down')
-      await tx.execute(sql`
-        INSERT INTO market_movers
-          (window_days, direction, rank, card_id, set_code, set_name, name, slug, image_uri,
-           start_price, current_price, pct_change)
-        WITH baseline AS (
-          SELECT DISTINCT ON (p.card_id)
-            p.card_id,
-            ph.price_aud::numeric AS price
-          FROM price_history ph
-          JOIN printings p ON p.id = ph.printing_id
-          WHERE p.is_foil = false
-            AND ph.price_type = 'sell'
-            AND ph.recorded_at >= NOW() - (${days} * INTERVAL '1 day')
-          ORDER BY p.card_id, ph.recorded_at ASC
-        ),
-        current_price AS (
-          SELECT
-            p.card_id,
-            MIN(sp.price_aud::numeric) AS price,
-            (
-              SELECT p2.set_code
-              FROM store_prices sp2
-              JOIN printings p2 ON p2.id = sp2.printing_id
-              WHERE p2.card_id = p.card_id
-                AND p2.is_foil = false
-                AND sp2.in_stock = true
-                AND sp2.price_type = 'sell'
-              ORDER BY sp2.price_aud ASC
-              LIMIT 1
-            ) AS set_code
-          FROM store_prices sp
-          JOIN printings p ON p.id = sp.printing_id
-          WHERE p.is_foil = false
-            AND sp.in_stock = true
-            AND sp.price_type = 'sell'
-          GROUP BY p.card_id
-        ),
-        movers AS (
-          SELECT
-            cp.set_code,
-            b.card_id,
-            b.price AS start_price,
-            cp.price AS current_price,
-            ROUND(((cp.price - b.price) / b.price * 100)::numeric, 1) AS pct_change
-          FROM baseline b
-          JOIN current_price cp ON cp.card_id = b.card_id
-          WHERE b.price >= 2.0
-            AND cp.set_code IS NOT NULL
-            AND cp.price != b.price
-            AND cp.price < b.price
-        ),
-        ranked AS (
-          SELECT
-            m.card_id, m.set_code, s.set_name, c.name, c.slug,
-            (
-              SELECT p2.image_uri FROM printings p2
-              WHERE p2.card_id = m.card_id
-                AND p2.image_uri IS NOT NULL
-                AND p2.is_foil = false
-              ORDER BY p2.released_at DESC
-              LIMIT 1
-            ) AS image_uri,
-            m.start_price, m.current_price, m.pct_change,
-            ROW_NUMBER() OVER (ORDER BY m.pct_change ASC) AS rn
-          FROM movers m
-          JOIN cards c ON c.id = m.card_id
-          JOIN sets s ON s.set_code = m.set_code
-        )
-        SELECT
-          ${days}, 'down', rn::int, card_id, set_code, set_name, name, slug, image_uri,
-          start_price, current_price, pct_change
-        FROM ranked
-        WHERE rn <= 3
-      `);
-    }
-  });
-
-  log.info("Market movers updated (7d / 14d / 30d)");
-}
-
 // ─── Set card daily ───────────────────────────────────────────────────────────
 
 /**
  * Fill set_card_daily for every price_history date it doesn't already cover.
  *
- * The set pages need "cheapest non-foil sell price per card per day, for one set".
- * price_history has no set_code, so answering that live meant scanning all seven
- * monthly partitions (~18GB) per request. Here we pay for it once per day instead.
+ * The card detail price chart needs "cheapest non-foil sell price per card per day,
+ * per set". price_history has no set_code, so answering that live meant scanning all
+ * seven monthly partitions (~18GB) per request. Here we pay for it once per day.
  *
- * One date per statement, deliberately: each is pruned to a single partition and
- * driven by price_history_recorded_at_idx, so a cold table backfills as a few
- * hundred small queries rather than one multi-hour scan. The newest date already
- * present is recomputed as well — the nightly run can land while a store scrape is
- * still writing, so yesterday's row set may have grown since we last saw it.
- */
-/**
- * Exported and called independently of MARKET_STATS_ENABLED.
- *
- * Unlike computeScrymarketPrices() and computeMarketMovers(), this pass is
- * incremental: one INSERT per recorded_at, each pruned to a single partition and
- * driven by price_history_recorded_at_idx. It is not what saturated the disks, and
- * both the set pages and the card price chart read the table it maintains — leaving
- * it behind the pause flag is why set_card_daily sat empty in production.
+ * Exported and called independently of MARKET_STATS_ENABLED, because unlike
+ * computeScrymarketPrices() this pass is incremental: one INSERT per recorded_at,
+ * each pruned to a single partition and driven by price_history_recorded_at_idx, so
+ * a cold table backfills as a few hundred small queries rather than one multi-hour
+ * scan. It is not what saturated the disks, and the card price chart reads the table
+ * it maintains — leaving it behind the pause flag is why set_card_daily sat empty in
+ * production. The newest date already present is recomputed as well: the nightly run
+ * can land while a store scrape is still writing, so yesterday's row set may have
+ * grown since we last saw it.
  */
 export async function refreshSetCardDaily(): Promise<void> {
   const pending = await db.execute(sql`
@@ -380,15 +201,14 @@ export async function computeMarketStats({ force = false } = {}): Promise<void> 
   if (!MARKET_STATS_ENABLED && !force) {
     log.warn(
       "Market stats are paused (MARKET_STATS_ENABLED is not 'true') — skipping. " +
-      "scrymarket_price, market_movers, set_card_daily and sets.set_value_aud will go stale.",
+      "cards.scrymarket_price and cards.price_trend will go stale. set_card_daily is " +
+      "unaffected: index.ts refreshes it outside this gate.",
     );
     return;
   }
 
   await computeScrymarketPrices();
-  await computeMarketMovers();
   await refreshSetCardDaily();
-  await updateSetValues();
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

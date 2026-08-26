@@ -69,9 +69,9 @@ async function main(): Promise<void> {
 
   cron.schedule(CRON_MARKET, async () => {
     // set_card_daily first, and deliberately outside the MARKET_STATS_ENABLED gate:
-    // it is the one incremental pass, and both the set pages and the card price chart
-    // read it. computeMarketStats() below still self-gates, so the two expensive
-    // whole-table passes stay paused.
+    // it is the one incremental pass, and the card detail price chart reads it.
+    // computeMarketStats() below still self-gates, so the expensive whole-table
+    // pass stays paused.
     log.info("Market cron — refreshing set_card_daily");
     try {
       await refreshSetCardDaily();

@@ -48,32 +48,44 @@ mtg-au-tracker/
 
 Everything here is pure TypeScript with no runtime dependencies. Both `apps/scraper` and `apps/web` import from `@mtg-au/shared`.
 
-### `packages/shared/src/types/card.ts`
-Core data shapes mirroring the DB schema:
-- **`Card`** — Abstract game object. "Lightning Bolt" is one Card regardless of how many sets it appears in. Keyed by Scryfall `oracle_id`.
-- **`Printing`** — A specific physical version. "Lightning Bolt from M11, non-foil" is one Printing. Keyed by Scryfall card `id`.
-- **`StorePrice`** — A price for a Printing at a specific Store, scraped at a point in time.
-- **`PriceHistory`** — Daily snapshot of a price (append-only, one row per printing/store/day).
-- **`Store`** — A retailer (MTG Mate, eBay AU, etc.).
+The DB row shapes are **not** here — `apps/scraper/src/lib/schema.ts` is the single source
+of truth for those, and the web app types its queries at the call site. Shared holds only
+what both apps genuinely need.
 
 ### `packages/shared/src/types/scraper.ts`
 The scraper contract:
-- **`ScrapedCard`** — Raw data extracted from a store before it's matched to Scryfall. Has `rawName`, `setName` (may be null), `price`, `priceType` (sell/buylist), `condition`, `isFoil`, `inStock`, `sourceUrl`.
-- **`StoreScraper`** — Interface all HTML store scrapers must implement. Requires `scrapeAll()` (async generator of ScrapedCard) and `healthCheck()`.
-- **`MatchResult`** — Result of trying to match a ScrapedCard to a Printing. Has `matchType` (exact / name_only / fuzzy / unmatched) and `confidence` (0–1).
+- **`ScrapedCard`** — Raw data extracted from a store before it's matched to Scryfall. Has `rawName`, `setCode`/`setName`/`collectorNumber` (each may be null), `price`, `priceType` (sell/buylist), `condition`, `isFoil`, optional `finish` and `treatment`, `inStock`, `sourceUrl`, optional `shippingCost`.
+- **`StoreScraper`** — Interface all store scrapers implement. One method: `scrapeAll()`, an async generator of `ScrapedCard`.
+
+`MatchResult` is **not** here — it lives in `apps/scraper/src/matching/card-matcher.ts`,
+since only the scraper matches.
 
 ### `packages/shared/src/utils/matching.ts`
 Pure functions for name matching:
 - **`normalizeName(name)`** — Lowercases, strips accents, removes punctuation, collapses spaces.
+- **`stripVariant(name)`** — Removes variant/treatment suffixes from a card name.
 - **`levenshteinDistance(a, b)`** — Edit distance for fuzzy matching.
 - **`normalizeSetName(name)`** — Same idea for set names.
-- **`SET_ALIASES`** — Map of store set name variants → Scryfall set codes.
+- **`extractTreatment(text)`** — Canonical treatment (`borderless` / `showcase` / `extendedart` / `fullart`) from a title or tag.
+
+### `packages/shared/src/utils/condition.ts`
+`CARD_CONDITIONS` + `CardCondition`, `isKnownCondition()`, and `normaliseCondition()` —
+maps the many store spellings of NM/LP/MP/HP/DMG onto one vocabulary.
 
 ### `packages/shared/src/utils/currency.ts`
-AUD/USD conversion using a static rate from `AUD_USD_RATE` env var (defaults to 0.65).
-**Currently unused** — `getAudPerUsd()` is exported but has no callers, so setting the env var
-changes nothing. It is not in `.env.example` for that reason; add it back when the live-rate
-roadmap item lands.
+`getAudPerUsd()` fetches the **live** USD→AUD rate from the Frankfurter API (free, no key,
+ECB-sourced), falling back to the `AUD_USD_RATE` env var (default 0.65) if the fetch fails.
+It takes an optional `RequestInit` so callers can add framework caching; the web app wraps
+it in `apps/web/src/lib/exchange-rate.ts` with `next: { revalidate }` for hourly caching.
+`AUD_USD_RATE` is absent from `.env.example` deliberately — it is only the failure fallback.
+
+### `packages/shared/src/constants.ts`
+`TREND_UP_THRESHOLD` / `TREND_DOWN_THRESHOLD` — the ±1% band shared by the scraper's trend
+computation and the web `TrendBadge`, so both agree on what counts as a move.
+
+### `packages/shared/src/utils/logger.ts`
+`createLogger(service)` — pino, pretty-printed in dev via a `pino-pretty` transport, plain
+NDJSON to stdout in production for Promtail → Loki.
 
 ---
 
@@ -91,16 +103,22 @@ Also runs an initial Scryfall import on startup if the DB is empty.
 
 **Market stats are paused — except `set_card_daily`.** `computeMarketStats()` returns
 immediately unless `MARKET_STATS_ENABLED=true`. `refreshSetCardDaily()` is deliberately
-**outside** that gate and runs every night from the 7 AM cron, because both the set pages
-and the card price chart read the table it maintains; leaving it gated is why
-`set_card_daily` sat empty in production while the docs described it as the fast path.
-It is also the only pass written incrementally, so it is not what saturated the disks. Its first two passes read the whole of `price_history`
-and saturate the production disks for hours — one run was measured still going 5h42m
-in, with every other query on the box stalled behind it. While paused,
-`cards.scrymarket_price`, `cards.price_trend`, `market_movers`, `set_card_daily` and
-`sets.set_value_aud` all go stale. Re-enabling needs those passes reworked to be
-incremental first; `refreshSetCardDaily()` is already written that way, the others
-are not.
+**outside** that gate and runs every night from the 7 AM cron, because the card detail
+price chart reads the table it maintains; leaving it gated is why `set_card_daily` sat
+empty in production while the docs described it as the fast path. It is also the only
+pass written incrementally, so it is not what saturated the disks.
+
+The one pass still behind the flag is `computeScrymarketPrices()`. It reads the whole of
+`price_history` and saturates the production disks for hours — one run was measured still
+going 5h42m in, with every other query on the box stalled behind it. While paused,
+`cards.scrymarket_price` and `cards.price_trend` go stale, which means the search page
+price and both trend badges freeze. Re-enabling needs it reworked to be incremental first;
+`refreshSetCardDaily()` is already written that way, it is not.
+
+The two other passes that used to live here — `computeMarketMovers()` and
+`updateSetValues()` — were deleted with the /sets pages that were their only readers. Their
+`market_movers` table and `sets.set_value_aud` column still exist but have no writer; both
+are marked ORPHANED in `schema.ts` and are slated for a drop migration.
 
 The flag gates the function rather than the cron registration, because the eBay
 import calls it too (`ebay-import.ts`). Running the script by hand
@@ -120,7 +138,8 @@ Tables:
 - **`ebay_search_log`** — Tracks when each card name was last searched on eBay + result count. Drives tiered eBay scheduler.
 - **`scraper_cache`** — Probe-cache state for the discover-then-probe scrapers (MTG Mate set codes, CrystalCommerce category slugs). One row per cache key holding the hits from the last full scan. Lives here rather than in JSON files on the scraper's disk: it was the only local state the container had, and losing it forces a full CrystalCommerce sweep (1.5–4h).
 - **`card_searches`** — Append-only log of user search queries. `card_id` FK populated from top search result. Powers demand-gap analytics (cards searched but not in stock anywhere).
-- **`set_card_daily`** — Pre-aggregated cheapest non-foil sell price per (set, card, day), built nightly from `price_history` by `computeMarketStats()`. Exists because `price_history` carries no `set_code`, so the set pages' aggregates had to scan all ~18GB of it per request. Foils and basic lands are filtered at build time. Also backs the card detail price chart — see [Set pages read pre-aggregated data](#set-pages-read-pre-aggregated-data). Pruned to `SET_CARD_DAILY_RETENTION_DAYS` (default 365) on each refresh; without that it grows ~29k rows/day forever.
+- **`set_card_daily`** — Pre-aggregated cheapest non-foil sell price per (set, card, day), built nightly from `price_history` by `refreshSetCardDaily()`. Backs the card detail price chart — see [The card price chart reads pre-aggregated data](#the-card-price-chart-reads-pre-aggregated-data). Exists because `price_history` carries no `set_code`, so answering "cheapest per card per day, per set" live meant scanning all ~18GB of it per request. Foils and basic lands are filtered at build time. Pruned to `SET_CARD_DAILY_RETENTION_DAYS` (default 365) on each refresh; without that it grows ~29k rows/day forever.
+- **`market_movers`** — **Orphaned.** Fed the /sets top-movers leaderboard; that page and its writer are gone. Slated for a drop migration.
 
 ### `apps/scraper/src/stores/shopify.ts` + `stores.config.ts`
 Generic Shopify scraper — one class drives all Shopify-based stores via config. Reads the
@@ -164,11 +183,13 @@ product beyond it. Measured: Cardhouse 41,210 printings (was 22,355), Plenty of 
 - `quantityAvailable` needs an inventory scope we don't have; `inventory_quantity` is set to 0
   and `isInStock()` reads `availableForSale` instead.
 
-`stores.config.ts` is the single source of truth for store registration — see [Adding a new Shopify store scraper](#adding-a-new-shopify-store-scraper) below. `shopifyStores()` derives the active Shopify store list (currently 32) from `STORE_REGISTRY`; `seedStores()` (`apps/scraper/src/seed.ts`) and the web app's shipping fallback (`apps/web/src/lib/store-shipping.ts`) derive from the same file, so a store exists in exactly one place.
+`stores.config.ts` is the single source of truth for store registration — see [Adding a new Shopify store scraper](#adding-a-new-shopify-store-scraper) below. `shopifyStores()` derives the active Shopify store list (currently 35) from `STORE_REGISTRY`; `seedStores()` (`apps/scraper/src/seed.ts`) and the web app's shipping fallback (`apps/web/src/lib/store-shipping.ts`) derive from the same file, so a store exists in exactly one place.
 
 ### `apps/scraper/src/stores/crystalcommerce.ts`
 Generic CrystalCommerce scraper — one class drives all stores on the CrystalCommerce
-platform (Rails), config-driven the same way `shopify.ts` is. First store on it: The Games Cube.
+platform (Rails), config-driven the same way `shopify.ts` is. First store on it: The Games Cube —
+built and verified, but currently `scraperEnabled: false` pending the store's permission, so no
+CrystalCommerce store is scraped in practice today.
 
 CrystalCommerce has no products API, so this is HTML scraping via Cheerio. Every MTG singles
 category is linked from the homepage nav mega-menu (~437 for The Games Cube), so category
@@ -265,21 +286,21 @@ repopulate run, which is where the "re-run to repopulate" advice came from.)
 ### Search page (`apps/web/src/app/page.tsx`)
 - Full-text card search with infinite scroll (20 results/page)
 - Scrymarket price: median of cheapest printing's in-stock sell prices
-- Trend badge (↑/↓/→) vs `price_history`
+- Trend badge (↑/↓/→) from the pre-computed `cards.price_trend`
 - Card thumbnails (63×88px), color identity pips, CardMagnifier on hover
 - Drag-to-search: drag any Scryfall card image onto the app
 - Umami events: `card-search` on new query, `card-click` on row click
 
-### Card detail page (`apps/web/src/app/cards/[id]/page.tsx`)
+### Card detail page (`apps/web/src/app/cards/[slug]/page.tsx`)
 - Two-column layout: sticky card image + info/table/chart
 - Market snapshot: Low / Scrymarket / High AUD, USD reference, trend badge
 - Prices table: flat rows (printing × store), filter dropdowns, pagination
 - Set symbols: Scryfall SVGs tinted by rarity, `❖` fallback for missing
 - Row hover changes card image to that printing's art
-- Price history chart: area chart (overall) + line chart by printing (max 8)
+- Price history chart: area chart (overall) + line chart **per set** (not per printing — that is the grain `set_card_daily` holds). Streamed behind `<Suspense>` via `PriceChartSection.tsx`
 
 ### Want List (`apps/web/src/app/want-list/WantListView.tsx`)
-- Route: `/want-list`, context: `WantListContext.tsx`, badge: `WantListBadge.tsx`
+- Route: `/want-list`, context: `src/app/WantListContext.tsx`, badge: `src/app/WantListBadge.tsx`
 - localStorage keys: `scrymarket_buy_list` (items), `scrymarket_shipping_overrides` (per-store postage)
 - Per-store collapsible sections with store total shown in header when collapsed
 - Printing selector shows all in-stock printings across ALL stores, sorted cheapest first
@@ -440,8 +461,8 @@ product URL (`/catalog/magic_singles-standard-bloomburrow/card_name/693640` → 
 - [x] Scryfall bulk import (~32k cards, ~141k printings)
 - [x] Card matcher with exact / name-only / fuzzy / collector-number matching
 - [x] eBay AU import pipeline (OAuth → Browse API → title parser → DB)
-- [x] Generic Shopify scraper — 21 AU stores, config-driven
-- [x] Generic CrystalCommerce scraper — config-driven, The Games Cube
+- [x] Generic Shopify scraper — 35 AU stores, config-driven
+- [x] Generic CrystalCommerce scraper — config-driven, The Games Cube (built and verified; disabled pending store permission)
 - [x] MTG Mate HTML scraper
 - [x] Next.js web UI — search, card detail, price history charts
 - [x] Want List with per-store postage editing and Branch-and-Bound optimiser
@@ -473,11 +494,11 @@ Phases are gated — nothing from Phase N+1 starts until Phase N exit criteria a
 - [x] Deploy Prometheus + Grafana + Pushgateway on monitoring LXC (`vmbr2`) — live on vmbr2, scrapes cAdvisor at `10.10.20.10:8080`
 - [ ] `prom-client` gauges: `cards_scraped`, `match_rate`, `scrape_duration_seconds` — per-store match rate would catch silent regressions. **Not started** — there is no `prom-client` dependency in the repo; this was ticked in error.
 - [x] MTG Mate set code cache — valid codes live in `scraper_cache`, full rescan every `MTGMATE_FULL_SCAN_DAYS` (~30 min → ~3 min)
-- [ ] Live AUD/USD rate (RBA or Open Exchange Rates API) — replace static `AUD_USD_RATE` env var
+- [x] Live AUD/USD rate — `getAudPerUsd()` reads the Frankfurter API (ECB, free, no key); `AUD_USD_RATE` is now only the fetch-failure fallback
 - [x] eBay atomic swap — done differently and better than planned: `atomicSwapCardPrices()` does a per-card DELETE+INSERT inside `db.transaction()`, so there is no zero-price window and no staging table
 - [x] Scryfall import streaming — reads Scryfall's `jsonl_download_uri`, gunzips through `pipeline()` to disk, then parses one line at a time via `createInterface`. No whole-file parse
 - [ ] Scryfall import — batch the upserts. Parsing streams, but `importData()` still accumulates every card and printing in memory before writing, which is what actually sets the heap floor now
-- [ ] GitHub Actions CI — typecheck + `pnpm audit` + `pnpm test` on PR
+- [x] GitHub Actions CI — `.github/workflows/ci.yml` runs typecheck (both workspaces), `pnpm test`, and a Docker build of each image on every PR. `pnpm audit` is still not wired in
 - [ ] Proxmox network hardening — move Docker LXC to vmbr1 (Services VLAN), SSH hardening + fail2ban, 2FA
 
 ### Phase 3 — Analytics & User Features
@@ -532,20 +553,19 @@ The Want List optimiser solves an Uncapacitated Facility Location Problem: which
 **Why store `card_id` on `card_searches` from the top search result?**
 The demand-gap report needs to join user searches against store inventory. At search time, the top result is the most likely intended card. Null is used when no results are returned. This is a best-effort attribution — accurate enough for aggregate demand analytics.
 
-### Set pages read pre-aggregated data
+### The card price chart reads pre-aggregated data
 
-`/sets/[setCode]` used to aggregate `price_history` live on every request, and its
-`opengraph-image` route ran the same two queries again for every crawler fetch. Because
-`price_history` has no `set_code`, filtering to one set meant scanning all seven monthly
-partitions — ~18GB. The database lives on a ZFS mirror of USB-attached spinning disks
-(~40 IOPS; moving it to the NVMe isn't possible on this hardware), so each of those took
-minutes, and requests arrived faster than they drained: a dozen backends piling up on the
-same scan drove host-wide IO pressure to 96% and load to 25.
+The now-deleted `/sets/[setCode]` pages used to aggregate `price_history` live on every
+request. Because `price_history` has no `set_code`, filtering to one set meant scanning all
+seven monthly partitions — ~18GB. The database lives on a ZFS mirror of USB-attached
+spinning disks (~40 IOPS; moving it to the NVMe isn't possible on this hardware), so each
+of those took minutes, and requests arrived faster than they drained: a dozen backends
+piling up on the same scan drove host-wide IO pressure to 96% and load to 25.
 
-So the aggregate is now computed once a night into `set_card_daily` and the set pages read
-that instead. Measured on the dev dataset (3.9M `price_history` rows — prod holds ~84M), the
-timeline query drops from **45,856 disk block reads to 85**. Results are identical; both
-rewritten queries were diffed against the originals across a multi-set selection.
+The fix was to compute the aggregate once a night into `set_card_daily` and read that
+instead. The set pages are gone, but **the card detail price chart inherited the same
+table**, and that is now the sole reason `set_card_daily` and its nightly refresh exist —
+do not assume they went away with /sets.
 
 Consequences worth remembering:
 - **`price_history` is still the source of truth.** `set_card_daily` is a derived cache and
@@ -558,18 +578,18 @@ Consequences worth remembering:
   would be the multi-hour scan this change exists to avoid.
 - **The newest existing date is always recomputed**, since the nightly task can run while a
   store scrape is still writing that day's rows.
-- **The card detail chart reads it too, as of the card-page performance work.** Its query
-  used to read `price_history` directly with no date bound at all: 49 partitions probed (43
-  of them empty, pre-created through 2028), **126,262 physical reads and 109s** for a
-  100-printing card on a cold cache. Against `set_card_daily` the same chart costs **732
-  buffers, 1.8ms**. The series are per-set rather than per-printing because that is the
-  grain this table holds, and foils are excluded for the same reason.
+- **The card detail chart is the only reader.** Its query used to read `price_history`
+  directly with no date bound at all: 49 partitions probed (43 of them empty, pre-created
+  through 2028), **126,262 physical reads and 109s** for a 100-printing card on a cold
+  cache. Against `set_card_daily` the same chart costs **732 buffers, 1.8ms**. The series
+  are per-set rather than per-printing because that is the grain this table holds, and
+  foils are excluded for the same reason.
 - **The chart is also streamed rather than awaited.** `page.tsx` renders from `printings` +
   `store_prices` (3ms warm) and the chart arrives behind a `<Suspense>` boundary
   (`PriceChartSection.tsx`), so a slow history query can never again hold the whole page.
 - **Anything new that needs per-set history should extend this table, not re-query
-  `price_history`.** `getSymbioticMovers()` is the remaining live-scan query; it is bounded
-  to a 30-day pre-release window and currently has no callers.
+  `price_history`.** There are no live `price_history` scans left in the web app — the last
+  one, `getSymbioticMovers()`, went with the /sets removal. Keep it that way.
 
 ---
 

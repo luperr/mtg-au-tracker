@@ -8,3 +8,4 @@ data/
 memory/
 *.tsbuildinfo
 coverage/
+.DS_Store

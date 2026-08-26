@@ -48,7 +48,9 @@ export const sets = pgTable("sets", {
   releasedAt: date("released_at").notNull(),
   cardCount: integer("card_count").notNull().default(0),
   iconSvgUri: text("icon_svg_uri"),
-  setValueAud: numeric("set_value_aud"),                   // updated after each nightly store scrape
+  // ORPHANED — the /sets listing was its only reader and updateSetValues() its only
+  // writer; both are gone. Kept until the column is dropped in a later migration.
+  setValueAud: numeric("set_value_aud"),
 });
 
 // ─── Cards ────────────────────────────────────────────────────────────────────
@@ -237,7 +239,10 @@ export const cardSearches = pgTable(
 
 // ─── Market Movers ────────────────────────────────────────────────────────────
 // Pre-computed top 3 price gainers and losers for 7 / 14 / 30 day windows.
-// Always exactly 18 rows. TRUNCATE + INSERT inside a transaction on each nightly run.
+//
+// ORPHANED — this fed MarketPulse on the /sets listing. That page and
+// computeMarketMovers(), its only writer, are both gone, so the table is frozen at
+// whatever it last held. Kept until it is dropped in a later migration.
 
 export const marketMovers = pgTable(
   "market_movers",

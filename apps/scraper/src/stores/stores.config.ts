@@ -206,6 +206,10 @@ export const STORE_REGISTRY: StoreConfig[] = [
     flatShippingAud: 9.0, shopify: { collectionHandle: "magic-the-gathering-singles"},
   },
   {
+    id: "spellroo_gaming", name: "Spellroo Gaming", baseUrl: "https://www.spellroogaming.com.au", scraperEnabled: true, logoUrl: null,
+    flatShippingAud: 9.0, shopify: { collectionHandle: "magic-the-gathering-singles" },
+  },
+  {
     // Disabled pending permission from the store: robots.txt disallows all
     // non-Googlebot crawlers, and a sweep is ~3,500 requests that visibly
     // degrades their server (see the CrystalCommerce section in CLAUDE.md).
