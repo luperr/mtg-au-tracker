@@ -20,10 +20,14 @@ export interface ShopifyStoreConfig {
   id: string;               // matches stores.id in DB (e.g. "good_games")
   baseUrl: string;          // e.g. "https://tcg.goodgames.com.au"
   collectionHandle: string; // Shopify collection slug (e.g. "mtg-singles-all-products")
-  // "all-in-title": store bakes card name + collector# + set + foil + condition
-  // all into the product title with a single "Default Title" variant.
-  // e.g. "Zenos yae Galvus (Borderless) 384 Rare FINAL FANTASY Foil NM/M"
-  titleFormat?: "all-in-title";
+  // Per-store product-title dialect. Omit for the default parser (SKU first,
+  // then the title conventions in title-parsers/standard.ts). Each value maps to
+  // one file in title-parsers/, which documents the shape it reads.
+  //   "all-in-title"       name + collector# + set + foil + condition all in the
+  //                        title, single "Default Title" variant (Raptor Games).
+  //                        e.g. "Zenos yae Galvus (Borderless) 384 Rare FINAL FANTASY Foil NM/M"
+  //   "flag-prefix"        "[FOIL] Mountain (Chocobo Track Foil) #481 - LAND FIC - Commander: FINAL FANTASY"
+  titleFormat?: "all-in-title" | "flag-prefix";
   // true: variants represent physical store locations (e.g. "Bendigo", "Geelong"),
   // not condition/foil. Collapse per-foil-type; condition implied NM; foil from SKU;
   // inStock = true if any location variant is available. (GUF-style stores.)
@@ -203,7 +207,7 @@ export const STORE_REGISTRY: StoreConfig[] = [
   },
   {
     id: "cherry_collectables", name: "Cherry Collectables", baseUrl: "https://www.cherrycollectables.com.au/", scraperEnabled: true, logoUrl: null,
-    flatShippingAud: 9.0, shopify: { collectionHandle: "magic-the-gathering-singles"},
+    flatShippingAud: 9.0, shopify: { collectionHandle: "magic-the-gathering-singles", titleFormat: "flag-prefix" },
   },
   {
     id: "awgaming", name: "Aether Wyvern Games", baseUrl: "https://awgames.com.au", scraperEnabled: true, logoUrl: null,
