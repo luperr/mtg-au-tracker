@@ -422,6 +422,7 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
                               card={item.cardName}
                               price={item.priceAud}
                               source="want-list"
+                              printingId={item.printingId}
                               className="text-xs text-price hover:text-cream transition-colors"
                             />
                           )}

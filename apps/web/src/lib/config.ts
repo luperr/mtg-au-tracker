@@ -63,6 +63,25 @@ export const ANALYTICS_SCRIPT_URL = "https://umami.scrymarket.au/script.js";
 export const SCRYFALL_SVG_BASE = "https://svgs.scryfall.io";
 export const GITHUB_API_URL = "https://api.github.com";
 
+// ── eBay Partner Network (affiliate) ─────────────────────────────────────────
+//
+// The campaign id itself is runtime config (EBAY_AFFILIATE_CAMPAIGN_ID) and has no
+// default: unset means outbound eBay links render exactly as they always did.
+// See apps/web/src/lib/affiliate.ts.
+
+/**
+ * EPN rotation id for the eBay AU site. Overridable via EBAY_AFFILIATE_ROTATION_ID.
+ * Verify this against a link generated in the EPN dashboard — a wrong rotation id
+ * loses attribution silently rather than erroring.
+ */
+export const EBAY_AFFILIATE_ROTATION_ID_DEFAULT = "705-53470-19255-0";
+
+/** eBay site id for ebay.com.au. */
+export const EBAY_AFFILIATE_SITE_ID = "15";
+
+/** EPN tool id for a standard text/link placement. */
+export const EBAY_AFFILIATE_TOOL_ID = "10001";
+
 // ── GitHub issue creation ────────────────────────────────────────────────────
 
 export const GITHUB_REPO_OWNER = "luperr";

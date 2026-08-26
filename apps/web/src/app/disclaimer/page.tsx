@@ -10,7 +10,7 @@ export default function DisclaimerPage() {
     <div className="max-w-2xl mx-auto py-8 space-y-8">
       <header>
         <h1 className="text-3xl font-bold text-cream mb-3">Disclaimer</h1>
-        <p className="text-cream-dim text-sm">Last updated: March 2026</p>
+        <p className="text-cream-dim text-sm">Last updated: August 2026</p>
       </header>
 
       <section className="space-y-3">
@@ -32,7 +32,24 @@ export default function DisclaimerPage() {
         <p className="text-cream-dim leading-relaxed">
           Scrymarket is an independent, unofficial tool. It is not affiliated with, endorsed by,
           or in any way connected to Wizards of the Coast LLC, any Australian MTG retailer, or
-          eBay Inc. All trademarks remain the property of their respective owners.
+          eBay Inc. All trademarks remain the property of their respective owners. Participation
+          in the eBay Partner Network (see below) is a commercial referral arrangement only and
+          does not imply any endorsement by, or affiliation with, eBay.
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-xl font-semibold text-cream">Affiliate links</h2>
+        <p className="text-cream-dim leading-relaxed">
+          Scrymarket is a participant in the eBay Partner Network. Links to eBay listings are
+          affiliate links, and Scrymarket may earn a commission on qualifying purchases made
+          through them, at no additional cost to you. Links to Australian retailers are not
+          affiliate links.
+        </p>
+        <p className="text-cream-dim leading-relaxed">
+          Affiliate participation has no effect on the price data shown or the order in which
+          listings are ranked. Prices are compared purely on cost, and eBay is not given any
+          preference over any other tracked source.
         </p>
       </section>
 
