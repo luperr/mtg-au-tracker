@@ -52,6 +52,10 @@ import {
 import { parseSkuData } from "./sku-parser.js";
 import { parseStandardTitle } from "./title-parsers/standard.js";
 import { parseAllInTitleFormat } from "./title-parsers/all-in-title.js";
+import { parseParenSetCodeTitle } from "./title-parsers/paren-set-code.js";
+import { parseFlagPrefixTitle } from "./title-parsers/flag-prefix.js";
+import { parseTrailingSetParenTitle } from "./title-parsers/trailing-set-paren.js";
+import type { DialectTitleResult } from "./title-parsers/types.js";
 import { logger } from "../lib/logger.js";
 
 export { parseProductTitle, isSkippedVariant } from "./title-parsers/standard.js";
@@ -180,9 +184,30 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
   let setName: string | null;
   let setCode: string | null = null;
   let titleFoil: boolean | null = null; // non-null overrides variant foil detection
+  let titleFinish: DialectTitleResult["titleFinish"] = null;
+  let dialectTreatment: string | null = null;
   let skuFoil: boolean | null = null;
 
-  if (config.titleFormat === "all-in-title") {
+  let dialect: DialectTitleResult | null = null;
+  if (config.titleFormat === "paren-set-code") {
+    dialect = parseParenSetCodeTitle(product);
+  } else if (config.titleFormat === "trailing-set-paren") {
+    dialect = parseTrailingSetParenTitle(product);
+  } else if (config.titleFormat === "flag-prefix") {
+    // This dialect alone can reject a listing — playsets are priced per 4 cards.
+    dialect = parseFlagPrefixTitle(product);
+    if (dialect === null) return [];
+  }
+
+  if (dialect) {
+    cardName = dialect.cardName;
+    setCode = dialect.setCode;
+    setName = dialect.setName;
+    collectorNumber = dialect.collectorNumber;
+    titleFoil = dialect.titleFoil;
+    titleFinish = dialect.titleFinish;
+    dialectTreatment = dialect.treatment;
+  } else if (config.titleFormat === "all-in-title") {
     const parsed = parseAllInTitleFormat(product);
     cardName = parsed.cardName;
     collectorNumber = parsed.collectorNumber;
@@ -199,7 +224,7 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
   }
 
   const tagFoil = extractFoilFromTags(product.tags);
-  const treatment = extractTreatment(product.title);
+  const treatment = dialectTreatment ?? extractTreatment(product.title);
 
   const sourceUrl = `${baseUrl}/products/${product.handle}`;
   const results: ScrapedCard[] = [];
@@ -256,7 +281,7 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
     const titleEtched = config.titleFormat === "all-in-title" &&
       /\bFoil\s+Etched\b|\bEtched\s+Foil\b/i.test(product.title);
     const finish: "nonfoil" | "foil" | "etched" =
-      titleEtched ? "etched" : (variantFinish === "etched" ? "etched" : isFoil ? "foil" : "nonfoil");
+      titleFinish ?? (titleEtched ? "etched" : (variantFinish === "etched" ? "etched" : isFoil ? "foil" : "nonfoil"));
 
     results.push({
       rawName: cardName,
