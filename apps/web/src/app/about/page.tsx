@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getStores } from "@/lib/db";
+import { applyAffiliateParams, getAffiliateConfig } from "@/lib/affiliate";
 
 export const metadata: Metadata = {
   title: "About — Scrymarket",
@@ -11,6 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function AboutPage() {
   const stores = await getStores();
   const retailCount = stores.filter((s) => s.id !== "ebay_au").length;
+  const affiliate = getAffiliateConfig();
 
   return (
     <div className="max-w-2xl mx-auto py-8 space-y-10">
@@ -39,6 +41,13 @@ export default async function AboutPage() {
         <p className="text-cream-dim leading-relaxed">
           Scrymarket is free for players. No paywalls, no premium tiers, no account required.
           That&apos;s never changing.
+        </p>
+        <p className="text-cream-dim leading-relaxed">
+          To help cover the hosting bill, Scrymarket is a participant in the eBay Partner
+          Network. Links to eBay listings are affiliate links, and I may earn a commission on
+          qualifying purchases made through them — at no extra cost to you. It never affects
+          which prices are shown or how they&apos;re ranked; the cheapest listing is always the
+          cheapest listing.
         </p>
         <p className="text-cream-dim leading-relaxed">
           For the tech nerds — the whole thing is open source. The code&apos;s on{" "}
@@ -72,7 +81,11 @@ export default async function AboutPage() {
             return (
               <a
                 key={store.id}
-                href={store.base_url}
+                href={applyAffiliateParams(store.base_url, store.id, {
+                  campaignId: affiliate.campaignId,
+                  rotationId: affiliate.rotationId,
+                  customId: "about-stores",
+                })}
                 target="_blank"
                 rel="noopener noreferrer"
                 title={store.name}

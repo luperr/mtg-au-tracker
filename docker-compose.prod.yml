@@ -126,6 +126,8 @@ services:
       NODE_ENV: production
       GITHUB_TOKEN: ${GITHUB_TOKEN}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      EBAY_AFFILIATE_CAMPAIGN_ID: ${EBAY_AFFILIATE_CAMPAIGN_ID:-}
+      EBAY_AFFILIATE_ROTATION_ID: ${EBAY_AFFILIATE_ROTATION_ID:-}
     depends_on:
       db:
         condition: service_healthy

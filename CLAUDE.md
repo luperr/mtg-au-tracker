@@ -309,11 +309,32 @@ repopulate run, which is where the "re-run to repopulate" advice came from.)
 - Item ID: `${printingId}-${storeId}-${url ?? ""}` — unique per distinct listing
 - **Optimise feature** (`/api/optimize`): Branch-and-bound over flat-rate store subsets. Flat fees added once per store. Tie-breaking prefers lower flat-rate stores for equal card prices. Per-store shipping overrides sent in POST body and applied server-side. Review modal: lock cards to current printing, re-optimise, apply selected changes.
 
-### `apps/web/src/app/BuyLink.tsx`
+### `apps/web/src/app/BuyLink.tsx` + `apps/web/src/lib/affiliate.ts`
 Single component for all outbound store buy links. Owns:
 - Umami `store-click` event tracking (passes `storeId`, `card`, `price`, `source`)
-- `applyAffiliateParams()` — extend per store when affiliate deals are set up, no call-sites change
 - Correct `rel="noopener noreferrer"` and new-tab behaviour
+- Affiliate rewriting via `applyAffiliateParams()` in `lib/affiliate.ts` — extend per store
+  when more deals are set up, no call-sites change
+
+**eBay Partner Network is live.** `ebay_au` links get `mkevt`/`mkcid`/`mkrid`/`siteid`/
+`campid`/`toolid` merged onto the stored `itemWebUrl` (which often already has its own query
+string, hence merge rather than replace), plus a `customid` of `${source}-${printingId}` so
+EPN reports attribute revenue per card and per surface.
+
+`EBAY_AFFILIATE_CAMPAIGN_ID` is **runtime** config, not `NEXT_PUBLIC_*`. Next inlines
+`NEXT_PUBLIC_` vars at build time, and prod images are built by CI and only pulled on the
+server — a build-time id would need a rebuild to rotate. So the root layout (a server
+component) reads it and passes it through `AffiliateContext` to the client components that
+render links. Unset campaign id = links render exactly as they did before, so the whole
+feature is off by default and reversible by unsetting one variable.
+
+The `/about` store grid is a server component and calls `applyAffiliateParams()` directly.
+Disclosure copy (an EPN requirement) lives on `/about`, `/disclaimer` and `/faq`.
+
+Rejected: setting `X-EBAY-C-ENDUSERCTX: affiliateCampaignId=…` on the Browse API call to
+store `itemAffiliateWebUrl` in the DB. It is eBay's blessed route, but it bakes the campaign
+id into millions of stored rows, doesn't retro-fix existing rows, and gives no per-surface
+`customid`. Keep it as the fallback if eBay ever stops honouring hand-built parameters.
 
 ### `apps/web/src/lib/store-shipping.ts`
 `getStoreShippingRates()` — flat-rate postage per store (AUD), keyed by `store_id`, read from `stores.flat_shipping_aud` (seeded from `STORE_REGISTRY` in `stores.config.ts`) and cached in memory for an hour. Fallback when a store_prices row doesn't supply `shipping_aud`. eBay is `null` (per-item shipping).
@@ -363,6 +384,8 @@ See `.env.example` for all variables. Key ones:
 | `USER_AGENT` | HTTP User-Agent for scraping | `Scrymarket/1.0` |
 | `SCRYFALL_OUTPUT_DIR` | Where the Scryfall bulk file downloads to | `/tmp/mtg-scraper` |
 | `MTGMATE_FULL_SCAN_DAYS` | Days between full MTG Mate set-code rescans | `7` |
+| `EBAY_AFFILIATE_CAMPAIGN_ID` | EPN campaign id for outbound eBay links. Unset = no affiliate params | unset (off) |
+| `EBAY_AFFILIATE_ROTATION_ID` | EPN rotation id for the eBay AU site | `705-53470-19255-0` |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Token for `cloudflared` tunnel service | — |
 | `IMAGE_REGISTRY` | Registry+namespace for prod images (ECR-swap lever) | `ghcr.io/luperr` |
 | `IMAGE_TAG` | Which prod image to run; `main-<sha>` to pin/rollback | `latest` |
@@ -443,7 +466,7 @@ product URL (`/catalog/magic_singles-standard-bloomburrow/card_name/693640` → 
 - [x] MTG Mate HTML scraper
 - [x] Next.js web UI — search, card detail, price history charts
 - [x] Want List with per-store postage editing and Branch-and-Bound optimiser
-- [x] BuyLink component — centralised tracking, affiliate-ready
+- [x] BuyLink component — centralised tracking, eBay Partner Network affiliate links live
 - [x] Umami analytics — card-search, card-click, store-click events
 - [x] `card_searches` table — demand analytics foundation (search query + top card ID)
 - [x] Cloudflare tunnel for public access (no open ports)

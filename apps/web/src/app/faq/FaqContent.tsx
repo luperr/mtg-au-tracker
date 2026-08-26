@@ -134,6 +134,28 @@ const faqs: FaqItem[] = [
     a: "Card data comes from Scryfall's daily bulk export. Very recently released cards may not appear until the next daily refresh. Tokens, digital-only cards, and promo emblems are intentionally excluded.",
   },
   {
+    q: "Does Scrymarket make money from these links?",
+    a: (
+      <>
+        A little, from eBay only. Scrymarket is a participant in the eBay Partner Network, so
+        links to eBay listings are affiliate links and I may earn a commission on qualifying
+        purchases — at no extra cost to you. Links to the Australian retailers are plain links
+        and earn nothing. Either way it has no bearing on which prices are shown or how
+        they&apos;re ordered: the cheapest listing is always the cheapest listing, and the code
+        that decides that is{" "}
+        <a
+          href="https://github.com/luperr/mtg-au-tracker"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-accent hover:underline"
+        >
+          open source
+        </a>
+        {" "}if you want to check.
+      </>
+    ),
+  },
+  {
     q: "Is there an account or login required?",
     a: "No. The Want List is saved in your browser's local storage — no account needed. That said, it means your list won't carry over between devices.",
   },

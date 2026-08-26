@@ -385,6 +385,7 @@ export function PricesTable({
                             card={cardName}
                             price={row.priceAud}
                             source="card-detail"
+                            printingId={row.printing.id}
                           />
                         )}
                         {row.inStock && (
@@ -478,6 +479,7 @@ export function PricesTable({
                               card={cardName}
                               price={row.priceAud}
                               source="card-detail"
+                              printingId={row.printing.id}
                             />
                           )}
                         </td>
