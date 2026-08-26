@@ -13,7 +13,6 @@
     "test:ebay:oauth": "tsx src/ebay/oauth.ts",
     "test:ebay:browse": "tsx src/ebay/browse-client.ts",
     "test:ebay:transform": "tsx src/ebay/transform.ts",
-    "validate:goodgames": "tsx src/stores/validate-goodgames.ts",
     "seed": "tsx src/seed.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
@@ -54,7 +53,6 @@
     "scrape:cherrycollectables": "tsx src/stores/run-store.ts cherry_collectables",
     "scrape:spellroo": "tsx src/stores/run-store.ts spellroo_gaming",
     "scrape:gamescube": "tsx src/stores/run-store.ts games_cube",
-    "compute:set-values": "tsx src/stores/compute-set-values.ts",
     "compute:market-stats": "tsx src/market/compute-market-stats.ts",
     "refresh:set-card-daily": "tsx src/market/refresh-set-card-daily.ts",
 

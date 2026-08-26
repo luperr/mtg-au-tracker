@@ -4,10 +4,7 @@
  * Any store running Shopify can be added by creating a registry entry with a
  * `shopify` block in stores.config.ts — no scraper code changes needed.
  *
- * Tested stores:
- *   - Good Games   (tcg.goodgames.com.au)
- *   - Gameology    (gameology.com.au)
- *   - Plenty of Games (plentyofgames.com.au)
+ * Drives 35 AU stores — see shopifyStores() in stores.config.ts for the live list.
  *
  * Strategy:
  *   Cursor-walk the Storefront GraphQL API — see shopify-graphql.ts for why
@@ -27,7 +24,7 @@
  *     - Condition + foil: read from variant option values (option1/option2 keyed by
  *       option axis name). Falls back to splitting variant.title on " / ".
  *     - Stock: variant.available boolean, or fall back to inventory_quantity > 0.
- *     - Only NM variants are emitted (same behaviour as original Good Games scraper).
+ *     - Only NM variants are emitted.
  */
 
 import { type ScrapedCard, normaliseCondition, extractTreatment } from "@mtg-au/shared";
