@@ -52,9 +52,7 @@ import {
 import { parseSkuData } from "./sku-parser.js";
 import { parseStandardTitle } from "./title-parsers/standard.js";
 import { parseAllInTitleFormat } from "./title-parsers/all-in-title.js";
-import { parseParenSetCodeTitle } from "./title-parsers/paren-set-code.js";
 import { parseFlagPrefixTitle } from "./title-parsers/flag-prefix.js";
-import { parseTrailingSetParenTitle } from "./title-parsers/trailing-set-paren.js";
 import { logger } from "../lib/logger.js";
 
 export { parseProductTitle, isSkippedVariant } from "./title-parsers/standard.js";
@@ -188,12 +186,9 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
   let skuFoil: boolean | null = null;
 
   let dialect: DialectTitleResult | null = null;
-  if (config.titleFormat === "paren-set-code") {
-    dialect = parseParenSetCodeTitle(product);
-  } else if (config.titleFormat === "trailing-set-paren") {
-    dialect = parseTrailingSetParenTitle(product);
-  } else if (config.titleFormat === "flag-prefix") {
-    // This dialect alone can reject a listing — playsets are priced per 4 cards.
+  if (config.titleFormat === "flag-prefix") {
+    // Cherry alone needs its own parser, and alone can reject a listing —
+    // playsets are priced per four cards.
     dialect = parseFlagPrefixTitle(product);
     if (dialect === null) return [];
   }
@@ -220,6 +215,9 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
     collectorNumber = parsed.collectorNumber;
     setName = parsed.setName;
     skuFoil = parsed.skuFoil;
+    titleFinish = parsed.titleFinish;
+    // A title that names its finish also settles whether the card is foil.
+    if (parsed.titleFinish !== null) titleFoil = true;
   }
 
   const tagFoil = extractFoilFromTags(product.tags);

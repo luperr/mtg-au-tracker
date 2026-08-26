@@ -26,10 +26,8 @@ export interface ShopifyStoreConfig {
   //   "all-in-title"       name + collector# + set + foil + condition all in the
   //                        title, single "Default Title" variant (Raptor Games).
   //                        e.g. "Zenos yae Galvus (Borderless) 384 Rare FINAL FANTASY Foil NM/M"
-  //   "paren-set-code"     "Into the Flood Maw (BLB - 52) - Bloomburrow - Uncommon - Normal"
   //   "flag-prefix"        "[FOIL] Mountain (Chocobo Track Foil) #481 - LAND FIC - Commander: FINAL FANTASY"
-  //   "trailing-set-paren" "Krosan Tusker 302/451 (Commander Masters)  - Foil"
-  titleFormat?: "all-in-title" | "paren-set-code" | "flag-prefix" | "trailing-set-paren";
+  titleFormat?: "all-in-title" | "flag-prefix";
   // true: variants represent physical store locations (e.g. "Bendigo", "Geelong"),
   // not condition/foil. Collapse per-foil-type; condition implied NM; foil from SKU;
   // inStock = true if any location variant is available. (GUF-style stores.)
@@ -130,7 +128,7 @@ export const STORE_REGISTRY: StoreConfig[] = [
   },
   {
     id: "chromatic_games", name: "Chromatic Games", baseUrl: "https://chromaticgamestcg.com.au", scraperEnabled: true, logoUrl: null,
-    flatShippingAud: 6.50, shopify: { collectionHandle: "mtg-singles-in-stock", titleFormat: "trailing-set-paren" },
+    flatShippingAud: 6.50, shopify: { collectionHandle: "mtg-singles-in-stock" },
   },
   {
     id: "general_games", name: "General Games", baseUrl: "https://www.generalgames.com.au", scraperEnabled: true, logoUrl: null,
@@ -217,7 +215,7 @@ export const STORE_REGISTRY: StoreConfig[] = [
   },
   {
     id: "spellroo_gaming", name: "Spellroo Gaming", baseUrl: "https://www.spellroogaming.com.au", scraperEnabled: true, logoUrl: null,
-    flatShippingAud: 9.0, shopify: { collectionHandle: "magic-the-gathering-singles", titleFormat: "paren-set-code" },
+    flatShippingAud: 9.0, shopify: { collectionHandle: "magic-the-gathering-singles" },
   },
   {
     // Disabled pending permission from the store: robots.txt disallows all

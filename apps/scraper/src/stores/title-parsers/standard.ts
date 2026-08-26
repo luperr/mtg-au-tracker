@@ -119,6 +119,49 @@ export interface StandardTitleResult {
   setName: string | null;
   collectorNumber: string | null;
   skuFoil: boolean | null;
+  /**
+   * Set only when the title itself declares a finish, e.g. Chromatic's
+   * "... (Commander Masters)  - Etched Foil". Null means "the title said
+   * nothing" — foil then comes from the SKU, tags or variant axes as usual.
+   * Chromatic needs this because Condition is its only variant option, so a
+   * foil listing carries no other signal that it is one.
+   */
+  titleFinish: "foil" | "etched" | null;
+}
+
+/**
+ * Spellroo style: "Into the Flood Maw (BLB - 52) - Bloomburrow - Uncommon - Normal".
+ * Set code and collector in a ROUND-bracket pair, mid-title — the same idea as the
+ * Crit Hit rule below but in parentheses, and it must be read before the dash rule,
+ * whose first " - " lands inside the parenthetical.
+ * The "/249" on The List cards is the set size, not part of the number.
+ */
+const PAREN_SET_COLLECTOR = /\(([A-Z0-9]{2,6})\s*-\s*(\d{1,4}[a-z]?)(?:\/\d+)?\)/i;
+
+/**
+ * Chromatic style: "Karador, Ghost Chieftain 342/451 (Commander Masters)" and
+ * "Krosan Tusker 302/451 (Commander Masters)  - Foil".
+ * A standalone collector number between the card name and a trailing set
+ * parenthetical. Greedy name group so the number binds to the LAST one before the
+ * bracket — card names of their own can end in digits. Read before the dash rule,
+ * which would otherwise take a trailing "- Foil" as the set name.
+ */
+const COLLECTOR_BEFORE_SET_PAREN = /^(.+)\s+(\d{1,4}[a-z]?)(?:\/\d+)?\s+\(([^()]+)\)\s*(?:-\s*(.+?))?\s*$/;
+
+/** Trailing "- {Rarity} - {Finish}" segments Spellroo appends after the set name. */
+const TRAILING_RARITY_FINISH = new Set([
+  "common", "uncommon", "rare", "mythic", "special", "land", "basic land",
+  "promo", "token", "normal", "foil",
+]);
+
+/**
+ * Scryfall stores collector numbers unpadded — no printing in the database has a
+ * leading zero — while several stores pad to three or four digits. A padded
+ * number misses the matcher's "{set}:{collector}:{finish}" index outright.
+ */
+function unpadCollector(raw: string): string {
+  const m = /^0*(\d+)([a-z]?)$/i.exec(raw);
+  return m ? (m[1] + m[2]).toLowerCase() : raw.toLowerCase();
 }
 
 /** Returns null when the product should be skipped entirely (unhandled variant type). */
@@ -126,6 +169,47 @@ export function parseStandardTitle(product: ShopifyProduct): StandardTitleResult
   const skuData = parseSkuData(product.variants[0]?.sku);
   let setCode: string | null = null;
   let collectorNumber: string | null = null;
+
+  // Round-bracket set+collector, e.g. "Into the Flood Maw (BLB - 52) - Bloomburrow
+  // - Uncommon - Normal". Both fields come straight out of the title, so this
+  // returns early rather than falling through the shape rules below.
+  const parenSetCollector = PAREN_SET_COLLECTOR.exec(product.title);
+  if (parenSetCollector) {
+    const beforeParen = product.title.slice(0, parenSetCollector.index).trim();
+    const afterParen = product.title
+      .slice(parenSetCollector.index + parenSetCollector[0].length)
+      .replace(/^\s*-\s*/, "")
+      .trim();
+    const segments = afterParen.split(" - ").map((seg) => seg.trim()).filter(Boolean);
+    while (segments.length > 1 && TRAILING_RARITY_FINISH.has(segments[segments.length - 1].toLowerCase())) {
+      segments.pop();
+    }
+    return {
+      cardName: stripVariant(beforeParen) || beforeParen,
+      setCode: parenSetCollector[1].toLowerCase(),
+      setName: segments.length > 0 ? segments.join(" - ") : null,
+      collectorNumber: unpadCollector(parenSetCollector[2]),
+      skuFoil: skuData.isFoil,
+      titleFinish: null,
+    };
+  }
+
+  // Standalone collector number before a trailing set parenthetical, e.g.
+  // "Karador, Ghost Chieftain 342/451 (Commander Masters)  - Foil".
+  const collectorBeforeSet = COLLECTOR_BEFORE_SET_PAREN.exec(product.title.trim());
+  if (collectorBeforeSet && !skuData.setCode) {
+    // Only a suffix that names a finish overrides the variant axes; "- Near Mint"
+    // must leave them alone, so this stays null unless the title actually says so.
+    const suffix = collectorBeforeSet[4] ?? "";
+    return {
+      cardName: collectorBeforeSet[1].trim(),
+      setCode: null,
+      setName: collectorBeforeSet[3].trim(),
+      collectorNumber: unpadCollector(collectorBeforeSet[2]),
+      skuFoil: skuData.isFoil,
+      titleFinish: /\betched\b/i.test(suffix) ? "etched" : /\bfoil\b/i.test(suffix) ? "foil" : null,
+    };
+  }
 
   // Crit Hit style: "Name (Borderless) [FIC - 483]" — set+collector in one bracket.
   // Extract before other parsing so dashMatch can't fire on the wrong " - ".
@@ -209,5 +293,5 @@ export function parseStandardTitle(product: ShopifyProduct): StandardTitleResult
     setName = bracketSetCollector ? null : resolved.resolvedSetName;
   }
 
-  return { cardName, setCode, setName, collectorNumber, skuFoil: skuData.isFoil };
+  return { cardName, setCode, setName, collectorNumber, skuFoil: skuData.isFoil, titleFinish: null };
 }

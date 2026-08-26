@@ -1,54 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { parseParenSetCodeTitle } from "./paren-set-code.js";
 import { parseFlagPrefixTitle } from "./flag-prefix.js";
-import { parseTrailingSetParenTitle } from "./trailing-set-paren.js";
 import type { ShopifyProduct } from "../shopify-types.js";
 
-// All three dialects read only the title; the rest of the product is scaffolding.
+// parseFlagPrefixTitle reads only the title; the rest of the product is scaffolding.
 const product = (title: string): ShopifyProduct => ({
   id: 1, title, handle: "h", product_type: "Singles", tags: [], options: [], variants: [],
 });
 
-// Every fixture below is a real title pulled from the store's live Storefront API.
-
-describe("paren-set-code (Spellroo Gaming)", () => {
-  it("reads set code and collector from the parenthetical", () => {
-    expect(parseParenSetCodeTitle(product("Into the Flood Maw (BLB - 52) - Bloomburrow - Uncommon - Normal")))
-      .toMatchObject({ cardName: "Into the Flood Maw", setCode: "blb", collectorNumber: "52", setName: "Bloomburrow" });
-  });
-
-  it("does not split inside the set parenthetical, as the standard parser did", () => {
-    // The regression this dialect exists for: "Hex Magic (MSH" was the card name.
-    expect(parseParenSetCodeTitle(product("Hex Magic (MSH - 133) - Marvel Super Heroes - Uncommon - Normal")).cardName)
-      .toBe("Hex Magic");
-  });
-
-  it("strips a treatment parenthetical from the card name", () => {
-    expect(parseParenSetCodeTitle(product("Chaos Warp (Borderless) (MAR - 69) - Marvel Universe Eternal-Legal - Mythic - Normal")))
-      .toMatchObject({ cardName: "Chaos Warp", setCode: "mar", collectorNumber: "69" });
-  });
-
-  it("drops the set size from a The List collector number", () => {
-    expect(parseParenSetCodeTitle(product("Noble Hierarch (LIST - 151/249) - The List Reprints - Rare - Normal")))
-      .toMatchObject({ cardName: "Noble Hierarch", setCode: "list", collectorNumber: "151", setName: "The List Reprints" });
-  });
-
-  it("keeps a set name containing a colon intact", () => {
-    expect(parseParenSetCodeTitle(product("Sol Ring (SOC - 128) - Commander: Secrets of Strixhaven - Uncommon - Normal")).setName)
-      .toBe("Commander: Secrets of Strixhaven");
-  });
-
-  it("leaves foil to the per-variant Printing axis", () => {
-    // The trailing "- Foil" is the default variant's finish, not the product's.
-    expect(parseParenSetCodeTitle(product("Mole Man, Moloid Master (MSH - 177) - Marvel Super Heroes - Rare - Foil")))
-      .toMatchObject({ titleFoil: null, titleFinish: null });
-  });
-
-  it("falls back to a bare name when there is no set parenthetical", () => {
-    expect(parseParenSetCodeTitle(product("Lightning Bolt")))
-      .toMatchObject({ cardName: "Lightning Bolt", setCode: null, collectorNumber: null });
-  });
-});
+// Every fixture below is a real title pulled from the live Storefront API.
 
 describe("flag-prefix (Cherry Collectables)", () => {
   // parseFlagPrefixTitle returns null only for playsets; every other fixture parses.
@@ -149,41 +108,5 @@ describe("flag-prefix (Cherry Collectables)", () => {
   it("skips playset listings, which are priced per four cards", () => {
     expect(parseFlagPrefixTitle(product("Playset 4 4x Foil Gilded Pinions 238/281 - Streets Of New Capenna")))
       .toBeNull();
-  });
-});
-
-describe("trailing-set-paren (Chromatic Games)", () => {
-  it("separates the collector number from the card name", () => {
-    // The regression this dialect exists for: the number stayed glued to the name.
-    expect(parseTrailingSetParenTitle(product("Karador, Ghost Chieftain 342/451 (Commander Masters)")))
-      .toMatchObject({
-        cardName: "Karador, Ghost Chieftain", collectorNumber: "342",
-        setName: "Commander Masters", titleFoil: false, titleFinish: "nonfoil",
-      });
-  });
-
-  it("reads the trailing foil suffix rather than treating it as the set", () => {
-    expect(parseTrailingSetParenTitle(product("Krosan Tusker 302/451 (Commander Masters)  - Foil")))
-      .toMatchObject({ cardName: "Krosan Tusker", setName: "Commander Masters", titleFoil: true, titleFinish: "foil" });
-  });
-
-  it("reads an etched foil suffix", () => {
-    expect(parseTrailingSetParenTitle(product("Meren of Clan Nel Toth 584 (Commander Masters)  - Etched Foil")))
-      .toMatchObject({ collectorNumber: "584", titleFinish: "etched", titleFoil: true });
-  });
-
-  it("keeps the collector number for an extended-art printing", () => {
-    expect(parseTrailingSetParenTitle(product("Lazotep Sliver 764/451 (Commander Masters)  - Extended Art Foil")))
-      .toMatchObject({ cardName: "Lazotep Sliver", collectorNumber: "764", titleFoil: true });
-  });
-
-  it("binds to the last number before the set, not the first", () => {
-    expect(parseTrailingSetParenTitle(product("Kongming, Sleeping Dragon 2 100/451 (Commander Masters)")).cardName)
-      .toBe("Kongming, Sleeping Dragon 2");
-  });
-
-  it("falls back to the whole title when the shape does not match", () => {
-    expect(parseTrailingSetParenTitle(product("Some Bundle Product")))
-      .toMatchObject({ cardName: "Some Bundle Product", collectorNumber: null, setName: null });
   });
 });
