@@ -53,6 +53,7 @@
     "scrape:cherrycollectables": "tsx src/stores/run-store.ts cherry_collectables",
     "scrape:spellroo": "tsx src/stores/run-store.ts spellroo_gaming",
     "scrape:gamescube": "tsx src/stores/run-store.ts games_cube",
+    "scrape:awgaming": "tsx src/stores/run-store.ts awgaming",
     "compute:market-stats": "tsx src/market/compute-market-stats.ts",
     "refresh:set-card-daily": "tsx src/market/refresh-set-card-daily.ts",
 

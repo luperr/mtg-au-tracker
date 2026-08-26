@@ -206,6 +206,10 @@ export const STORE_REGISTRY: StoreConfig[] = [
     flatShippingAud: 9.0, shopify: { collectionHandle: "magic-the-gathering-singles"},
   },
   {
+    id: "awgaming", name: "Aether Wyvern Games", baseUrl: "https://awgames.com.au", scraperEnabled: true, logoUrl: null,
+    flatShippingAud: 9.0, shopify: { collectionHandle: "mtg-singles-instock" },
+  },
+  {
     id: "spellroo_gaming", name: "Spellroo Gaming", baseUrl: "https://www.spellroogaming.com.au", scraperEnabled: true, logoUrl: null,
     flatShippingAud: 9.0, shopify: { collectionHandle: "magic-the-gathering-singles" },
   },
