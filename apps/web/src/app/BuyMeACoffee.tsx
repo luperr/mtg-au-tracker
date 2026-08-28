@@ -17,11 +17,11 @@ export function BuyMeACoffee() {
       href="https://buymeacoffee.com/scrymarket"
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex h-[60px] min-w-[210px] items-center rounded-xl px-6 no-underline"
+      className="inline-flex h-7 shrink-0 items-center rounded-lg px-2.5 no-underline"
       style={{ backgroundColor: "#FFDD00", color: "#000000", boxSizing: "border-box" }}
     >
-      <Image src="/bmc-logo.svg" alt="" width={22} height={32} className="h-8 w-auto shrink-0 scale-90" />
-      <span className={`${cookie.className} ml-2 whitespace-nowrap text-[28px] leading-none`}>
+      <Image src="/bmc-logo.svg" alt="" width={14} height={20} className="h-4 w-auto shrink-0" />
+      <span className={`${cookie.className} ml-1.5 whitespace-nowrap text-[17px] leading-none`}>
         Buy me a coffee
       </span>
     </a>

@@ -97,6 +97,7 @@ export default function RootLayout({
             <main className="mx-auto max-w-5xl w-full px-4 py-6 flex-1">{children}</main>
             <footer className="border-t border-subtle px-4 py-2 text-cream-dim">
               <div className="mx-auto max-w-5xl flex flex-wrap items-center justify-between gap-x-6 gap-y-1 text-xs">
+                <BuyMeACoffee />
                 <p className="text-cream-dim/60">
                   <span className="hidden sm:inline">© {new Date().getFullYear()} Scrymarket — not affiliated with Wizards of the Coast or any listed retailer.</span>
                   <span className="sm:hidden">© {new Date().getFullYear()} Scrymarket</span>
@@ -110,7 +111,6 @@ export default function RootLayout({
                   <a href="/privacy" className="hover:text-accent transition-colors">Privacy</a>
                   <a href="/terms" className="hover:text-accent transition-colors">Terms</a>
                 </nav>
-                <BuyMeACoffee />
               </div>
             </footer>
           </WantListProvider>
