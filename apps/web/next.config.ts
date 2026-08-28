@@ -6,10 +6,10 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://umami.scrymarket.au https://cdnjs.buymeacoffee.com",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://umami.scrymarket.au",
+      "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: https:",
-      "font-src 'self' https://fonts.gstatic.com",
+      "font-src 'self'",
       "connect-src 'self' https://umami.scrymarket.au",
       "frame-ancestors 'none'",
     ].join("; "),

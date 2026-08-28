@@ -1,41 +1,29 @@
-"use client";
+import Image from "next/image";
+import { Cookie } from "next/font/google";
 
-import { useEffect, useRef } from "react";
-
-const ATTRS: Record<string, string> = {
-  "data-name": "bmc-button",
-  "data-slug": "scrymarket",
-  "data-color": "#FFDD00",
-  "data-emoji": "",
-  "data-font": "Cookie",
-  "data-text": "Buy me a coffee",
-  "data-outline-color": "#000000",
-  "data-font-color": "#000000",
-  "data-coffee-color": "#ffffff",
-};
+const cookie = Cookie({ subsets: ["latin"], weight: ["400"] });
 
 /**
- * The Buy Me a Coffee widget inserts its button as a sibling of its own <script>
- * tag, so the tag has to live where the button should render. next/script would
- * hoist it out of the footer, hence the manual insert into a container ref.
+ * Buy Me a Coffee button.
+ *
+ * Rendered directly rather than via their button.prod.min.js widget: that script
+ * emits its markup with document.writeln(), which is a no-op once the document
+ * has been parsed, so it cannot work from a React app. The markup and colours
+ * below are what the widget would have written for our data-* attributes.
  */
 export function BuyMeACoffee() {
-  const containerRef = useRef<HTMLSpanElement>(null);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || container.childElementCount > 0) return;
-
-    const script = document.createElement("script");
-    script.type = "text/javascript";
-    script.src = "https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js";
-    for (const [key, value] of Object.entries(ATTRS)) script.setAttribute(key, value);
-    container.appendChild(script);
-
-    return () => {
-      container.replaceChildren();
-    };
-  }, []);
-
-  return <span ref={containerRef} className="inline-flex items-center" />;
+  return (
+    <a
+      href="https://buymeacoffee.com/scrymarket"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex h-[60px] min-w-[210px] items-center rounded-xl px-6 no-underline"
+      style={{ backgroundColor: "#FFDD00", color: "#000000", boxSizing: "border-box" }}
+    >
+      <Image src="/bmc-logo.svg" alt="" width={22} height={32} className="h-8 w-auto shrink-0 scale-90" />
+      <span className={`${cookie.className} ml-2 whitespace-nowrap text-[28px] leading-none`}>
+        Buy me a coffee
+      </span>
+    </a>
+  );
 }
