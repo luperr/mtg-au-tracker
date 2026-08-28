@@ -9,6 +9,7 @@ import { WantListProvider } from "./WantListContext";
 import { AffiliateProvider } from "./AffiliateContext";
 import { WantListBadge } from "./WantListBadge";
 import { HeaderSearch } from "./HeaderSearch";
+import { BuyMeACoffee } from "./BuyMeACoffee";
 import { SITE_URL, ANALYTICS_SCRIPT_URL } from "@/lib/config";
 import { getAffiliateConfig } from "@/lib/affiliate";
 
@@ -109,6 +110,7 @@ export default function RootLayout({
                   <a href="/privacy" className="hover:text-accent transition-colors">Privacy</a>
                   <a href="/terms" className="hover:text-accent transition-colors">Terms</a>
                 </nav>
+                <BuyMeACoffee />
               </div>
             </footer>
           </WantListProvider>
