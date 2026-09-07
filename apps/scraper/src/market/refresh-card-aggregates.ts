@@ -23,9 +23,13 @@
  *  - Every UPDATE is qualified with IS DISTINCT FROM, so a night where nothing moved
  *    rewrites no tuples instead of 33k of them. On this disk that is the difference
  *    between a no-op and an hour of vacuum debt.
- *  - Nothing here touches cards.updated_at. The sitemap reads it as <lastmod>
- *    (apps/web/src/app/sitemap.ts), so writing it nightly would churn every URL in
- *    the sitemap every night and teach crawlers to ignore it.
+ *  - cards.updated_at is written only by refreshCardPrices(), and only for the rows
+ *    it actually changed. The sitemap publishes it as <lastmod>
+ *    (apps/web/src/app/sitemap.ts), so it has to mean "this page's content moved" —
+ *    not "a job ran". A card's page content is its Scryfall data plus its prices, so
+ *    a price move is a real change and belongs in lastmod; an unchanged card must
+ *    not be stamped. refreshCardFacets() deliberately does not write it: it runs
+ *    after the Scryfall import, which maintains updated_at itself.
  */
 
 import { sql } from "drizzle-orm";
@@ -72,7 +76,11 @@ export async function refreshCardPrices(): Promise<void> {
     )
     UPDATE cards c
     SET cheapest_price_aud = t.cheapest,
-        in_stock_store_count = t.stores
+        in_stock_store_count = t.stores,
+        -- Safe precisely because of the WHERE below: only rows whose price or stock
+        -- actually moved are touched, so <lastmod> tracks real change rather than
+        -- the schedule of this job.
+        updated_at = now()
     FROM target t
     WHERE c.id = t.id
       AND (c.cheapest_price_aud IS DISTINCT FROM t.cheapest

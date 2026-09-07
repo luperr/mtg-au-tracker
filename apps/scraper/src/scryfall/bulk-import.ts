@@ -150,6 +150,23 @@ async function importData(): Promise<void> {
         colors: sql`excluded.colors`, colorIdentity: sql`excluded.color_identity`,
         legalities: sql`excluded.legalities`, updatedAt: sql`excluded.updated_at`,
       },
+      // Only write the row when Scryfall actually changed something about the card.
+      //
+      // Without this every nightly import stamps updated_at on all ~33k cards even
+      // though the vast majority are printed and never touched again. The sitemap
+      // publishes that column as <lastmod> (apps/web/src/app/sitemap.ts), so the
+      // whole sitemap claimed every card changed every day — which tells a crawler
+      // precisely nothing and trains it to stop believing the field. It also cost
+      // ~33k dead tuples a night on a disk that cannot afford the vacuum.
+      setWhere: sql`
+        cards.name IS DISTINCT FROM excluded.name
+        OR cards.mana_cost IS DISTINCT FROM excluded.mana_cost
+        OR cards.type_line IS DISTINCT FROM excluded.type_line
+        OR cards.oracle_text IS DISTINCT FROM excluded.oracle_text
+        OR cards.colors IS DISTINCT FROM excluded.colors
+        OR cards.color_identity IS DISTINCT FROM excluded.color_identity
+        OR cards.legalities IS DISTINCT FROM excluded.legalities
+      `,
     });
   }
   log.info("Cards upserted");

@@ -108,8 +108,14 @@ live in `apps/scraper/src/market/refresh-card-aggregates.ts`, both are outside
 `MARKET_STATS_ENABLED`, and neither reads `price_history` — one sequential scan plus a
 hash aggregate to ~33k groups, measured 3.4s and 4.4s. Two things about them are
 load-bearing and easy to undo by accident: every UPDATE is qualified with
-`IS DISTINCT FROM` so an unchanged night rewrites no tuples, and neither touches
-`cards.updated_at`, which the sitemap reads as `<lastmod>`. The `primary_image_uri`
+`IS DISTINCT FROM` so an unchanged night rewrites no tuples, and `cards.updated_at`
+is written **only** by `refreshCardPrices()`, **only** for the rows it actually
+changed. The sitemap publishes that column as `<lastmod>`, so it has to mean "this
+page's content moved", not "a job ran" — a card's page is its Scryfall data plus its
+prices, so a price move belongs there and an unchanged card must not be stamped. The
+Scryfall import maintains the same column for card-data changes via a `setWhere` on
+its upsert; before that it stamped all ~33k cards nightly, so the sitemap claimed
+every card changed every day. The `primary_image_uri`
 aggregate orders by `released_at DESC, id` — without the `id` tiebreaker, same-day
 printings (showcase / borderless / extended art all ship on one date) make the chosen
 image vary run to run, which defeats the `IS DISTINCT FROM` guard. Failure in either
