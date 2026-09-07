@@ -1,5 +1,10 @@
 import { sql } from "./client.js";
-import { SEARCH_PAGE_SIZE } from "../config.js";
+import {
+  SEARCH_PAGE_SIZE,
+  SEARCH_MIN_QUERY_LENGTH,
+  SEARCH_CANDIDATE_CAP,
+  SEARCH_FUZZY_MIN_SIMILARITY,
+} from "../config.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -13,6 +18,21 @@ export type CardSearchResult = {
   scrymarket_price: string | null;
   trend: "up" | "down" | "neutral" | null;
   image_uri: string | null;
+};
+
+/** One page of ranked search results, plus what the UI needs to explain them. */
+export type CardSearchPage = {
+  results: CardSearchResult[];
+  /** Matches found. A floor, not an exact count, when `capped` is true. */
+  totalCount: number;
+  /** True when the candidate cap bound, so totalCount understates the real total. */
+  capped: boolean;
+  /**
+   * True when the literal pass found nothing and these rows come from the fuzzy
+   * fallback — the UI uses it to offer "showing results for …" rather than
+   * silently returning cards the user did not type.
+   */
+  fuzzy: boolean;
 };
 
 export type CardRow = {
@@ -94,53 +114,134 @@ export type PrintingWithPrices = {
 
 export const PAGE_SIZE = SEARCH_PAGE_SIZE;
 
-export async function searchCards(query: string, offset = 0): Promise<CardSearchResult[]> {
-  if (!query.trim()) return [];
-  // Page the `cards` table on its own first, then look up printing count/art for
-  // just those rows. Joining `printings` before the LIMIT made every search seq-scan
-  // all ~148k printings, aggregate a ~113k-row join, and spill ~20MB to a disk sort
-  // before discarding all but 20 rows.
-  return sql<CardSearchResult[]>`
-    WITH matched AS (
-      SELECT c.id, c.slug, c.name, c.type_line, c.colors, c.scrymarket_price, c.price_trend
+/**
+ * Ranked card search.
+ *
+ * Two passes, never one query with an OR. Pass 1 is a literal substring match; pass 2
+ * is a trigram fuzzy match that runs *only* when pass 1 found nothing. Keeping them
+ * separate means the common case stays a single index scan, and a typo-match can never
+ * outrank a card the user literally typed.
+ *
+ * Ranking, cap and paging all live in the same CTE for a reason: the candidate cap has
+ * to be applied to an ordered set, or the 2,000 rows kept differ between the request
+ * for page 1 and the request for page 2, and infinite scroll silently duplicates and
+ * drops cards. Ordering inside the CTE also means the cap keeps the *best* matches.
+ *
+ * `printings` is never touched before the LIMIT — it is only read by the two
+ * subqueries, which run for the 20 rows of one page. Joining it earlier is what used
+ * to seq-scan ~148k printings and spill ~20MB to a disk sort to return 20 rows.
+ */
+async function runSearchPass(
+  query: string,
+  offset: number,
+  mode: "literal" | "fuzzy",
+): Promise<{ rows: (CardSearchResult & { total_count: number })[] }> {
+  const match =
+    mode === "literal"
+      ? sql`c.name ILIKE ${"%" + query + "%"}`
+      : // `<%` is what the GIN index can answer; the explicit word_similarity floor is
+        // what makes the cutoff deterministic instead of dependent on a server GUC.
+        sql`${query} <% c.name AND word_similarity(${query}, c.name) >= ${SEARCH_FUZZY_MIN_SIMILARITY}`;
+
+  const rows = await sql<(CardSearchResult & { total_count: number })[]>`
+    WITH cand AS MATERIALIZED (
+      SELECT
+        c.id, c.slug, c.name, c.type_line, c.colors, c.scrymarket_price, c.price_trend,
+        CASE
+          WHEN lower(c.name) = lower(${query})                            THEN 0
+          WHEN lower(c.name) LIKE lower(${query}) || '%'                  THEN 1
+          WHEN strpos(' ' || lower(c.name), ' ' || lower(${query})) > 0   THEN 2
+          ELSE 3
+        END AS tier,
+        word_similarity(${query}, c.name) AS sim
       FROM cards c
-      WHERE c.name ILIKE ${"%" + query + "%"}
-      ORDER BY c.name, c.id
+      WHERE ${match}
+      ORDER BY tier, sim DESC, length(c.name), c.name, c.id
+      LIMIT ${SEARCH_CANDIDATE_CAP}
+    ),
+    ranked AS (
+      SELECT *, COUNT(*) OVER ()::int AS total_count FROM cand
+    ),
+    page AS (
+      SELECT * FROM ranked
+      ORDER BY tier, sim DESC, length(name), name, id
       LIMIT ${PAGE_SIZE} OFFSET ${offset}
     )
     SELECT
-      m.id,
-      m.slug,
-      m.name,
-      m.type_line,
-      m.colors,
+      p.id,
+      p.slug,
+      p.name,
+      p.type_line,
+      p.colors,
+      p.total_count,
       (
         SELECT COUNT(*)::int
-        FROM printings p
-        WHERE p.card_id = m.id
+        FROM printings pr
+        WHERE pr.card_id = p.id
       ) AS printing_count,
       (
-        SELECT p2.image_uri
-        FROM printings p2
-        WHERE p2.card_id = m.id
-          AND p2.image_uri IS NOT NULL
-          AND p2.is_foil = false
-        ORDER BY p2.released_at DESC
+        SELECT pr2.image_uri
+        FROM printings pr2
+        WHERE pr2.card_id = p.id
+          AND pr2.image_uri IS NOT NULL
+          AND pr2.is_foil = false
+        ORDER BY pr2.released_at DESC
         LIMIT 1
       ) AS image_uri,
-      m.scrymarket_price::text AS scrymarket_price,
-      m.price_trend AS trend
-    FROM matched m
-    ORDER BY m.name, m.id
+      p.scrymarket_price::text AS scrymarket_price,
+      p.price_trend AS trend
+    FROM page p
+    ORDER BY p.tier, p.sim DESC, length(p.name), p.name, p.id
   `;
+
+  return { rows };
 }
 
-export async function countCards(query: string): Promise<number> {
-  if (!query.trim()) return 0;
-  const rows = await sql<{ count: string }[]>`
-    SELECT COUNT(*)::text AS count FROM cards WHERE name ILIKE ${"%" + query + "%"}
-  `;
-  return parseInt(rows[0]?.count ?? "0", 10);
+/**
+ * @param forceFuzzy - page 2+ of a search whose first page already fell through to the
+ *   fuzzy pass. The caller has to say so: deciding per-page would let a query with 5
+ *   literal matches fall into fuzzy at offset 20 and append junk to real results.
+ */
+export async function searchCards(
+  query: string,
+  offset = 0,
+  forceFuzzy = false,
+): Promise<CardSearchPage> {
+  const trimmed = query.trim();
+  const empty: CardSearchPage = { results: [], totalCount: 0, capped: false, fuzzy: false };
+  if (trimmed.length < SEARCH_MIN_QUERY_LENGTH) return empty;
+
+  if (forceFuzzy) {
+    const { rows: fuzzyRows } = await runSearchPass(trimmed, offset, "fuzzy");
+    if (fuzzyRows.length === 0) return { ...empty, fuzzy: true };
+    const total = fuzzyRows[0]?.total_count ?? 0;
+    return {
+      results: fuzzyRows.map(({ total_count: _total, ...card }) => card),
+      totalCount: total,
+      capped: total >= SEARCH_CANDIDATE_CAP,
+      fuzzy: true,
+    };
+  }
+
+  let fuzzy = false;
+  let { rows } = await runSearchPass(trimmed, offset, "literal");
+
+  // Only the first page can decide the literal pass found nothing. A later page coming
+  // back empty means the caller walked off the end, not that the query needs rescuing.
+  if (rows.length === 0 && offset === 0) {
+    ({ rows } = await runSearchPass(trimmed, offset, "fuzzy"));
+    fuzzy = rows.length > 0;
+  }
+
+  if (rows.length === 0) return { ...empty, fuzzy };
+
+  const totalCount = rows[0]?.total_count ?? 0;
+  return {
+    results: rows.map(({ total_count: _total, ...card }) => card),
+    totalCount,
+    capped: totalCount >= SEARCH_CANDIDATE_CAP,
+    fuzzy,
+  };
 }
 
 export async function getCardTrend(cardId: string): Promise<"up" | "down" | "neutral" | null> {

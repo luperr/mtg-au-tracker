@@ -29,6 +29,7 @@ import { ShopifyScraper } from "./shopify.js";
 import { CrystalCommerceScraper } from "./crystalcommerce.js";
 import { shopifyStores, crystalCommerceStores } from "./stores.config.js";
 import { seedStores } from "../seed.js";
+import { refreshCardPrices } from "../market/refresh-card-aggregates.js";
 import type { BaseScraper } from "./base-scraper.js";
 import type { ScrapedCard } from "@mtg-au/shared";
 import { logger } from "../lib/logger.js";
@@ -276,6 +277,19 @@ export async function runAllStores(): Promise<void> {
     { total_stores: health.length, unhealthy_count: unhealthy.length, unhealthy: unhealthy.map((h) => ({ store: h.storeId, issue: h.issue })) },
     "All stores done",
   );
+
+  // store_prices has just been rewritten, so the card-row price aggregates the search
+  // page reads are now stale by exactly one scrape. Deliberately not inside
+  // computeMarketStats() and not behind MARKET_STATS_ENABLED — it reads store_prices,
+  // never price_history, which is what that flag exists to hold back.
+  //
+  // Failure here must not fail the scrape: the prices themselves are committed and
+  // correct, and a stale aggregate is a far smaller problem than a run marked failed.
+  try {
+    await refreshCardPrices();
+  } catch (err) {
+    log.error({ err }, "Card price aggregate refresh failed — search prices are stale until the next run");
+  }
 }
 
 // Only run when invoked directly (pnpm scrape:stores), not when imported by index.ts

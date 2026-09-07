@@ -229,17 +229,25 @@ export const STORE_REGISTRY: StoreConfig[] = [
   { id: "ebay_au", name: "eBay AU", baseUrl: "https://www.ebay.com.au", scraperEnabled: true, logoUrl: null, flatShippingAud: null },
 ];
 
-/** Registry entries that are scraped via the generic Shopify scraper. */
+/**
+ * Registry entries that are scraped via the generic Shopify scraper.
+ *
+ * Disabled stores are excluded here, not just in the caller. runAllStores() re-reads
+ * the gate from stores.scraper_enabled, but run-store.ts goes straight to SCRAPERS —
+ * so leaving a disabled store in this list means `scrape:gamescube` happily scrapes a
+ * store marked disabled pending its owner's permission.
+ */
 export function shopifyStores(): ShopifyStoreConfig[] {
   return STORE_REGISTRY.filter(
-    (s): s is StoreConfig & { shopify: NonNullable<StoreConfig["shopify"]> } => s.shopify !== undefined
+    (s): s is StoreConfig & { shopify: NonNullable<StoreConfig["shopify"]> } =>
+      s.scraperEnabled && s.shopify !== undefined
   ).map((s) => ({ id: s.id, baseUrl: s.baseUrl, ...s.shopify }));
 }
 
-/** Registry entries that are scraped via the generic CrystalCommerce scraper. */
+/** Registry entries that are scraped via the generic CrystalCommerce scraper. Disabled stores excluded — see shopifyStores(). */
 export function crystalCommerceStores(): CrystalCommerceStoreConfig[] {
   return STORE_REGISTRY.filter(
     (s): s is StoreConfig & { crystalCommerce: NonNullable<StoreConfig["crystalCommerce"]> } =>
-      s.crystalCommerce !== undefined
+      s.scraperEnabled && s.crystalCommerce !== undefined
   ).map((s) => ({ id: s.id, baseUrl: s.baseUrl, ...s.crystalCommerce }));
 }

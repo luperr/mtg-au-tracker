@@ -12,8 +12,8 @@
     "scrape:ebay": "tsx src/ebay/ebay-import.ts",
     "test:ebay:oauth": "tsx src/ebay/oauth.ts",
     "test:ebay:browse": "tsx src/ebay/browse-client.ts",
-    "test:ebay:transform": "tsx src/ebay/transform.ts",
     "seed": "tsx src/seed.ts",
+    "refresh:card-aggregates": "tsx src/market/refresh-card-aggregates-cli.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
@@ -56,7 +56,6 @@
     "scrape:awgaming": "tsx src/stores/run-store.ts awgaming",
     "compute:market-stats": "tsx src/market/compute-market-stats.ts",
     "refresh:set-card-daily": "tsx src/market/refresh-set-card-daily.ts",
-
     "test": "vitest run"
   },
   "dependencies": {

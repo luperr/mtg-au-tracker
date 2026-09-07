@@ -15,6 +15,7 @@ import { join } from "path";
 import { sql } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
 import { SCRYFALL_BULK_API_URL, SCRYFALL_OUTPUT_DIR, SCRYFALL_USER_AGENT, BATCH_SIZE } from "../lib/config.js";
+import { refreshCardFacets } from "../market/refresh-card-aggregates.js";
 import { shouldImport, transform, type ScryfallCard } from "./transform.js";
 import { importSets } from "./sets-import.js";
 import { logger } from "../lib/logger.js";
@@ -182,6 +183,16 @@ async function importData(): Promise<void> {
 export async function runScryfallImport(): Promise<void> {
   await fetchData();
   await importData();
+
+  // printings is the only thing this import changes, and it is the only thing the
+  // facet aggregates are derived from — so this is the one place they can go stale.
+  // Failure is logged, not thrown: the card and printing data is already committed.
+  try {
+    await refreshCardFacets();
+  } catch (err) {
+    log.error({ err }, "Card facet aggregate refresh failed — printing counts and facets are stale until the next import");
+  }
+
   log.info("Scryfall import complete");
 }
 
