@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 // ── Shared positioning helper ─────────────────────────────────────────────────
 // Positions a popup image relative to a trigger element's rect: to the right
@@ -112,56 +112,6 @@ export function CardMagnifier({ smallSrc, largeSrc, alt, delayMs = 0 }: Props) {
       </div>
 
       {show && <CardImagePopup uri={largeSrc} top={pos.top} left={pos.left} width={380} alt={alt} />}
-    </>
-  );
-}
-
-// ── HoverCardPopup — wraps arbitrary children and shows a card image on hover ─
-// Use this when the trigger is text or a non-thumbnail element (e.g. card name).
-
-interface HoverCardPopupProps {
-  imageSrc: string;
-  alt: string;
-  /** Delay in ms before the popup appears. Default: 0. */
-  delay?: number;
-  children?: ReactNode;
-}
-
-export function HoverCardPopup({ imageSrc, alt, delay = 0, children }: HoverCardPopupProps) {
-  const [show, setShow] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const wrapperRef = useRef<HTMLSpanElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
-
-  function open() {
-    if (!wrapperRef.current) return;
-    const rect = wrapperRef.current.getBoundingClientRect();
-    if (delay === 0) {
-      setPos(computePopupPos(rect, 380, 530));
-      setShow(true);
-      return;
-    }
-    timerRef.current = setTimeout(() => {
-      // Re-read rect in case the element moved (e.g. scroll)
-      if (!wrapperRef.current) return;
-      setPos(computePopupPos(wrapperRef.current.getBoundingClientRect(), 380, 530));
-      setShow(true);
-    }, delay);
-  }
-
-  function close() {
-    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-    setShow(false);
-  }
-
-  return (
-    <>
-      <span ref={wrapperRef} onMouseEnter={open} onMouseLeave={close}>
-        {children}
-      </span>
-      {show && <CardImagePopup uri={imageSrc} top={pos.top} left={pos.left} width={380} alt={alt} />}
     </>
   );
 }

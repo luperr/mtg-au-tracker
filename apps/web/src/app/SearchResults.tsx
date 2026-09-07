@@ -236,9 +236,13 @@ interface Props {
   query: string;
   initialHasMore: boolean;
   totalCount: number;
+  /** totalCount hit the candidate cap, so it is a floor rather than an exact count. */
+  capped?: boolean;
+  /** Page 1 came from the fuzzy pass; pagination has to stay in that mode. */
+  fuzzy?: boolean;
 }
 
-export function SearchResults({ initialResults, query, initialHasMore, totalCount }: Props) {
+export function SearchResults({ initialResults, query, initialHasMore, totalCount, capped = false, fuzzy = false }: Props) {
   const [cards, setCards] = useState(initialResults);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loading, setLoading] = useState(false);
@@ -262,7 +266,9 @@ export function SearchResults({ initialResults, query, initialHasMore, totalCoun
         if (!entries[0].isIntersecting || loadingRef.current) return;
         loadingRef.current = true;
         setLoading(true);
-        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&offset=${offsetRef.current}`);
+        const res = await fetch(
+          `/api/search?q=${encodeURIComponent(query)}&offset=${offsetRef.current}${fuzzy ? "&fuzzy=1" : ""}`
+        );
         const data = await res.json();
         setCards((prev) => [...prev, ...data.results]);
         offsetRef.current += data.results.length;
@@ -276,14 +282,14 @@ export function SearchResults({ initialResults, query, initialHasMore, totalCoun
     const el = sentinelRef.current;
     if (el) observer.observe(el);
     return () => observer.disconnect();
-  }, [query, hasMore]);
+  }, [query, hasMore, fuzzy]);
 
   return (
     <div>
       {/* Header: result count + view toggle */}
       <div className="flex items-center justify-between mb-3">
         <p className="text-sm text-cream-dim/70">
-          {totalCount} result{totalCount !== 1 ? "s" : ""}
+          {capped ? `${totalCount}+` : totalCount} result{totalCount !== 1 ? "s" : ""}
         </p>
         <SearchViewToggle view={view} onChange={setView} />
       </div>

@@ -84,6 +84,7 @@ services:
       MTGMATE_FULL_SCAN_DAYS: ${MTGMATE_FULL_SCAN_DAYS:-7}
       SET_CARD_DAILY_RETENTION_DAYS: ${SET_CARD_DAILY_RETENTION_DAYS:-365}
       SCRYFALL_BULK_URL: ${SCRYFALL_BULK_URL:-https://api.scryfall.com/bulk-data}
+      SCRYFALL_OUTPUT_DIR: ${SCRYFALL_OUTPUT_DIR:-/tmp/mtg-scraper}
       USER_AGENT: ${USER_AGENT:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Heap budget, not a wish. The 2g cgroup has to cover the Scryfall file sitting

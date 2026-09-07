@@ -1,5 +1,5 @@
-import { searchCards, countCards } from "@/lib/db";
-import { SEARCH_PAGE_SIZE } from "@/lib/config";
+import { searchCards } from "@/lib/db";
+import { SEARCH_PAGE_SIZE, SEARCH_MIN_QUERY_LENGTH } from "@/lib/config";
 import { SearchResults } from "./SearchResults";
 
 // Next.js route segment config — must be a static literal, not an imported variable
@@ -34,9 +34,8 @@ export default async function HomePage({
 }) {
   const { q } = await searchParams;
   const query = q?.trim() ?? "";
-  const [results, totalCount] = query
-    ? await Promise.all([searchCards(query, 0), countCards(query)])
-    : [[], 0];
+  const { results, totalCount, capped, fuzzy } = await searchCards(query, 0);
+  const tooShort = query.length > 0 && query.length < SEARCH_MIN_QUERY_LENGTH;
 
   if (!query) {
     return (
@@ -56,19 +55,36 @@ export default async function HomePage({
 
   return (
     <div>
-      {results.length === 0 && (
+      {tooShort && (
+        <p className="text-cream-dim">
+          Enter at least {SEARCH_MIN_QUERY_LENGTH} characters to search.
+        </p>
+      )}
+
+      {!tooShort && results.length === 0 && (
         <p className="text-cream-dim">
           No cards found for &ldquo;{query}&rdquo;.
         </p>
       )}
 
       {results.length > 0 && (
-        <SearchResults
-          initialResults={results}
-          query={query}
-          initialHasMore={results.length === SEARCH_PAGE_SIZE}
-          totalCount={totalCount}
-        />
+        <>
+          {/* The fuzzy pass only fires when the literal search found nothing, so say
+              so — otherwise a typo silently returns a card the user never typed. */}
+          {fuzzy && (
+            <p className="mb-4 text-cream-dim">
+              No exact match for &ldquo;{query}&rdquo;. Showing the closest cards instead.
+            </p>
+          )}
+          <SearchResults
+            initialResults={results}
+            query={query}
+            initialHasMore={results.length === SEARCH_PAGE_SIZE}
+            totalCount={totalCount}
+            capped={capped}
+            fuzzy={fuzzy}
+          />
+        </>
       )}
     </div>
   );

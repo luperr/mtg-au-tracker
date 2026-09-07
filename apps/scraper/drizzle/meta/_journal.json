@@ -120,6 +120,13 @@
       "when": 1787408084762,
       "tag": "0016_good_nitro",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788754928593,
+      "tag": "0017_flat_hellfire_club",
+      "breakpoints": true
     }
   ]
 }

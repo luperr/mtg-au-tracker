@@ -15,6 +15,7 @@ import { join } from "path";
 import { sql } from "drizzle-orm";
 import { db, schema } from "../lib/db.js";
 import { SCRYFALL_BULK_API_URL, SCRYFALL_OUTPUT_DIR, SCRYFALL_USER_AGENT, BATCH_SIZE } from "../lib/config.js";
+import { refreshCardFacets } from "../market/refresh-card-aggregates.js";
 import { shouldImport, transform, type ScryfallCard } from "./transform.js";
 import { importSets } from "./sets-import.js";
 import { logger } from "../lib/logger.js";
@@ -149,6 +150,23 @@ async function importData(): Promise<void> {
         colors: sql`excluded.colors`, colorIdentity: sql`excluded.color_identity`,
         legalities: sql`excluded.legalities`, updatedAt: sql`excluded.updated_at`,
       },
+      // Only write the row when Scryfall actually changed something about the card.
+      //
+      // Without this every nightly import stamps updated_at on all ~33k cards even
+      // though the vast majority are printed and never touched again. The sitemap
+      // publishes that column as <lastmod> (apps/web/src/app/sitemap.ts), so the
+      // whole sitemap claimed every card changed every day — which tells a crawler
+      // precisely nothing and trains it to stop believing the field. It also cost
+      // ~33k dead tuples a night on a disk that cannot afford the vacuum.
+      setWhere: sql`
+        cards.name IS DISTINCT FROM excluded.name
+        OR cards.mana_cost IS DISTINCT FROM excluded.mana_cost
+        OR cards.type_line IS DISTINCT FROM excluded.type_line
+        OR cards.oracle_text IS DISTINCT FROM excluded.oracle_text
+        OR cards.colors IS DISTINCT FROM excluded.colors
+        OR cards.color_identity IS DISTINCT FROM excluded.color_identity
+        OR cards.legalities IS DISTINCT FROM excluded.legalities
+      `,
     });
   }
   log.info("Cards upserted");
@@ -182,6 +200,16 @@ async function importData(): Promise<void> {
 export async function runScryfallImport(): Promise<void> {
   await fetchData();
   await importData();
+
+  // printings is the only thing this import changes, and it is the only thing the
+  // facet aggregates are derived from — so this is the one place they can go stale.
+  // Failure is logged, not thrown: the card and printing data is already committed.
+  try {
+    await refreshCardFacets();
+  } catch (err) {
+    log.error({ err }, "Card facet aggregate refresh failed — printing counts and facets are stale until the next import");
+  }
+
   log.info("Scryfall import complete");
 }
 

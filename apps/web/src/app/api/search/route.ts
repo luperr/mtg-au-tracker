@@ -10,20 +10,28 @@ export async function GET(req: NextRequest) {
   return withApiGuard(req, checkRateLimit, "search", async (req) => {
     const q = req.nextUrl.searchParams.get("q")?.trim() ?? "";
     const offset = Math.max(0, Math.min(parseInt(req.nextUrl.searchParams.get("offset") ?? "0", 10), MAX_SEARCH_OFFSET));
+    // Set by the client when page 1 came back fuzzy, so pagination stays in that mode.
+    const fuzzy = req.nextUrl.searchParams.get("fuzzy") === "1";
 
     if (!q) return NextResponse.json({ results: [], hasMore: false });
 
-    const results = await searchCards(q, offset);
+    const page = await searchCards(q, offset, fuzzy);
 
     // Log the search query to DB on the first page only (offset=0 = new search, not pagination).
     // Top result's card ID is stored so demand-gap reports can join against store inventory.
     if (offset === 0) {
-      const topCardId = results[0]?.id ?? null;
+      const topCardId = page.results[0]?.id ?? null;
       sql`INSERT INTO card_searches (query, card_id) VALUES (${q}, ${topCardId})`.execute().catch(() => {});
     }
 
     return NextResponse.json(
-      { results, hasMore: results.length === PAGE_SIZE },
+      {
+        results: page.results,
+        hasMore: page.results.length === PAGE_SIZE,
+        totalCount: page.totalCount,
+        capped: page.capped,
+        fuzzy: page.fuzzy,
+      },
       { headers: { "Cache-Control": `public, s-maxage=${CACHE_SEARCH_MAX_AGE}, stale-while-revalidate=${CACHE_SEARCH_SWR}` } }
     );
   });

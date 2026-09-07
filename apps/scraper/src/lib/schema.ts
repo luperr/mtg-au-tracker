@@ -72,13 +72,37 @@ export const cards = pgTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
     scrymarketPrice: numeric("scrymarket_price"),              // pre-computed nightly: median sell price of cheapest printing
     priceTrend: text("price_trend"),                           // pre-computed nightly: 'up' | 'down' | 'neutral' | null
+
+    // ── Denormalised search columns ──────────────────────────────────────────
+    // Everything below is derived data, materialised onto the card row so search
+    // never has to reach printings or store_prices before its LIMIT. That is not a
+    // micro-optimisation: the database is on a ZFS mirror of USB spinning disks
+    // (~40 IOPS), where computing "from $X" live costs ~800-1000 random reads per
+    // 20-result page, and store_prices is fully rewritten by every scrape so it goes
+    // cold every morning. A card row the candidate scan already fetched costs zero
+    // extra reads. Rebuildable from printings/store_prices at any time — see
+    // refreshCardAggregates().
+    cheapestPriceAud: numeric("cheapest_price_aud"),           // refreshCardPrices(): cheapest in-stock sell price, any printing
+    inStockStoreCount: integer("in_stock_store_count").notNull().default(0), // refreshCardPrices(): distinct stores holding stock
+    printingCount: integer("printing_count").notNull().default(0),           // refreshCardFacets(): also the popularity signal for search ranking
+    primaryImageUri: text("primary_image_uri"),                // refreshCardFacets(): newest non-foil art
+    // Prefixed tag array — "set:mh3", "rarity:mythic", "ci:u". One GIN-indexed
+    // predicate serves every facet (&& for OR-within, @> for AND-across), so new
+    // facets need no further migration. Card-grain, so "has a printing that is X".
+    facets: text("facets").array().notNull().default([]),
   },
   (table) => [
     index("cards_name_idx").on(table.name),                // fast name lookups
     uniqueIndex("cards_slug_idx").on(table.slug),          // slug lookups for SEO routes
-    // Trigram index for the leading-wildcard ILIKE in searchCards()/countCards();
+    // Trigram index for the leading-wildcard ILIKE in searchCards();
     // a btree can't serve '%bolt%'. Requires the pg_trgm extension (migration 0013).
     index("cards_name_trgm_idx").using("gin", sql`${table.name} gin_trgm_ops`),
+    index("cards_facets_idx").using("gin", table.facets),
+    // Partial: rows with no in-stock listing anywhere are the majority and are never
+    // what a price filter or price sort wants, so keeping them out keeps it small.
+    index("cards_cheapest_price_idx")
+      .on(table.cheapestPriceAud)
+      .where(sql`${table.cheapestPriceAud} IS NOT NULL`),
   ]
 );
 

@@ -101,6 +101,31 @@ Runs as a long-lived Docker service. Stores are scraped `STORE_CONCURRENCY` at a
 
 Also runs an initial Scryfall import on startup if the DB is empty.
 
+**Card-row aggregates are not part of the paused market stats.**
+`refreshCardPrices()` runs at the end of `runAllStores()` (the 5 AM store cron, and
+`run-store.ts`), `refreshCardFacets()` at the end of the Scryfall import (3 AM). Both
+live in `apps/scraper/src/market/refresh-card-aggregates.ts`, both are outside
+`MARKET_STATS_ENABLED`, and neither reads `price_history` — one sequential scan plus a
+hash aggregate to ~33k groups, measured 3.4s and 4.4s. Two things about them are
+load-bearing and easy to undo by accident: every UPDATE is qualified with
+`IS DISTINCT FROM` so an unchanged night rewrites no tuples, and `cards.updated_at`
+is written **only** by `refreshCardPrices()`, **only** for the rows it actually
+changed. The sitemap publishes that column as `<lastmod>`, so it has to mean "this
+page's content moved", not "a job ran" — a card's page is its Scryfall data plus its
+prices, so a price move belongs there and an unchanged card must not be stamped. The
+Scryfall import maintains the same column for card-data changes via a `setWhere` on
+its upsert; before that it stamped all ~33k cards nightly, so the sitemap claimed
+every card changed every day. The `primary_image_uri`
+aggregate orders by `released_at DESC, id` — without the `id` tiebreaker, same-day
+printings (showcase / borderless / extended art all ship on one date) make the chosen
+image vary run to run, which defeats the `IS DISTINCT FROM` guard. Failure in either
+pass is logged, never thrown: the prices and card data are already committed, and a
+stale aggregate beats a run marked failed.
+
+Note the out-of-stock cleanup moved here too. Nulling the price of a card no store
+stocks used to live inside the paused pass, which is why cards nobody stocks still
+show a price and a working add-to-want-list button; `refreshCardPrices()` resets them.
+
 **Market stats are paused — except `set_card_daily`.** `computeMarketStats()` returns
 immediately unless `MARKET_STATS_ENABLED=true`. `refreshSetCardDaily()` is deliberately
 **outside** that gate and runs every night from the 7 AM cron, because the card detail
@@ -129,7 +154,14 @@ executes regardless — that's a deliberate human decision to pay the IO cost.
 Drizzle ORM schema — **source of truth for DB structure**.
 
 Tables:
-- **`cards`** — One row per unique MTG game object (oracle_id). ~32,330 rows.
+- **`cards`** — One row per unique MTG game object (oracle_id). ~32,330 rows. Carries
+  five denormalised search columns (migration 0017): `cheapest_price_aud`,
+  `in_stock_store_count`, `printing_count`, `primary_image_uri`, `facets text[]`.
+  They exist so search never reaches `printings` or `store_prices` before its LIMIT —
+  computing "from $X" live costs ~800-1000 random reads per 20-result page on a disk
+  that does ~40 IOPS, and `store_prices` is rewritten by every scrape so it is cold
+  every morning. Written by `refreshCardPrices()` / `refreshCardFacets()`; rebuildable
+  at any time with `pnpm --filter @mtg-au/scraper refresh:card-aggregates`.
 - **`printings`** — One row per physical card version. ~141,656 rows. Has `card_id` FK, set code, foil flag, USD reference price, `released_at`.
 - **`stores`** — Australian retailers + eBay AU, including `flat_shipping_aud`. Seeded from `STORE_REGISTRY` (`apps/scraper/src/stores/stores.config.ts`).
 - **`store_prices`** — Current prices from stores/eBay. Overwritten each scrape run.
