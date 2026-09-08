@@ -54,6 +54,7 @@
     "scrape:spellroo": "tsx src/stores/run-store.ts spellroo_gaming",
     "scrape:gamescube": "tsx src/stores/run-store.ts games_cube",
     "scrape:awgaming": "tsx src/stores/run-store.ts awgaming",
+    "scrape:dragonsbeard": "tsx src/stores/run-store.ts dragons_beard",
     "compute:market-stats": "tsx src/market/compute-market-stats.ts",
     "refresh:set-card-daily": "tsx src/market/refresh-set-card-daily.ts",
     "test": "vitest run"
