@@ -226,6 +226,7 @@ export const STORE_REGISTRY: StoreConfig[] = [
     flatShippingAud: 6.50, crystalCommerce: { categoryPrefix: "magic_singles", maxPagesPerCategory: 25 },
   },
   { id: "mtg_singles_aus", name: "MTG Singles Australia", baseUrl: "https://www.mtgsinglesaustralia.com.au", scraperEnabled: false, logoUrl: null, flatShippingAud: null },
+  { id: "dragons_beard", name: "The Dragon's Beard", baseUrl: "https://thedragonsbeard.com.au", scraperEnabled: true, logoUrl: null, flatShippingAud: 6.00, shopify: { collectionHandle: "mtg-singles" } },
   { id: "ebay_au", name: "eBay AU", baseUrl: "https://www.ebay.com.au", scraperEnabled: true, logoUrl: null, flatShippingAud: null },
 ];
 
