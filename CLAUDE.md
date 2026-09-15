@@ -92,7 +92,9 @@ NDJSON to stdout in production for Promtail → Loki.
 ## apps/scraper — The data collection service
 
 Runs as a long-lived Docker service. Stores are scraped `STORE_CONCURRENCY` at a time
-(`runAllStores()`), so one slow store doesn't hold up the rest. Three cron jobs (all
+(`runAllStores()`), so one slow store doesn't hold up the rest. CrystalCommerce stores (1.5–4h)
+run in a separate lane beside that pool rather than taking a slot, and `refreshCardPrices()`
+runs after each lane — so search prices from the fast stores don't wait on The Games Cube. Three cron jobs (all
 `Australia/Sydney` timezone):
 - **3 AM daily** → Scryfall bulk import (refreshes all card/printing data)
 - **5 AM daily** → Store scrapers (Shopify + MTG Mate)

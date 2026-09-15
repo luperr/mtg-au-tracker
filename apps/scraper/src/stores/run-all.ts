@@ -241,54 +241,88 @@ export async function runAllStores(): Promise<void> {
     return;
   }
 
+  // CrystalCommerce stores take 1.5–4h (HTML, 30 products/page, no bulk endpoint)
+  // against minutes for everything else, so they get their own lane beside the
+  // pool instead of a pool slot. In a slot, one would hold a third of the pool for
+  // hours and hold back the search price refresh until it finished.
+  const longIds = new Set(crystalCommerceStores().map((c) => c.id));
+  const longStores = enabledStores.filter((s) => longIds.has(s.id));
+  const poolStores = enabledStores.filter((s) => !longIds.has(s.id));
+
   log.info(
-    { stores: enabledStores.map((s) => s.id), concurrency: STORE_CONCURRENCY },
+    { stores: poolStores.map((s) => s.id), long_stores: longStores.map((s) => s.id), concurrency: STORE_CONCURRENCY },
     "Starting store scrapes",
   );
 
-  // Stores run concurrently so one slow store doesn't serialise the rest — the
-  // Games Cube alone takes ~1h against 33 stores that take minutes. Safe to
-  // share: `matcher` is read-only once built, each store writes only its own
-  // store_id rows, and BaseScraper's rate limiter is per-instance so every store
-  // keeps its own pacing against its own host.
-  //
-  // Errors are caught per store, never rethrown, so one failure can't abort the
-  // others via mapWithConcurrency's fail-fast.
-  const health = await mapWithConcurrency(enabledStores, STORE_CONCURRENCY, async (store) => {
-    const factory = SCRAPERS[store.id];
-    if (!factory) {
-      log.warn({ store: store.id }, "No scraper registered for store — skipping");
-      return { storeId: store.id, total: 0, matched: 0, issue: "error" as const };
-    }
+  // Refreshes are chained so the two lanes can never run refreshCardPrices() at once.
+  let refreshChain = Promise.resolve();
+  const refreshAfter = (lane: string) => (refreshChain = refreshChain.then(() => refreshPrices(lane)));
 
-    const scraper = factory();
-    try {
-      return await runStore(store.id, scraper, matcher);
-    } catch (err) {
-      log.error({ err, store: store.id }, "Fatal error scraping store");
-      return { storeId: store.id, total: 0, matched: 0, issue: "error" as const };
-    } finally {
-      await scraper.close();
-    }
-  });
+  const [poolHealth, longHealth] = await Promise.all([
+    mapWithConcurrency(poolStores, STORE_CONCURRENCY, (store) => scrapeStore(store.id, matcher))
+      .then(async (health) => { logLaneDone("pool", health); await refreshAfter("pool"); return health; }),
+    // One at a time: each CrystalCommerce store already runs CC_CONCURRENCY requests wide.
+    mapWithConcurrency(longStores, 1, (store) => scrapeStore(store.id, matcher))
+      .then(async (health) => {
+        if (health.length === 0) return health;
+        logLaneDone("long", health);
+        await refreshAfter("long");
+        return health;
+      }),
+  ]);
 
+  logLaneDone("all", [...poolHealth, ...longHealth]);
+}
+
+/**
+ * Runs one store end to end. Safe to run many at once: `matcher` is read-only once
+ * built, each store writes only its own store_id rows, and BaseScraper's rate limiter
+ * is per-instance so every store keeps its own pacing against its own host.
+ *
+ * Errors are caught, never rethrown, so one failure can't abort the others via
+ * mapWithConcurrency's fail-fast.
+ */
+async function scrapeStore(storeId: string, matcher: CardMatcher): Promise<StoreHealth> {
+  const factory = SCRAPERS[storeId];
+  if (!factory) {
+    log.warn({ store: storeId }, "No scraper registered for store — skipping");
+    return { storeId, total: 0, matched: 0, issue: "error" };
+  }
+
+  const scraper = factory();
+  try {
+    return await runStore(storeId, scraper, matcher);
+  } catch (err) {
+    log.error({ err, store: storeId }, "Fatal error scraping store");
+    return { storeId, total: 0, matched: 0, issue: "error" };
+  } finally {
+    await scraper.close();
+  }
+}
+
+function logLaneDone(lane: string, health: StoreHealth[]): void {
   const unhealthy = health.filter((h) => h.issue !== "ok");
   log.info(
-    { total_stores: health.length, unhealthy_count: unhealthy.length, unhealthy: unhealthy.map((h) => ({ store: h.storeId, issue: h.issue })) },
-    "All stores done",
+    { lane, total_stores: health.length, unhealthy_count: unhealthy.length, unhealthy: unhealthy.map((h) => ({ store: h.storeId, issue: h.issue })) },
+    lane === "all" ? "All stores done" : "Store lane done",
   );
+}
 
-  // store_prices has just been rewritten, so the card-row price aggregates the search
-  // page reads are now stale by exactly one scrape. Deliberately not inside
-  // computeMarketStats() and not behind MARKET_STATS_ENABLED — it reads store_prices,
-  // never price_history, which is what that flag exists to hold back.
-  //
-  // Failure here must not fail the scrape: the prices themselves are committed and
-  // correct, and a stale aggregate is a far smaller problem than a run marked failed.
+/**
+ * store_prices has just been rewritten, so the card-row price aggregates the search
+ * page reads are now stale by exactly one scrape. Runs after each lane, so pool
+ * prices reach search without waiting hours for the CrystalCommerce lane.
+ * Deliberately not inside computeMarketStats() and not behind MARKET_STATS_ENABLED —
+ * it reads store_prices, never price_history, which is what that flag holds back.
+ *
+ * Failure here must not fail the scrape: the prices themselves are committed and
+ * correct, and a stale aggregate is a far smaller problem than a run marked failed.
+ */
+async function refreshPrices(lane: string): Promise<void> {
   try {
     await refreshCardPrices();
   } catch (err) {
-    log.error({ err }, "Card price aggregate refresh failed — search prices are stale until the next run");
+    log.error({ err, lane }, "Card price aggregate refresh failed — search prices are stale until the next run");
   }
 }
 
