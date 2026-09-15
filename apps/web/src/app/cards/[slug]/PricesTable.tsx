@@ -7,6 +7,7 @@ import { fmtAUD } from "@/lib/utils";
 import { Dropdown, OptionItem } from "@/app/Dropdown";
 import { SetSymbol } from "@/app/SetSymbol";
 import { BuyLink } from "@/app/BuyLink";
+import { AffiliateDisclosure } from "@/app/AffiliateDisclosure";
 import { getVariantTags, variantBadge, VARIANT_LABELS, VARIANT_ORDER, type VariantTag } from "@/lib/variant-utils";
 
 type SortBy = "price_asc" | "price_desc" | "total_asc" | "total_desc" | "newest" | "oldest";
@@ -326,6 +327,11 @@ export function PricesTable({
           </Dropdown>
         </div>
       </div>
+
+      {/* EPN / ACL: disclosure must precede the affiliate links, above the fold */}
+      {rows.some((r) => r.storeId === "ebay_au" && r.url) && (
+        <AffiliateDisclosure className="mb-1.5 px-1" />
+      )}
 
       {/* ── Price list ── */}
       <div className="rounded-lg border border-subtle bg-surface overflow-hidden">

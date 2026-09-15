@@ -39,7 +39,7 @@ export default function DisclaimerPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-xl font-semibold text-cream">Affiliate links</h2>
+        <h2 id="affiliate-links" className="text-xl font-semibold text-cream scroll-mt-20">Affiliate links</h2>
         <p className="text-cream-dim leading-relaxed">
           Scrymarket is a participant in the eBay Partner Network. Links to eBay listings are
           affiliate links, and Scrymarket may earn a commission on qualifying purchases made
