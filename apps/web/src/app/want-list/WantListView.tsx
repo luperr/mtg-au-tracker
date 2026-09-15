@@ -5,6 +5,7 @@ import { useWantList, toWantListItem, type WantListItem } from "@/app/WantListCo
 import { fmtAUD } from "@/lib/utils";
 import { SetSymbol } from "@/app/SetSymbol";
 import { BuyLink } from "@/app/BuyLink";
+import { AffiliateDisclosure } from "@/app/AffiliateDisclosure";
 import { computePopupPos, CardImagePopup } from "@/app/CardMagnifier";
 import { ImportCards } from "./ImportCards";
 import type { OptimizeResult } from "@/app/api/optimize/route";
@@ -342,7 +343,12 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
 
             const collapsed = collapsedStores.has(storeName);
             return (
-              <div key={storeName} className="rounded-lg border border-subtle bg-surface">
+              <React.Fragment key={storeName}>
+              {/* EPN / ACL: disclosure must directly precede the affiliate links */}
+              {storeItems[0]?.storeId === "ebay_au" && (
+                <AffiliateDisclosure className="!mb-2 px-1" />
+              )}
+              <div className="rounded-lg border border-subtle bg-surface">
                 {/* Store header */}
                 <button
                   onClick={() => toggleStore(storeName)}
@@ -465,6 +471,7 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
                   </div>
                 </div>}
               </div>
+              </React.Fragment>
             );
           })}
 
