@@ -198,8 +198,8 @@ export const CC_CONCURRENCY = positiveIntEnv("CC_CONCURRENCY", 3);
 // ── Store orchestration ──────────────────────────────────────────────────────
 
 /**
- * Stores scraped in parallel by runAllStores(). Stops one slow store (the Games
- * Cube takes ~1h) from serialising the other 33 behind it.
+ * Stores scraped in parallel by runAllStores(). CrystalCommerce stores (1.5–4h)
+ * don't count against this — they run in their own lane beside the pool.
  *
  * Kept low because a store that hits a bot challenge launches its own Chromium
  * via BaseScraper — this bounds the worst-case number of live browsers.
