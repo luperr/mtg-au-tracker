@@ -98,10 +98,7 @@ export default function RootLayout({
             <footer className="border-t border-subtle px-4 py-2 text-cream-dim">
               <div className="mx-auto max-w-5xl flex flex-wrap items-center justify-between gap-x-6 gap-y-1 text-xs">
                 <BuyMeACoffee />
-                <p className="text-cream-dim/60">
-                  <span className="hidden sm:inline">© {new Date().getFullYear()} Scrymarket — not affiliated with Wizards of the Coast or any listed retailer.</span>
-                  <span className="sm:hidden">© {new Date().getFullYear()} Scrymarket</span>
-                </p>
+                <p className="text-cream-dim/60">© {new Date().getFullYear()} Scrymarket</p>
                 <nav className="flex flex-wrap gap-x-3 gap-y-1">
                   <a href="/changelog" className="hover:text-accent transition-colors">Changelog</a>
                   <a href="/about" className="hover:text-accent transition-colors">About</a>
@@ -112,6 +109,9 @@ export default function RootLayout({
                   <a href="/terms" className="hover:text-accent transition-colors">Terms</a>
                 </nav>
               </div>
+              <p className="mx-auto max-w-5xl mt-1 text-xs text-cream-dim/60">
+                <a href="/disclaimer#affiliate-links" className="hover:text-accent transition-colors">Scrymarket contains eBay affiliate links which may earn Scrymarket a commission.</a>
+              </p>
             </footer>
           </WantListProvider>
         </AffiliateProvider>

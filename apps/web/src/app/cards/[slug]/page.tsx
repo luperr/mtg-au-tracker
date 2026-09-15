@@ -128,7 +128,7 @@ export default async function CardPage({
         trend={trend}
         audPerUsd={audPerUsd}
         chart={
-          <Suspense fallback={<PriceChartSkeleton />}>
+          <Suspense key="price-chart" fallback={<PriceChartSkeleton />}>
             <PriceChartSection cardId={card!.id} />
           </Suspense>
         }
