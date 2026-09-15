@@ -220,8 +220,7 @@ product beyond it. Measured: Cardhouse 41,210 printings (was 22,355), Plenty of 
 ### `apps/scraper/src/stores/crystalcommerce.ts`
 Generic CrystalCommerce scraper — one class drives all stores on the CrystalCommerce
 platform (Rails), config-driven the same way `shopify.ts` is. First store on it: The Games Cube —
-built and verified, but currently `scraperEnabled: false` pending the store's permission, so no
-CrystalCommerce store is scraped in practice today.
+enabled.
 
 CrystalCommerce has no products API, so this is HTML scraping via Cheerio. Every MTG singles
 category is linked from the homepage nav mega-menu (~437 for The Games Cube), so category
@@ -494,7 +493,7 @@ product URL (`/catalog/magic_singles-standard-bloomburrow/card_name/693640` → 
 - [x] Card matcher with exact / name-only / fuzzy / collector-number matching
 - [x] eBay AU import pipeline (OAuth → Browse API → title parser → DB)
 - [x] Generic Shopify scraper — 35 AU stores, config-driven
-- [x] Generic CrystalCommerce scraper — config-driven, The Games Cube (built and verified; disabled pending store permission)
+- [x] Generic CrystalCommerce scraper — config-driven, The Games Cube
 - [x] MTG Mate HTML scraper
 - [x] Next.js web UI — search, card detail, price history charts
 - [x] Want List with per-store postage editing and Branch-and-Bound optimiser
