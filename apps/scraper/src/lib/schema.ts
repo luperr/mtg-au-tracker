@@ -83,6 +83,12 @@ export const cards = pgTable(
     // extra reads. Rebuildable from printings/store_prices at any time — see
     // refreshCardAggregates().
     cheapestPriceAud: numeric("cheapest_price_aud"),           // refreshCardPrices(): cheapest in-stock sell price, any printing
+    // The printing cheapest_price_aud came from, so search can show the art that
+    // actually carries the price instead of the newest one. Deliberately not an FK:
+    // the Scryfall import rewrites printings nightly, and a constraint here would
+    // make that import's job depend on the order these two tables are written in.
+    // A dangling id renders as the primary_image_uri fallback, which is harmless.
+    cheapestPrintingId: text("cheapest_printing_id"),          // refreshCardPrices(): winner of the MIN above
     inStockStoreCount: integer("in_stock_store_count").notNull().default(0), // refreshCardPrices(): distinct stores holding stock
     printingCount: integer("printing_count").notNull().default(0),           // refreshCardFacets(): also the popularity signal for search ranking
     primaryImageUri: text("primary_image_uri"),                // refreshCardFacets(): newest non-foil art

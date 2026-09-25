@@ -55,27 +55,48 @@ export async function refreshCardPrices(): Promise<void> {
   const started = Date.now();
 
   const result = await db.execute(sql`
-    WITH agg AS (
+    WITH listings AS (
       SELECT
         p.card_id,
-        MIN(sp.price_aud::numeric)     AS cheapest,
-        COUNT(DISTINCT sp.store_id)::int AS stores
+        sp.store_id,
+        sp.printing_id,
+        sp.price_aud::numeric AS price
       FROM store_prices sp
       JOIN printings p ON p.id = sp.printing_id
       WHERE sp.price_type = 'sell'
         AND sp.in_stock = true
-      GROUP BY p.card_id
     ),
-    -- LEFT JOIN rather than filtering to agg: a card that lost its last in-stock
-    -- listing has no agg row, and has to be reset rather than left holding
-    -- yesterday's price forever.
+    counts AS (
+      SELECT card_id, COUNT(DISTINCT store_id)::int AS stores
+      FROM listings
+      GROUP BY card_id
+    ),
+    -- DISTINCT ON rather than MIN(), so the winning printing comes back with its
+    -- price. printing_id is a tiebreaker, not decoration: several printings of a
+    -- card routinely sit at the same cheapest price, and without it the chosen row
+    -- varies run to run — which would churn the IS DISTINCT FROM guard below into a
+    -- full 33k-row rewrite every night. Same lesson as primary_image_uri.
+    cheapest AS (
+      SELECT DISTINCT ON (card_id) card_id, price, printing_id
+      FROM listings
+      ORDER BY card_id, price, printing_id
+    ),
+    -- LEFT JOIN rather than filtering to the aggregates: a card that lost its last
+    -- in-stock listing has no row there, and has to be reset rather than left
+    -- holding yesterday's price forever.
     target AS (
-      SELECT c.id, a.cheapest, COALESCE(a.stores, 0) AS stores
+      SELECT
+        c.id,
+        ch.price AS cheapest,
+        ch.printing_id AS cheapest_printing_id,
+        COALESCE(ct.stores, 0) AS stores
       FROM cards c
-      LEFT JOIN agg a ON a.card_id = c.id
+      LEFT JOIN cheapest ch ON ch.card_id = c.id
+      LEFT JOIN counts ct ON ct.card_id = c.id
     )
     UPDATE cards c
     SET cheapest_price_aud = t.cheapest,
+        cheapest_printing_id = t.cheapest_printing_id,
         in_stock_store_count = t.stores,
         -- Safe precisely because of the WHERE below: only rows whose price or stock
         -- actually moved are touched, so <lastmod> tracks real change rather than
@@ -84,6 +105,7 @@ export async function refreshCardPrices(): Promise<void> {
     FROM target t
     WHERE c.id = t.id
       AND (c.cheapest_price_aud IS DISTINCT FROM t.cheapest
+        OR c.cheapest_printing_id IS DISTINCT FROM t.cheapest_printing_id
         OR c.in_stock_store_count IS DISTINCT FROM t.stores)
   `);
 

@@ -15,7 +15,15 @@ export type CardSearchResult = {
   type_line: string;
   colors: string[];
   printing_count: number;
-  scrymarket_price: string | null;
+  /**
+   * Cheapest in-stock sell price, read off the denormalised card row. Was
+   * cards.scrymarket_price (a median), whose only writer — computeScrymarketPrices()
+   * — is behind the paused MARKET_STATS_ENABLED, so every search row rendered
+   * "no prices" while the card page showed real ones. This column is maintained by
+   * refreshCardPrices() at the end of every store scrape, outside that gate.
+   * It is a "from $X" floor, not a market price.
+   */
+  cheapest_price_aud: string | null;
   trend: "up" | "down" | "neutral" | null;
   image_uri: string | null;
 };
@@ -146,7 +154,8 @@ async function runSearchPass(
   const rows = await sql<(CardSearchResult & { total_count: number })[]>`
     WITH cand AS MATERIALIZED (
       SELECT
-        c.id, c.slug, c.name, c.type_line, c.colors, c.scrymarket_price, c.price_trend,
+        c.id, c.slug, c.name, c.type_line, c.colors, c.price_trend,
+        c.cheapest_price_aud, c.cheapest_printing_id, c.printing_count, c.primary_image_uri,
         CASE
           WHEN lower(c.name) = lower(${query})                            THEN 0
           WHEN lower(c.name) LIKE lower(${query}) || '%'                  THEN 1
@@ -174,23 +183,17 @@ async function runSearchPass(
       p.type_line,
       p.colors,
       p.total_count,
-      (
-        SELECT COUNT(*)::int
-        FROM printings pr
-        WHERE pr.card_id = p.id
-      ) AS printing_count,
-      (
-        SELECT pr2.image_uri
-        FROM printings pr2
-        WHERE pr2.card_id = p.id
-          AND pr2.image_uri IS NOT NULL
-          AND pr2.is_foil = false
-        ORDER BY pr2.released_at DESC
-        LIMIT 1
-      ) AS image_uri,
-      p.scrymarket_price::text AS scrymarket_price,
+      p.printing_count,
+      -- The art that actually carries the price, falling back to the card's primary
+      -- image when nothing is in stock (or the id is stale between a Scryfall import
+      -- and the next refreshCardPrices()). Joined here, against the 20-row page, so
+      -- it costs 20 primary-key lookups — the two subqueries this replaced scanned
+      -- printings per result row, which is what migration 0017 exists to avoid.
+      COALESCE(cheap.image_uri, p.primary_image_uri) AS image_uri,
+      p.cheapest_price_aud::text AS cheapest_price_aud,
       p.price_trend AS trend
     FROM page p
+    LEFT JOIN printings cheap ON cheap.id = p.cheapest_printing_id
     ORDER BY p.tier, p.sim DESC, length(p.name), p.name, p.id
   `;
 

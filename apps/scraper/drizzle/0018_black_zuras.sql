@@ -1,0 +1,1 @@
+ALTER TABLE "cards" ADD COLUMN "cheapest_printing_id" text;
