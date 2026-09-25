@@ -127,6 +127,28 @@ describeDb("card aggregates", () => {
   });
 
   /**
+   * Ties are the norm here too: the same card at the same price across several
+   * printings is ordinary. Without printing_id as a tiebreaker the writer picks a
+   * different printing on each run — search shows art that isn't the priced one, and
+   * the IS DISTINCT FROM guard rewrites every row nightly — with every other
+   * assertion in this file still green.
+   */
+  it("names the printing the cheapest price came from, deterministically", async () => {
+    const wrong = await count(sql`
+      SELECT COUNT(*) AS n FROM cards c
+      WHERE c.cheapest_printing_id IS DISTINCT FROM (
+        SELECT sp.printing_id
+        FROM store_prices sp
+        JOIN printings p ON p.id = sp.printing_id
+        WHERE p.card_id = c.id AND sp.price_type = 'sell' AND sp.in_stock = true
+        ORDER BY sp.price_aud::numeric, sp.printing_id
+        LIMIT 1
+      )
+    `);
+    expect(wrong).toBe(0);
+  });
+
+  /**
    * The IS DISTINCT FROM guard. Without it, a night where nothing moved still rewrites
    * every card row — 33k dead tuples a night on a disk that cannot afford the vacuum.
    */

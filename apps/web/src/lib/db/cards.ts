@@ -135,9 +135,10 @@ export const PAGE_SIZE = SEARCH_PAGE_SIZE;
  * for page 1 and the request for page 2, and infinite scroll silently duplicates and
  * drops cards. Ordering inside the CTE also means the cap keeps the *best* matches.
  *
- * `printings` is never touched before the LIMIT — it is only read by the two
- * subqueries, which run for the 20 rows of one page. Joining it earlier is what used
- * to seq-scan ~148k printings and spill ~20MB to a disk sort to return 20 rows.
+ * `printings` is never touched before the LIMIT — it is only reached by the join in
+ * the final SELECT, which resolves cheapest_printing_id for the 20 rows of one page.
+ * Joining it earlier is what used to seq-scan ~148k printings and spill ~20MB to a
+ * disk sort to return 20 rows.
  */
 async function runSearchPass(
   query: string,

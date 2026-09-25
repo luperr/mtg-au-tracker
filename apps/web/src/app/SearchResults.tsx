@@ -221,7 +221,7 @@ function TextRow({ card, query }: { card: CardSearchResult; query: string }) {
               {fmtAUD(parseFloat(card.cheapest_price_aud))}
             </span>
           ) : (
-            <span className="text-sm text-cream-dim/40 w-16 text-right">—</span>
+            <span className="text-sm text-cream-dim/40 w-20 text-right">—</span>
           )}
         </div>
       </a>

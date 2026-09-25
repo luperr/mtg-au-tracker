@@ -55,44 +55,41 @@ export async function refreshCardPrices(): Promise<void> {
   const started = Date.now();
 
   const result = await db.execute(sql`
-    WITH listings AS (
+    WITH agg AS (
       SELECT
         p.card_id,
-        sp.store_id,
-        sp.printing_id,
-        sp.price_aud::numeric AS price
+        MIN(sp.price_aud::numeric)       AS cheapest,
+        COUNT(DISTINCT sp.store_id)::int AS stores,
+        -- The printing that MIN() above came from, so search can show the art that
+        -- actually carries the price. ARRAY_AGG with an ORDER BY inside sorts within
+        -- each (small) group and keeps this pass a single hash aggregate. DISTINCT ON
+        -- would express the same thing by sorting every in-stock listing globally —
+        -- an external merge sort under prod's work_mem, on the one resource this file
+        -- exists to protect. Same pattern as primary_image_uri in refreshCardFacets().
+        --
+        -- printing_id is a tiebreaker, not decoration: several printings of a card
+        -- routinely sit at the same cheapest price, and without it the winner varies
+        -- run to run, churning the IS DISTINCT FROM guard below into a full 33k-row
+        -- rewrite every night.
+        (ARRAY_AGG(sp.printing_id ORDER BY sp.price_aud::numeric, sp.printing_id))[1]
+          AS cheapest_printing_id
       FROM store_prices sp
       JOIN printings p ON p.id = sp.printing_id
       WHERE sp.price_type = 'sell'
         AND sp.in_stock = true
+      GROUP BY p.card_id
     ),
-    counts AS (
-      SELECT card_id, COUNT(DISTINCT store_id)::int AS stores
-      FROM listings
-      GROUP BY card_id
-    ),
-    -- DISTINCT ON rather than MIN(), so the winning printing comes back with its
-    -- price. printing_id is a tiebreaker, not decoration: several printings of a
-    -- card routinely sit at the same cheapest price, and without it the chosen row
-    -- varies run to run — which would churn the IS DISTINCT FROM guard below into a
-    -- full 33k-row rewrite every night. Same lesson as primary_image_uri.
-    cheapest AS (
-      SELECT DISTINCT ON (card_id) card_id, price, printing_id
-      FROM listings
-      ORDER BY card_id, price, printing_id
-    ),
-    -- LEFT JOIN rather than filtering to the aggregates: a card that lost its last
-    -- in-stock listing has no row there, and has to be reset rather than left
-    -- holding yesterday's price forever.
+    -- LEFT JOIN rather than filtering to agg: a card that lost its last in-stock
+    -- listing has no agg row, and has to be reset rather than left holding
+    -- yesterday's price forever.
     target AS (
       SELECT
         c.id,
-        ch.price AS cheapest,
-        ch.printing_id AS cheapest_printing_id,
-        COALESCE(ct.stores, 0) AS stores
+        a.cheapest,
+        a.cheapest_printing_id,
+        COALESCE(a.stores, 0) AS stores
       FROM cards c
-      LEFT JOIN cheapest ch ON ch.card_id = c.id
-      LEFT JOIN counts ct ON ct.card_id = c.id
+      LEFT JOIN agg a ON a.card_id = c.id
     )
     UPDATE cards c
     SET cheapest_price_aud = t.cheapest,
