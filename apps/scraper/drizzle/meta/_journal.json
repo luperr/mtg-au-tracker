@@ -127,6 +127,13 @@
       "when": 1788754928593,
       "tag": "0017_flat_hellfire_club",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790349226789,
+      "tag": "0018_black_zuras",
+      "breakpoints": true
     }
   ]
 }

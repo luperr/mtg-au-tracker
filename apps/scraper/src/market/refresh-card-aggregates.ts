@@ -58,8 +58,21 @@ export async function refreshCardPrices(): Promise<void> {
     WITH agg AS (
       SELECT
         p.card_id,
-        MIN(sp.price_aud::numeric)     AS cheapest,
-        COUNT(DISTINCT sp.store_id)::int AS stores
+        MIN(sp.price_aud::numeric)       AS cheapest,
+        COUNT(DISTINCT sp.store_id)::int AS stores,
+        -- The printing that MIN() above came from, so search can show the art that
+        -- actually carries the price. ARRAY_AGG with an ORDER BY inside sorts within
+        -- each (small) group and keeps this pass a single hash aggregate. DISTINCT ON
+        -- would express the same thing by sorting every in-stock listing globally —
+        -- an external merge sort under prod's work_mem, on the one resource this file
+        -- exists to protect. Same pattern as primary_image_uri in refreshCardFacets().
+        --
+        -- printing_id is a tiebreaker, not decoration: several printings of a card
+        -- routinely sit at the same cheapest price, and without it the winner varies
+        -- run to run, churning the IS DISTINCT FROM guard below into a full 33k-row
+        -- rewrite every night.
+        (ARRAY_AGG(sp.printing_id ORDER BY sp.price_aud::numeric, sp.printing_id))[1]
+          AS cheapest_printing_id
       FROM store_prices sp
       JOIN printings p ON p.id = sp.printing_id
       WHERE sp.price_type = 'sell'
@@ -70,12 +83,17 @@ export async function refreshCardPrices(): Promise<void> {
     -- listing has no agg row, and has to be reset rather than left holding
     -- yesterday's price forever.
     target AS (
-      SELECT c.id, a.cheapest, COALESCE(a.stores, 0) AS stores
+      SELECT
+        c.id,
+        a.cheapest,
+        a.cheapest_printing_id,
+        COALESCE(a.stores, 0) AS stores
       FROM cards c
       LEFT JOIN agg a ON a.card_id = c.id
     )
     UPDATE cards c
     SET cheapest_price_aud = t.cheapest,
+        cheapest_printing_id = t.cheapest_printing_id,
         in_stock_store_count = t.stores,
         -- Safe precisely because of the WHERE below: only rows whose price or stock
         -- actually moved are touched, so <lastmod> tracks real change rather than
@@ -84,6 +102,7 @@ export async function refreshCardPrices(): Promise<void> {
     FROM target t
     WHERE c.id = t.id
       AND (c.cheapest_price_aud IS DISTINCT FROM t.cheapest
+        OR c.cheapest_printing_id IS DISTINCT FROM t.cheapest_printing_id
         OR c.in_stock_store_count IS DISTINCT FROM t.stores)
   `);
 

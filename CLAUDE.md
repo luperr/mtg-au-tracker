@@ -157,8 +157,13 @@ Drizzle ORM schema — **source of truth for DB structure**.
 
 Tables:
 - **`cards`** — One row per unique MTG game object (oracle_id). ~32,330 rows. Carries
-  five denormalised search columns (migration 0017): `cheapest_price_aud`,
-  `in_stock_store_count`, `printing_count`, `primary_image_uri`, `facets text[]`.
+  six denormalised search columns (migrations 0017, 0018): `cheapest_price_aud`,
+  `cheapest_printing_id`, `in_stock_store_count`, `printing_count`,
+  `primary_image_uri`, `facets text[]`. `cheapest_printing_id` names the printing
+  `cheapest_price_aud` came from, so the search row can show the art that carries
+  the price rather than the newest one; it is deliberately not an FK, since the
+  Scryfall import rewrites `printings` nightly and a dangling id simply falls back
+  to `primary_image_uri`.
   They exist so search never reaches `printings` or `store_prices` before its LIMIT —
   computing "from $X" live costs ~800-1000 random reads per 20-result page on a disk
   that does ~40 IOPS, and `store_prices` is rewritten by every scrape so it is cold
@@ -318,7 +323,12 @@ repopulate run, which is where the "re-run to repopulate" advice came from.)
 
 ### Search page (`apps/web/src/app/page.tsx`)
 - Full-text card search with infinite scroll (20 results/page)
-- Scrymarket price: median of cheapest printing's in-stock sell prices
+- Price shown is "from $X" — `cards.cheapest_price_aud`, the lowest in-stock sell price,
+  with the thumbnail showing `cheapest_printing_id`'s art. It used to read
+  `cards.scrymarket_price` (a median), whose only writer is the paused
+  `computeScrymarketPrices()`, so every row rendered "no prices" while the card page
+  showed real ones. Anything the search page displays must come from a column written
+  outside `MARKET_STATS_ENABLED`.
 - Trend badge (↑/↓/→) from the pre-computed `cards.price_trend`
 - Card thumbnails (63×88px), color identity pips, CardMagnifier on hover
 - Drag-to-search: drag any Scryfall card image onto the app

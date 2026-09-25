@@ -26,7 +26,7 @@ function AddToWantListButton({ card }: { card: CardSearchResult }) {
   async function handleClick(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    if (alreadyAdded || adding || !card.scrymarket_price) return;
+    if (alreadyAdded || adding || !card.cheapest_price_aud) return;
     setAdding(true);
     try {
       const res = await fetch(`/api/cards/store-printings?cardId=${card.id}`);
@@ -39,7 +39,7 @@ function AddToWantListButton({ card }: { card: CardSearchResult }) {
     }
   }
 
-  if (!card.scrymarket_price) return null;
+  if (!card.cheapest_price_aud) return null;
 
   return (
     <button
@@ -124,10 +124,11 @@ function GridCard({ card, query }: { card: CardSearchResult; query: string }) {
         </a>
         <div className="flex items-center justify-between gap-1">
           <div className="flex items-center gap-1.5">
-            {card.scrymarket_price && <TrendBadge trend={card.trend} size="sm" />}
-            {card.scrymarket_price ? (
+            {card.cheapest_price_aud && <TrendBadge trend={card.trend} size="sm" />}
+            {card.cheapest_price_aud ? (
               <span className="text-sm font-semibold text-price tabular-nums">
-                {fmtAUD(parseFloat(card.scrymarket_price))}
+                <span className="text-[10px] font-normal text-cream-dim/50 mr-0.5">from</span>
+                {fmtAUD(parseFloat(card.cheapest_price_aud))}
               </span>
             ) : (
               <span className="text-xs text-cream-dim/40">no prices</span>
@@ -169,11 +170,12 @@ function CardRow({ card, query }: { card: CardSearchResult; query: string }) {
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
-            {card.scrymarket_price && <TrendBadge trend={card.trend} size="lg" />}
+            {card.cheapest_price_aud && <TrendBadge trend={card.trend} size="lg" />}
             <div className="text-right">
-              {card.scrymarket_price ? (
+              {card.cheapest_price_aud ? (
                 <div className="text-price font-medium">
-                  {fmtAUD(parseFloat(card.scrymarket_price))}
+                  <span className="text-[10px] font-normal text-cream-dim/50 mr-0.5">from</span>
+                  {fmtAUD(parseFloat(card.cheapest_price_aud))}
                 </div>
               ) : (
                 <div className="text-cream-dim/50 text-sm">no prices</div>
@@ -211,14 +213,15 @@ function TextRow({ card, query }: { card: CardSearchResult; query: string }) {
           <span className="ml-2 text-xs text-cream-dim/60 hidden sm:inline">{card.type_line}</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {card.scrymarket_price && <TrendBadge trend={card.trend} size="sm" />}
+          {card.cheapest_price_aud && <TrendBadge trend={card.trend} size="sm" />}
           <span className="text-xs text-cream-dim/40">{card.printing_count}p</span>
-          {card.scrymarket_price ? (
-            <span className="text-sm text-price font-medium w-16 text-right tabular-nums">
-              {fmtAUD(parseFloat(card.scrymarket_price))}
+          {card.cheapest_price_aud ? (
+            <span className="text-sm text-price font-medium w-20 text-right tabular-nums">
+              <span className="text-[10px] font-normal text-cream-dim/50 mr-0.5">from</span>
+              {fmtAUD(parseFloat(card.cheapest_price_aud))}
             </span>
           ) : (
-            <span className="text-sm text-cream-dim/40 w-16 text-right">—</span>
+            <span className="text-sm text-cream-dim/40 w-20 text-right">—</span>
           )}
         </div>
       </a>
