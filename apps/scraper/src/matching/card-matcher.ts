@@ -5,6 +5,9 @@
  *   0. Set+collector — set code + collector number + finish (confidence 1.0)
  *        Uniquely identifies a Scryfall printing. Used whenever the store provides
  *        a collector number (e.g. MTG Mate, Gameology, Good Games via SKU).
+ *        Only trusted when the printing's name agrees with the scraped name — a
+ *        store's collector number can be wrong (Raptor once listed Strike It Rich
+ *        as MH2 #12, which is Esper Sentinel), and the name is the cross-check.
  *
  *   1–3. Elimination pipeline — gather all candidates by name, then narrow:
  *        a. by set code  (never zeros out — only applies if result is non-empty)
@@ -45,9 +48,10 @@ interface IndexEntry {
 }
 
 export class CardMatcher {
-  // Primary index: "${setCode}:${collectorNumber}:${foil}" → printingId
-  // Uniquely identifies a printing — O(1) lookup, no ambiguity.
-  private setCollectorIndex = new Map<string, string>();
+  // Primary index: "${setCode}:${collectorNumber}:${foil}" → printing + its name keys
+  // Uniquely identifies a printing — O(1) lookup, no ambiguity. The name keys let
+  // L0 reject a hit whose collector number points at a different card.
+  private setCollectorIndex = new Map<string, { printingId: string; nameKey: string; frontKey: string | null }>();
 
   // Fallback index: normalizedName → list of matching printings
   // Used when a store doesn't provide a collector number.
@@ -146,9 +150,11 @@ export class CardMatcher {
     cardName: string,
   ): void {
     const resolvedFinish = finish ?? (isFoil ? "foil" : "nonfoil");
+    const nameKey = normalizeName(cardName);
+    const frontKey = cardName.includes(" // ") ? normalizeName(cardName.split(" // ")[0]) : null;
 
     // Primary: set + collector + finish → exact printing (finish string avoids etched/foil collision)
-    this.setCollectorIndex.set(`${setCode}:${collectorNumber}:${resolvedFinish}`, id);
+    this.setCollectorIndex.set(`${setCode}:${collectorNumber}:${resolvedFinish}`, { printingId: id, nameKey, frontKey });
 
     // Set name → code (e.g. "FINAL FANTASY" → "fin")
     // Last writer wins — fine since each setCode maps to one canonical setName.
@@ -167,7 +173,6 @@ export class CardMatcher {
     // Name → candidates list, sorted by collector number ascending so regular
     // printings (low numbers) are preferred over borderless/showcase/extended-art
     // variants (which Scryfall assigns high collector numbers).
-    const nameKey = normalizeName(cardName);
     const byName = this.nameIndex.get(nameKey) ?? [];
     byName.push(entry);
     byName.sort(byCollectorNumber);
@@ -175,8 +180,7 @@ export class CardMatcher {
 
     // Front-face index: DFC cards also indexed by front face name alone.
     // e.g. "Delver of Secrets // Insectile Aberration" → key "delver of secrets"
-    if (cardName.includes(" // ")) {
-      const frontKey = normalizeName(cardName.split(" // ")[0]);
+    if (frontKey) {
       const byFront = this.frontFaceIndex.get(frontKey) ?? [];
       byFront.push(entry);
       this.frontFaceIndex.set(frontKey, byFront);
@@ -191,20 +195,37 @@ export class CardMatcher {
     const resolvedSetCode = card.setCode
       ?? (card.setName ? (this.setNameIndex.get(normalizeSetName(card.setName)) ?? null) : null);
 
+    const normalizedName = normalizeName(stripVariant(card.rawName));
+
     // ── L0: set + collector + finish ─────────────────────────────────────────
     if (resolvedSetCode && card.collectorNumber) {
       const cardFinish = card.finish ?? (card.isFoil ? "foil" : "nonfoil");
       const setKey = `${resolvedSetCode}:${card.collectorNumber}:${cardFinish}`;
-      const printingId = this.setCollectorIndex.get(setKey);
-      if (printingId) {
-        return { printingId, matchType: "set_collector", confidence: 1.0 };
+      const hit = this.setCollectorIndex.get(setKey);
+      if (hit) {
+        // Distance ≤ 2 tolerates store typos/punctuation, same as the fuzzy fallback.
+        // Whole-word containment covers listings that prefix a flavour name to the
+        // real one ("Tidus, Zanarkand Fayth Thrasios, Triton Hero") and DFCs listed
+        // by front face. "foil" is dropped from both sides: stores inject it mid-name
+        // ("Herald of Eternal Foil Dawn"), and it can't be stripped at parse time
+        // because some real names contain it ("Lavinia, Foil to Conspiracy").
+        const scraped = withoutFoil(normalizedName);
+        const indexed = withoutFoil(hit.nameKey);
+        const front = hit.frontKey && withoutFoil(hit.frontKey);
+        const nameAgrees = levenshteinDistance(scraped, indexed) <= 2
+          || ` ${scraped} `.includes(` ${indexed} `)
+          || (front !== null && ` ${scraped} `.includes(` ${front} `));
+        if (nameAgrees) {
+          return { printingId: hit.printingId, matchType: "set_collector", confidence: 1.0 };
+        }
+        log.debug(
+          { set_key: setKey, scraped_name: normalizedName, indexed_name: hit.nameKey },
+          "Collector number points at a different card — falling back to name match",
+        );
       }
     }
 
     // ── Name lookup ───────────────────────────────────────────────────────────
-    const baseName = stripVariant(card.rawName);
-    const normalizedName = normalizeName(baseName);
-
     const byName = this.nameIndex.get(normalizedName);
 
     if (byName) {
@@ -283,6 +304,10 @@ export class CardMatcher {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function withoutFoil(normalized: string): string {
+  return normalized.replace(/\bfoil\b/g, "").replace(/\s+/g, " ").trim();
+}
 
 function byCollectorNumber(a: IndexEntry, b: IndexEntry): number {
   const an = parseInt(a.collectorNumber, 10);

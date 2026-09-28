@@ -142,6 +142,75 @@ describe("Level 0 — set_collector", () => {
     });
     expect(result.matchType).not.toBe("set_collector");
   });
+
+  // Raptor listed "Strike It Rich (Retro Frame) 12 Foil Uncommon Modern Horizons 2 NM/M";
+  // MH2 #12 is Esper Sentinel. The collector number must not win over the name.
+  describe("name cross-check", () => {
+    const ESPER_SENTINEL_MH2_F = {
+      id: "esper-mh2-f", setCode: "mh2", setName: "Modern Horizons 2",
+      collectorNumber: "12", isFoil: true, cardName: "Esper Sentinel",
+    };
+    const STRIKE_IT_RICH_MH2_F = {
+      id: "sir-mh2-f", setCode: "mh2", setName: "Modern Horizons 2",
+      collectorNumber: "141", isFoil: true, cardName: "Strike It Rich",
+    };
+    const base = {
+      price: "12.00", priceType: "sell" as const, condition: "NM",
+      inStock: true, sourceUrl: "https://example.com", setName: null,
+    };
+
+    beforeEach(() => {
+      matcher.buildForTesting([ESPER_SENTINEL_MH2_F, STRIKE_IT_RICH_MH2_F]);
+    });
+
+    it("rejects a set+collector hit whose name is a different card", () => {
+      const result = matcher.match({
+        ...base, rawName: "Strike It Rich", setCode: "mh2", collectorNumber: "12", isFoil: true,
+      });
+      expect(result.printingId).toBe("sir-mh2-f");
+      expect(result.matchType).not.toBe("set_collector");
+    });
+
+    it("still accepts a hit with a small typo in the name", () => {
+      const result = matcher.match({
+        ...base, rawName: "Esper Sentinal", setCode: "mh2", collectorNumber: "12", isFoil: true,
+      });
+      expect(result.matchType).toBe("set_collector");
+      expect(result.printingId).toBe("esper-mh2-f");
+    });
+
+    it("accepts a hit whose listing prefixes a flavour name to the real name", () => {
+      const result = matcher.match({
+        ...base, rawName: "Sentinel of Esper, the Watcher Esper Sentinel", setCode: "mh2", collectorNumber: "12", isFoil: true,
+      });
+      expect(result.matchType).toBe("set_collector");
+      expect(result.printingId).toBe("esper-mh2-f");
+    });
+
+    it("ignores 'foil' injected into the listing name", () => {
+      const result = matcher.match({
+        ...base, rawName: "Esper Foil Sentinel", setCode: "mh2", collectorNumber: "12", isFoil: true,
+      });
+      expect(result.matchType).toBe("set_collector");
+      expect(result.printingId).toBe("esper-mh2-f");
+    });
+
+    it("accepts a DFC hit listed by front face only", () => {
+      const result = matcher.match({
+        ...base, rawName: "Delver of Secrets", setCode: "isd", collectorNumber: "51", isFoil: false,
+      });
+      expect(result.matchType).toBe("set_collector");
+      expect(result.printingId).toBe("delver-isd-nf");
+    });
+
+    it("accepts a DFC hit listed by full name", () => {
+      const result = matcher.match({
+        ...base, rawName: "Delver of Secrets // Insectile Aberration", setCode: "isd", collectorNumber: "51", isFoil: false,
+      });
+      expect(result.matchType).toBe("set_collector");
+      expect(result.printingId).toBe("delver-isd-nf");
+    });
+  });
 });
 
 // ─── Level 1 — exact (name + set + foil) ──────────────────────────────────────
