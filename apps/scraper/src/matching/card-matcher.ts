@@ -198,6 +198,12 @@ export class CardMatcher {
     const normalizedName = normalizeName(stripVariant(card.rawName));
 
     // ── L0: set + collector + finish ─────────────────────────────────────────
+    // A hit whose name disagrees is held back rather than discarded: it only loses
+    // if the name identifies some other card below. Listings titled by flavour name
+    // alone ("Godzilla, King of the Monsters" for Zilortha) name nothing in the
+    // index — printings carry no flavor_name — so the collector number is then the
+    // best evidence we have.
+    let disputedHit: string | null = null;
     if (resolvedSetCode && card.collectorNumber) {
       const cardFinish = card.finish ?? (card.isFoil ? "foil" : "nonfoil");
       const setKey = `${resolvedSetCode}:${card.collectorNumber}:${cardFinish}`;
@@ -218,13 +224,26 @@ export class CardMatcher {
         if (nameAgrees) {
           return { printingId: hit.printingId, matchType: "set_collector", confidence: 1.0 };
         }
-        log.debug(
-          { set_key: setKey, scraped_name: normalizedName, indexed_name: hit.nameKey },
-          "Collector number points at a different card — falling back to name match",
-        );
+        disputedHit = hit.printingId;
       }
     }
 
+    const result = this.matchByName(card, normalizedName, resolvedSetCode);
+    if (disputedHit) {
+      if (result.printingId) {
+        log.debug(
+          { set: resolvedSetCode, collector_number: card.collectorNumber, scraped_name: normalizedName },
+          "Collector number points at a different card — using name match",
+        );
+        return result;
+      }
+      return { printingId: disputedHit, matchType: "set_collector", confidence: 0.9 };
+    }
+    return result;
+  }
+
+  /** Name-driven levels: exact name, DFC front face, then fuzzy. */
+  private matchByName(card: ScrapedCard, normalizedName: string, resolvedSetCode: string | null): MatchResult {
     // ── Name lookup ───────────────────────────────────────────────────────────
     const byName = this.nameIndex.get(normalizedName);
 
