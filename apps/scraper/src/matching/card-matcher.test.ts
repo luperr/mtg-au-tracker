@@ -171,6 +171,17 @@ describe("Level 0 — set_collector", () => {
       expect(result.matchType).not.toBe("set_collector");
     });
 
+    // Flavour-name-only titles ("Godzilla, King of the Monsters" for Zilortha) name no
+    // card in the index, so the collector number is the only evidence left.
+    it("keeps a disputed hit when the name identifies no other card", () => {
+      const result = matcher.match({
+        ...base, rawName: "Sentinel of Esper, the Watcher", setCode: "mh2", collectorNumber: "12", isFoil: true,
+      });
+      expect(result.printingId).toBe("esper-mh2-f");
+      expect(result.matchType).toBe("set_collector");
+      expect(result.confidence).toBeLessThan(1);
+    });
+
     it("still accepts a hit with a small typo in the name", () => {
       const result = matcher.match({
         ...base, rawName: "Esper Sentinal", setCode: "mh2", collectorNumber: "12", isFoil: true,
