@@ -131,6 +131,28 @@ describe("parseStandardTitle — round-bracket set+collector (Spellroo Gaming)",
   });
 });
 
+describe("parseStandardTitle — FOIL / ETCHED FOIL prefix (Gameology)", () => {
+  it("strips a FOIL prefix and reports the foil finish", () => {
+    expect(parseTitle("FOIL Ephemerate (MH1-007) - Modern Horizons - Magic The Gathering"))
+      .toMatchObject({ cardName: "Ephemerate", setCode: "mh1", collectorNumber: "7", titleFinish: "foil" });
+  });
+
+  it("strips an ETCHED FOIL prefix and reports the etched finish", () => {
+    expect(parseTitle("ETCHED FOIL Urabrask, Heretic Praetor (SNC-129) - Streets of New Capenna - Magic The Gathering"))
+      .toMatchObject({ cardName: "Urabrask, Heretic Praetor", titleFinish: "etched" });
+  });
+
+  it("reads etched from a Foil Etched parenthetical behind a FOIL prefix", () => {
+    expect(parseTitle("FOIL Azorius Signet (Foil Etched) (SLD-286) - Secret Lair Drop Series - Magic The Gathering"))
+      .toMatchObject({ cardName: "Azorius Signet", setCode: "sld", collectorNumber: "286", titleFinish: "etched" });
+  });
+
+  it("leaves the card named Foil alone", () => {
+    expect(parseTitle("Foil (PCY-36) - Prophecy - Magic The Gathering"))
+      .toMatchObject({ cardName: "Foil", titleFinish: null });
+  });
+});
+
 describe("parseStandardTitle — collector before a set parenthetical (Chromatic Games)", () => {
   it("separates the collector number from the card name", () => {
     // The regression this dialect exists for: the number stayed glued to the name.
