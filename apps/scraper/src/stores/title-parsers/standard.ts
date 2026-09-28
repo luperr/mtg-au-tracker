@@ -164,8 +164,25 @@ function unpadCollector(raw: string): string {
   return m ? (m[1] + m[2]).toLowerCase() : raw.toLowerCase();
 }
 
+/**
+ * Gameology style: "FOIL Ephemerate (MH1-007) - Modern Horizons - Magic The Gathering".
+ * Uppercase only — "Foil" is a real card name (Prophecy), and it is title-cased.
+ */
+const FINISH_PREFIX = /^(ETCHED )?FOIL\s+/;
+
 /** Returns null when the product should be skipped entirely (unhandled variant type). */
 export function parseStandardTitle(product: ShopifyProduct): StandardTitleResult | null {
+  // Left in, the prefix became part of the card name, so these listings could only
+  // ever match by collector number — and never by name when that number was wrong.
+  const finishPrefix = FINISH_PREFIX.exec(product.title);
+  if (finishPrefix) {
+    const rest = product.title.slice(finishPrefix[0].length);
+    const parsed = parseStandardTitle({ ...product, title: rest });
+    // "FOIL Azorius Signet (Foil Etched) (SLD-286)" is etched — the prefix alone undersells it.
+    const etched = finishPrefix[1] !== undefined || /\bfoil etched\b|\betched foil\b/i.test(rest);
+    return parsed && { ...parsed, titleFinish: parsed.titleFinish ?? (etched ? "etched" : "foil") };
+  }
+
   const skuData = parseSkuData(product.variants[0]?.sku);
   let setCode: string | null = null;
   let collectorNumber: string | null = null;
