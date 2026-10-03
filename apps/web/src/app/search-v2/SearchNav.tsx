@@ -1,12 +1,17 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createContext, useContext, useTransition } from "react";
+import { createContext, useContext, useOptimistic, useTransition } from "react";
 import { toQueryString, VIEW_COOKIE, type SearchState } from "@/lib/search-v2/params";
 
 const ONE_YEAR = 60 * 60 * 24 * 365;
 
 type SearchNav = {
+  /**
+   * The state being navigated to, not the one last rendered: controls (checkboxes,
+   * chips, sort, view) reflect a click immediately while the server renders the
+   * results, which on the production disks can take seconds.
+   */
   state: SearchState;
   navigate: (next: SearchState) => void;
   /** True while the server renders the next state — results dim instead of blanking. */
@@ -26,13 +31,17 @@ const SearchNavContext = createContext<SearchNav | null>(null);
 export function SearchNavProvider({ state, children }: { state: SearchState; children: React.ReactNode }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [optimistic, setOptimistic] = useOptimistic(state);
 
   function navigate(next: SearchState) {
     document.cookie = `${VIEW_COOKIE}=${next.view}; path=/; max-age=${ONE_YEAR}; samesite=lax`;
-    startTransition(() => router.push(`/?${toQueryString(next)}`, { scroll: false }));
+    startTransition(() => {
+      setOptimistic(next);
+      router.push(`/?${toQueryString(next)}`, { scroll: false });
+    });
   }
 
-  return <SearchNavContext.Provider value={{ state, navigate, pending }}>{children}</SearchNavContext.Provider>;
+  return <SearchNavContext.Provider value={{ state: optimistic, navigate, pending }}>{children}</SearchNavContext.Provider>;
 }
 
 export function useSearchNav(): SearchNav {

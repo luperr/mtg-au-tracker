@@ -31,11 +31,14 @@ export function SearchV2Toggle() {
       onClick={toggle}
       aria-pressed={on}
       title={on ? "Using new search (beta) — click to switch back" : "Try the new search (beta)"}
-      className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+      aria-label={on ? "Switch back to the current search" : "Try the new search (beta)"}
+      className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
         on ? "border-accent bg-accent/20 text-cream" : "border-subtle bg-muted text-cream-dim hover:border-accent hover:text-cream"
       }`}
     >
-      {on ? "New search ✓" : "New search"}
+      {/* Compact below sm — the full label squeezed the header search to a few characters. */}
+      <span className="sm:hidden">{on ? "β ✓" : "β"}</span>
+      <span className="hidden sm:inline">{on ? "New search ✓" : "New search"}</span>
     </button>
   );
 }

@@ -11,7 +11,7 @@ import { SearchToolbar } from "./SearchToolbar";
 function Pagination({ total }: { total: number }) {
   const { state } = useSearchNav();
   const pages = Math.ceil(total / SEARCH_V2_PAGE_SIZE);
-  if (pages <= 1) return null;
+  if (pages <= 1 || state.page > pages) return null;
 
   // Real links rather than buttons, so pages are crawlable and open in new tabs.
   const link = (page: number) => `/?${toQueryString({ ...state, page })}`;
@@ -59,7 +59,8 @@ function FilterDrawer({ open, onClose, children }: { open: boolean; onClose: () 
   );
 }
 
-function Results({ result }: { result: SearchV2Result }) {
+/** `rendered` is the state these results were computed for — the nav state may already be ahead of it. */
+function Results({ result, rendered }: { result: SearchV2Result; rendered: SearchState }) {
   const { state, pending } = useSearchNav();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -74,12 +75,17 @@ function Results({ result }: { result: SearchV2Result }) {
 
       <div className="min-w-0 flex-1">
         <SearchToolbar total={result.total} capped={result.capped} facets={result.facets} onOpenFilters={() => setDrawerOpen(true)} />
-        {result.tiles.length === 0 ? (
+        {result.tiles.length === 0 && result.total > 0 ? (
+          <p className="text-cream-dim">
+            There&rsquo;s no page {state.page}.{" "}
+            <a href={`/?${toQueryString({ ...state, page: 1 })}`} className="text-accent hover:text-accent-light">Back to page 1</a>
+          </p>
+        ) : result.tiles.length === 0 ? (
           <p className="text-cream-dim">No listings match &ldquo;{state.q}&rdquo; with these filters.</p>
         ) : (
           <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 transition-opacity ${pending ? "opacity-50" : ""}`}>
             {result.tiles.map((tile) => (
-              <ListingTile key={tile.key} tile={tile} view={state.view} query={state.q} />
+              <ListingTile key={tile.key} tile={tile} view={rendered.view} query={rendered.q} />
             ))}
           </div>
         )}
@@ -93,7 +99,7 @@ function Results({ result }: { result: SearchV2Result }) {
 export function SearchV2({ state, result }: { state: SearchState; result: SearchV2Result }) {
   return (
     <SearchNavProvider state={state}>
-      <Results result={result} />
+      <Results result={result} rendered={state} />
     </SearchNavProvider>
   );
 }

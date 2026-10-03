@@ -49,6 +49,15 @@ function emptyFacets(): Facets {
   return Object.fromEntries(FACET_KEYS.map((k) => [k, []])) as unknown as Facets;
 }
 
+/**
+ * Escape LIKE metacharacters so a query is matched literally. Unescaped, `_` matches
+ * any character and `%%%` matches every card — the cap bounds it, but it still costs
+ * the full 500-card read for a nonsense query.
+ */
+export function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => "\\" + c);
+}
+
 /** AND of every active filter, optionally leaving one facet's own filter out. */
 function filterPredicate(state: SearchState, except?: FacetKey) {
   return FACET_KEYS.filter((k) => k !== except && state.filters[k].length > 0).reduce(
@@ -83,7 +92,7 @@ export async function searchListings(state: SearchState): Promise<SearchV2Result
   const nameRank = sql`
     CASE
       WHEN lower(c.name) = lower(${q})                          THEN 0
-      WHEN lower(c.name) LIKE lower(${q}) || '%'                THEN 1
+      WHEN lower(c.name) LIKE lower(${escapeLike(q)}) || '%'    THEN 1
       WHEN strpos(' ' || lower(c.name), ' ' || lower(${q})) > 0 THEN 2
       ELSE 3
     END,
@@ -114,7 +123,7 @@ export async function searchListings(state: SearchState): Promise<SearchV2Result
     WITH cand AS MATERIALIZED (
       SELECT c.id, c.slug, c.name, row_number() OVER (ORDER BY ${nameRank}) AS rnk
       FROM cards c
-      WHERE c.name ILIKE ${"%" + q + "%"}
+      WHERE c.name ILIKE ${"%" + escapeLike(q) + "%"}
       ORDER BY ${nameRank}
       LIMIT ${SEARCH_V2_CARD_CAP + 1}
     ),
