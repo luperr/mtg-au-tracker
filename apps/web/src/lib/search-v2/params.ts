@@ -16,7 +16,7 @@ export const SEARCH_SORTS = ["price_asc", "price_desc", "name", "set"] as const;
 export type SearchSort = (typeof SEARCH_SORTS)[number];
 export const DEFAULT_SORT: SearchSort = "price_asc";
 
-export const FACET_KEYS = ["store", "set", "rarity", "condition", "finish", "treatment"] as const;
+export const FACET_KEYS = ["store", "set", "condition", "finish", "treatment"] as const;
 export type FacetKey = (typeof FACET_KEYS)[number];
 
 export type SearchFilters = Record<FacetKey, string[]>;
@@ -107,7 +107,6 @@ export function clearFilters(state: SearchState): SearchState {
 export const FACET_TITLES: Record<FacetKey, string> = {
   store: "Store",
   set: "Set",
-  rarity: "Rarity",
   condition: "Condition",
   finish: "Finish",
   treatment: "Treatment",
@@ -126,6 +125,5 @@ const VALUE_LABELS: Partial<Record<FacetKey, Record<string, string>>> = {
 export function facetValueLabel(key: FacetKey, value: string, label?: string): string {
   const mapped = VALUE_LABELS[key]?.[value];
   if (mapped) return mapped;
-  if (key === "rarity") return value.charAt(0).toUpperCase() + value.slice(1);
   return label ?? value;
 }

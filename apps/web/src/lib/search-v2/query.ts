@@ -31,7 +31,6 @@ export const SEARCH_V2_CARD_CAP = 500;
 const FACET_COLUMNS: Record<FacetKey, { value: string; label: string }> = {
   store: { value: "store_id", label: "store_name" },
   set: { value: "set_code", label: "set_name" },
-  rarity: { value: "rarity", label: "rarity" },
   condition: { value: "condition_key", label: "condition_key" },
   finish: { value: "finish", label: "finish" },
   treatment: { value: "treatment", label: "treatment" },

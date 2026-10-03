@@ -335,7 +335,7 @@ repopulate run, which is where the "re-run to repopulate" advice came from.)
 - Umami events: `card-search` on new query, `card-click` on row click
 
 ### Search v2 — beta, opt-in (`apps/web/src/app/search-v2/`, `apps/web/src/lib/search-v2/`)
-Listing-grained search with a filter sidebar, sort and three views (`view=card|printing|all`).
+Listing-grained search with a filter sidebar (store, set, condition, finish, treatment), sort and three views (`view=card|printing|all`).
 Off by default: the header's "New search" button sets a `search_v2` cookie, and `page.tsx`
 renders `SearchV2` instead of the old results only when it is set. All state is URL params
 (`params.ts`); the last view is also kept in a `search_view` cookie so the server knows it on

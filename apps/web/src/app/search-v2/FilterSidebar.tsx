@@ -7,14 +7,13 @@ import type { FacetCount, Facets } from "@/lib/search-v2/types";
 import { useSearchNav } from "./SearchNav";
 
 /** Group order in the sidebar — most-used first. */
-const GROUP_ORDER: FacetKey[] = ["store", "set", "rarity", "condition", "finish", "treatment"];
+const GROUP_ORDER: FacetKey[] = ["store", "set", "condition", "finish", "treatment"];
 
 /**
  * Enum facets read best in their natural order; the rest (stores, sets) sort by
  * count as the query returns them.
  */
 const FIXED_ORDER: Partial<Record<FacetKey, string[]>> = {
-  rarity: ["common", "uncommon", "rare", "mythic", "special", "bonus"],
   condition: ["NM", "LP", "MP", "HP", "DMG", "unknown"],
   finish: ["nonfoil", "foil", "etched"],
   treatment: ["normal", "borderless", "showcase", "extendedart", "retro", "fullart", "serialized"],

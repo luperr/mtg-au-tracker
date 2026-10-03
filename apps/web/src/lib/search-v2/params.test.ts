@@ -48,27 +48,26 @@ describe("toQueryString", () => {
 describe("toggleFilter", () => {
   it("adds, removes, and resets to page 1", () => {
     const s = { ...parseSearchParams({ q: "bolt" }), page: 4 };
-    const added = toggleFilter(s, "rarity", "rare");
-    expect(added.filters.rarity).toEqual(["rare"]);
+    const added = toggleFilter(s, "finish", "foil");
+    expect(added.filters.finish).toEqual(["foil"]);
     expect(added.page).toBe(1);
-    expect(toggleFilter(added, "rarity", "rare").filters.rarity).toEqual([]);
+    expect(toggleFilter(added, "finish", "foil").filters.finish).toEqual([]);
   });
 });
 
 describe("activeChips / clearFilters", () => {
   it("lists every active value and clears them all", () => {
-    const s = parseSearchParams({ set: "mh3", rarity: "rare,mythic" });
+    const s = parseSearchParams({ set: "mh3", finish: "foil,etched" });
     expect(activeChips(s)).toEqual([
-      { key: "set", value: "mh3" }, { key: "rarity", value: "rare" }, { key: "rarity", value: "mythic" },
+      { key: "set", value: "mh3" }, { key: "finish", value: "foil" }, { key: "finish", value: "etched" },
     ]);
     expect(activeChips(clearFilters(s))).toEqual([]);
   });
 });
 
 describe("facetValueLabel", () => {
-  it("maps enum values, capitalises rarity, and prefers DB labels otherwise", () => {
+  it("maps enum values and prefers DB labels otherwise", () => {
     expect(facetValueLabel("finish", "nonfoil")).toBe("Non-foil");
-    expect(facetValueLabel("rarity", "mythic")).toBe("Mythic");
     expect(facetValueLabel("store", "mtg_mate", "MTG Mate")).toBe("MTG Mate");
   });
 });
