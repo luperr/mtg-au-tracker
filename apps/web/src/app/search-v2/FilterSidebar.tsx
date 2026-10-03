@@ -1,26 +1,26 @@
 "use client";
 
 import { useState } from "react";
+import { OptionItem } from "@/app/Dropdown";
 import { facetValueLabel, toggleFilter, FACET_TITLES, type FacetKey } from "@/lib/search-v2/params";
 import type { FacetCount, Facets } from "@/lib/search-v2/types";
 import { useSearchNav } from "./SearchNav";
 
 /** Group order in the sidebar — most-used first. */
-const GROUP_ORDER: FacetKey[] = ["stock", "store", "set", "rarity", "condition", "finish", "treatment"];
+const GROUP_ORDER: FacetKey[] = ["store", "set", "rarity", "condition", "finish", "treatment"];
 
 /**
  * Enum facets read best in their natural order; the rest (stores, sets) sort by
  * count as the query returns them.
  */
 const FIXED_ORDER: Partial<Record<FacetKey, string[]>> = {
-  stock: ["in", "out"],
   rarity: ["common", "uncommon", "rare", "mythic", "special", "bonus"],
   condition: ["NM", "LP", "MP", "HP", "DMG", "unknown"],
   finish: ["nonfoil", "foil", "etched"],
   treatment: ["normal", "borderless", "showcase", "extendedart", "retro", "fullart", "serialized"],
 };
 
-/** Long groups show this many options before "Show more". */
+/** Long groups show this many options before "Show more", and get a search box. */
 const COLLAPSED_LIMIT = 8;
 
 function orderedOptions(key: FacetKey, options: FacetCount[], selected: string[]): FacetCount[] {
@@ -39,51 +39,77 @@ function orderedOptions(key: FacetKey, options: FacetCount[], selected: string[]
 
 function FacetGroup({ facetKey, options }: { facetKey: FacetKey; options: FacetCount[] }) {
   const { state, navigate } = useSearchNav();
+  const [open, setOpen] = useState(true);
   const [expanded, setExpanded] = useState(false);
+  const [search, setSearch] = useState("");
   const selected = state.filters[facetKey];
   const all = orderedOptions(facetKey, options, selected);
   if (all.length === 0) return null;
 
-  const visible = expanded ? all : all.slice(0, COLLAPSED_LIMIT);
+  const searchable = all.length > COLLAPSED_LIMIT;
+  const needle = search.trim().toLowerCase();
+  // Match the value too, so a set code ("mh3") finds its set. Ticked options stay
+  // visible whatever is typed, so a search never hides what is filtering the results.
+  const matches = needle
+    ? all.filter((o) =>
+        selected.includes(o.value) ||
+        facetValueLabel(facetKey, o.value, o.label).toLowerCase().includes(needle) ||
+        o.value.toLowerCase().includes(needle))
+    : all;
+  const visible = needle || expanded ? matches : matches.slice(0, COLLAPSED_LIMIT);
 
   return (
-    <details open className="group border-b border-subtle py-2">
-      <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-medium text-cream select-none">
+    <section>
+      <button
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium text-cream hover:bg-muted/40 transition-colors"
+      >
         <span>
           {FACET_TITLES[facetKey]}
-          {selected.length > 0 && <span className="ml-1.5 text-xs text-accent">({selected.length})</span>}
+          {selected.length > 0 && <span className="ml-1.5 text-xs text-accent-light">({selected.length})</span>}
         </span>
-        <span aria-hidden className="text-cream-dim/50 text-xs transition-transform group-open:rotate-90">›</span>
-      </summary>
+        <span aria-hidden className="text-[9px] text-cream-dim/50">{open ? "▲" : "▼"}</span>
+      </button>
 
-      <ul className="mt-2 flex flex-col gap-1">
-        {visible.map((o) => {
-          const checked = selected.includes(o.value);
-          return (
-            <li key={o.value}>
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-cream-dim hover:text-cream">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => navigate(toggleFilter(state, facetKey, o.value))}
-                  className="accent-accent"
-                />
-                <span className={`flex-1 truncate ${checked ? "text-cream" : ""}`} title={o.label}>
-                  {facetValueLabel(facetKey, o.value, o.label)}
-                </span>
-                <span className="text-xs tabular-nums text-cream-dim/50">{o.count.toLocaleString()}</span>
-              </label>
-            </li>
-          );
-        })}
-      </ul>
+      {open && (
+        <div className="pb-2">
+          {searchable && (
+            <div className="px-3 pb-1.5">
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={`Search ${FACET_TITLES[facetKey].toLowerCase()}s…`}
+                aria-label={`Search ${FACET_TITLES[facetKey].toLowerCase()} filters`}
+                className="w-full rounded-lg border border-subtle bg-muted px-2.5 py-1 text-xs text-cream placeholder:text-cream-dim/40 focus:border-accent focus:outline-none"
+              />
+            </div>
+          )}
 
-      {all.length > COLLAPSED_LIMIT && (
-        <button onClick={() => setExpanded(!expanded)} className="mt-1 text-xs text-accent hover:text-accent-light">
-          {expanded ? "Show less" : `Show ${all.length - COLLAPSED_LIMIT} more`}
-        </button>
+          {visible.map((o) => (
+            <OptionItem
+              key={o.value}
+              type="check"
+              label={facetValueLabel(facetKey, o.value, o.label)}
+              checked={selected.includes(o.value)}
+              onClick={() => navigate(toggleFilter(state, facetKey, o.value))}
+              trailing={<span className="text-xs tabular-nums text-cream-dim/50">{o.count.toLocaleString()}</span>}
+            />
+          ))}
+
+          {needle && matches.length === 0 && (
+            <p className="px-3 py-1 text-xs text-cream-dim/50">No matches</p>
+          )}
+
+          {!needle && all.length > COLLAPSED_LIMIT && (
+            <button onClick={() => setExpanded(!expanded)} className="px-3 pt-1 text-xs text-accent-light hover:text-cream transition-colors">
+              {expanded ? "Show less" : `Show ${all.length - COLLAPSED_LIMIT} more`}
+            </button>
+          )}
+        </div>
       )}
-    </details>
+    </section>
   );
 }
 
@@ -91,10 +117,13 @@ function FacetGroup({ facetKey, options }: { facetKey: FacetKey; options: FacetC
  * Filter groups with counts. Each group's counts apply every active filter except
  * its own (see searchListings()), so ticking a second store shows what it adds
  * rather than collapsing to the first one's results.
+ *
+ * Framed like the card page's price list. `framed={false}` inside the mobile
+ * drawer, which is already the frame.
  */
-export function FilterSidebar({ facets }: { facets: Facets }) {
+export function FilterSidebar({ facets, framed = true }: { facets: Facets; framed?: boolean }) {
   return (
-    <div className="flex flex-col">
+    <div className={`flex flex-col divide-y divide-subtle/60 ${framed ? "rounded-lg border border-subtle bg-surface overflow-hidden" : ""}`}>
       {GROUP_ORDER.map((key) => <FacetGroup key={key} facetKey={key} options={facets[key]} />)}
     </div>
   );

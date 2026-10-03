@@ -25,7 +25,6 @@ export type SearchTile = {
   price: number;
   shipping_aud: string | null;
   condition: string | null;
-  in_stock: boolean;
   url: string | null;
   store_id: string;
   store_name: string;

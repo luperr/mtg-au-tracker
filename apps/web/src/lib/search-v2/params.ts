@@ -16,7 +16,7 @@ export const SEARCH_SORTS = ["price_asc", "price_desc", "name", "set"] as const;
 export type SearchSort = (typeof SEARCH_SORTS)[number];
 export const DEFAULT_SORT: SearchSort = "price_asc";
 
-export const FACET_KEYS = ["store", "set", "rarity", "condition", "finish", "treatment", "stock"] as const;
+export const FACET_KEYS = ["store", "set", "rarity", "condition", "finish", "treatment"] as const;
 export type FacetKey = (typeof FACET_KEYS)[number];
 
 export type SearchFilters = Record<FacetKey, string[]>;
@@ -29,14 +29,6 @@ export type SearchState = {
   page: number;
   filters: SearchFilters;
 };
-
-/**
- * Stock is the one filter with a default: in-stock only, because an out-of-stock
- * listing is a price nobody can pay. `stock=any` lifts it, which serialises as an
- * empty selection.
- */
-const DEFAULT_STOCK = ["in"];
-const STOCK_ANY = "any";
 
 /** Cookie the view toggle writes, so the last choice survives without a URL param. */
 export const VIEW_COOKIE = "search_view";
@@ -64,9 +56,6 @@ export function parseSearchParams(params: RawParams, fallbackView?: string): Sea
   const filters = {} as SearchFilters;
   for (const key of FACET_KEYS) filters[key] = splitList(first(params[key]));
 
-  const stock = first(params.stock);
-  filters.stock = stock === STOCK_ANY ? [] : stock ? filters.stock : DEFAULT_STOCK;
-
   const page = parseInt(first(params.page) ?? "1", 10);
 
   return {
@@ -78,10 +67,6 @@ export function parseSearchParams(params: RawParams, fallbackView?: string): Sea
   };
 }
 
-function isDefaultStock(values: string[]): boolean {
-  return values.length === DEFAULT_STOCK.length && values.every((v, i) => v === DEFAULT_STOCK[i]);
-}
-
 /** Inverse of parseSearchParams — omits defaults so URLs stay short and canonical. */
 export function toQueryString(state: SearchState): string {
   const params = new URLSearchParams();
@@ -90,11 +75,6 @@ export function toQueryString(state: SearchState): string {
   if (state.sort !== DEFAULT_SORT) params.set("sort", state.sort);
   for (const key of FACET_KEYS) {
     const values = state.filters[key];
-    if (key === "stock") {
-      if (values.length === 0) params.set("stock", STOCK_ANY);
-      else if (!isDefaultStock(values)) params.set("stock", values.join(","));
-      continue;
-    }
     if (values.length) params.set(key, values.join(","));
   }
   if (state.page > 1) params.set("page", String(state.page));
@@ -111,18 +91,14 @@ export function toggleFilter(state: SearchState, key: FacetKey, value: string): 
   return { ...state, page: 1, filters: { ...state.filters, [key]: next } };
 }
 
-/** Active filters as removable chips. The default stock filter isn't a user choice, so it has no chip. */
+/** Active filters as removable chips. */
 export function activeChips(state: SearchState): { key: FacetKey; value: string }[] {
-  return FACET_KEYS.flatMap((key) =>
-    key === "stock" && isDefaultStock(state.filters.stock)
-      ? []
-      : state.filters[key].map((value) => ({ key, value })),
-  );
+  return FACET_KEYS.flatMap((key) => state.filters[key].map((value) => ({ key, value })));
 }
 
 export function clearFilters(state: SearchState): SearchState {
   const filters = {} as SearchFilters;
-  for (const key of FACET_KEYS) filters[key] = key === "stock" ? DEFAULT_STOCK : [];
+  for (const key of FACET_KEYS) filters[key] = [];
   return { ...state, page: 1, filters };
 }
 
@@ -135,7 +111,6 @@ export const FACET_TITLES: Record<FacetKey, string> = {
   condition: "Condition",
   finish: "Finish",
   treatment: "Treatment",
-  stock: "Stock",
 };
 
 const VALUE_LABELS: Partial<Record<FacetKey, Record<string, string>>> = {
@@ -145,7 +120,6 @@ const VALUE_LABELS: Partial<Record<FacetKey, Record<string, string>>> = {
     extendedart: "Extended Art", retro: "Retro Frame", fullart: "Full Art",
   },
   condition: { unknown: "Unknown" },
-  stock: { in: "In stock", out: "Out of stock" },
 };
 
 /** Human label for a facet value. `label` is the DB-provided name (store/set name), when there is one. */

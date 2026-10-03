@@ -345,6 +345,9 @@ the first request.
   before any join. Don't add filter-only browsing without measuring it on prod disks.
 - One statement returns tiles and facet counts; `listings` is MATERIALIZED so it is read once.
   Each facet group applies every filter except its own.
+- In-stock listings only. There is no stock filter until stores expose per-store quantities.
+- Controls reuse the card page's vocabulary — `Dropdown`, `OptionItem`, `pillClass()` from
+  `app/Dropdown.tsx` — so keep new filter UI on those rather than native inputs.
 - Finish filters on `printings.finish` (the printing id already carries it — no `store_prices.finish`).
   Treatment filters on `printings.treatment`, derived at Scryfall import by `deriveTreatment()`.
 

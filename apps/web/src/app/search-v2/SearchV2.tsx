@@ -3,6 +3,7 @@
 import { toQueryString, type SearchState } from "@/lib/search-v2/params";
 import { SEARCH_V2_PAGE_SIZE, type SearchV2Result } from "@/lib/search-v2/types";
 import { useEffect, useState } from "react";
+import { pillClass } from "@/app/Dropdown";
 import { FilterSidebar } from "./FilterSidebar";
 import { ListingTile } from "./ListingTile";
 import { SearchNavProvider, useSearchNav } from "./SearchNav";
@@ -15,7 +16,7 @@ function Pagination({ total }: { total: number }) {
 
   // Real links rather than buttons, so pages are crawlable and open in new tabs.
   const link = (page: number) => `/?${toQueryString({ ...state, page })}`;
-  const cls = "rounded-lg border border-subtle bg-muted px-3 py-1.5 text-sm text-cream-dim hover:border-accent hover:text-cream";
+  const cls = pillClass(false, "rounded-lg");
 
   return (
     <nav className="flex items-center justify-center gap-3 mt-6" aria-label="Pagination">
@@ -45,11 +46,11 @@ function FilterDrawer({ open, onClose, children }: { open: boolean; onClose: () 
       <aside
         role="dialog"
         aria-label="Filters"
-        className={`absolute inset-y-0 left-0 w-80 max-w-[85vw] overflow-y-auto bg-surface border-r border-subtle px-4 py-3 transition-transform ${
+        className={`absolute inset-y-0 left-0 w-80 max-w-[85vw] overflow-y-auto bg-surface border-r border-subtle py-3 transition-transform ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center justify-between mb-1 px-3">
           <h2 className="text-sm font-semibold text-cream">Filters</h2>
           <button onClick={onClose} aria-label="Close filters" className="text-cream-dim hover:text-cream text-lg leading-none px-1">×</button>
         </div>
@@ -70,7 +71,7 @@ function Results({ result, rendered }: { result: SearchV2Result; rendered: Searc
         <FilterSidebar facets={result.facets} />
       </aside>
       <FilterDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
-        <FilterSidebar facets={result.facets} />
+        <FilterSidebar facets={result.facets} framed={false} />
       </FilterDrawer>
 
       <div className="min-w-0 flex-1">

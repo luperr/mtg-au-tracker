@@ -35,7 +35,6 @@ const FACET_COLUMNS: Record<FacetKey, { value: string; label: string }> = {
   condition: { value: "condition_key", label: "condition_key" },
   finish: { value: "finish", label: "finish" },
   treatment: { value: "treatment", label: "treatment" },
-  stock: { value: "stock", label: "stock" },
 };
 
 /** What one tile is, per view. */
@@ -133,16 +132,17 @@ export async function searchListings(state: SearchState): Promise<SearchV2Result
         c.id AS card_id, c.slug, c.name,
         p.id AS printing_id, p.set_code, p.set_name, p.collector_number, p.rarity,
         p.is_foil, p.finish, p.treatment, p.border_color, p.frame_effects, p.image_uri, p.released_at,
-        sp.price_aud::numeric AS price, sp.shipping_aud, sp.condition, sp.in_stock, sp.url,
+        sp.price_aud::numeric AS price, sp.shipping_aud, sp.condition, sp.url,
         sp.store_id, s.name AS store_name,
         -- Unnormalised and missing conditions share one bucket, so the facet has a
         -- value to filter on instead of NULL (which = ANY can never match).
         CASE WHEN sp.condition IN ('NM','LP','MP','HP','DMG') THEN sp.condition ELSE 'unknown' END AS condition_key,
-        CASE sp.condition WHEN 'NM' THEN 0 WHEN 'LP' THEN 1 WHEN 'MP' THEN 2 WHEN 'HP' THEN 3 WHEN 'DMG' THEN 4 ELSE 5 END AS condition_rank,
-        CASE WHEN sp.in_stock THEN 'in' ELSE 'out' END AS stock
+        CASE sp.condition WHEN 'NM' THEN 0 WHEN 'LP' THEN 1 WHEN 'MP' THEN 2 WHEN 'HP' THEN 3 WHEN 'DMG' THEN 4 ELSE 5 END AS condition_rank
       FROM cand c
       JOIN printings p ON p.card_id = c.id
-      JOIN store_prices sp ON sp.printing_id = p.id AND sp.price_type = 'sell'
+      -- In stock only: an out-of-stock listing is a price nobody can pay. A stock
+      -- filter can come back once stores expose quantities rather than a flag.
+      JOIN store_prices sp ON sp.printing_id = p.id AND sp.price_type = 'sell' AND sp.in_stock
       JOIN stores s ON s.id = sp.store_id
       WHERE c.rnk <= ${SEARCH_V2_CARD_CAP}
     ),
@@ -170,7 +170,7 @@ export async function searchListings(state: SearchState): Promise<SearchV2Result
           'collector_number', collector_number, 'rarity', rarity, 'is_foil', is_foil,
           'finish', finish, 'treatment', treatment, 'border_color', border_color,
           'frame_effects', frame_effects, 'image_uri', image_uri, 'price', price,
-          'shipping_aud', shipping_aud, 'condition', condition, 'in_stock', in_stock,
+          'shipping_aud', shipping_aud, 'condition', condition,
           'url', url, 'store_id', store_id, 'store_name', store_name,
           'other_stores', other_stores, 'other_min', other_min
         ) ORDER BY ord) FROM tiles) AS tiles,

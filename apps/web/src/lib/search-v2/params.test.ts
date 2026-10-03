@@ -7,7 +7,6 @@ describe("parseSearchParams", () => {
   it("applies defaults", () => {
     const s = parseSearchParams({ q: " bolt " });
     expect(s).toMatchObject({ q: "bolt", view: "printing", sort: "price_asc", page: 1 });
-    expect(s.filters.stock).toEqual(["in"]);
     expect(s.filters.store).toEqual([]);
   });
 
@@ -26,9 +25,8 @@ describe("parseSearchParams", () => {
     expect(parseSearchParams({}, "bogus").view).toBe("printing");
   });
 
-  it("treats stock=any as no stock filter", () => {
-    expect(parseSearchParams({ stock: "any" }).filters.stock).toEqual([]);
-    expect(parseSearchParams({ stock: "out" }).filters.stock).toEqual(["out"]);
+  it("ignores the retired stock param", () => {
+    expect(toQueryString(parseSearchParams({ q: "bolt", stock: "any" }))).toBe("q=bolt");
   });
 
   it("takes the first value of a repeated param", () => {
@@ -42,7 +40,7 @@ describe("toQueryString", () => {
   });
 
   it("round-trips a full state", () => {
-    const qs = "q=bolt&view=all&sort=name&store=a%2Cb&set=mh3&stock=any&page=3";
+    const qs = "q=bolt&view=all&sort=name&store=a%2Cb&set=mh3&page=3";
     expect(toQueryString(parseSearchParams(Object.fromEntries(new URLSearchParams(qs))))).toBe(qs);
   });
 });
@@ -58,15 +56,12 @@ describe("toggleFilter", () => {
 });
 
 describe("activeChips / clearFilters", () => {
-  it("hides the default stock filter but shows a changed one", () => {
-    expect(activeChips(parseSearchParams({ set: "mh3" }))).toEqual([{ key: "set", value: "mh3" }]);
-    expect(activeChips(parseSearchParams({ stock: "out" }))).toEqual([{ key: "stock", value: "out" }]);
-  });
-
-  it("clears back to the default stock filter", () => {
-    const cleared = clearFilters(parseSearchParams({ set: "mh3", stock: "any" }));
-    expect(activeChips(cleared)).toEqual([]);
-    expect(cleared.filters.stock).toEqual(["in"]);
+  it("lists every active value and clears them all", () => {
+    const s = parseSearchParams({ set: "mh3", rarity: "rare,mythic" });
+    expect(activeChips(s)).toEqual([
+      { key: "set", value: "mh3" }, { key: "rarity", value: "rare" }, { key: "rarity", value: "mythic" },
+    ]);
+    expect(activeChips(clearFilters(s))).toEqual([]);
   });
 });
 

@@ -5,6 +5,7 @@ import {
   type SearchSort, type SearchView,
 } from "@/lib/search-v2/params";
 import type { Facets } from "@/lib/search-v2/types";
+import { Dropdown, OptionItem, pillClass } from "@/app/Dropdown";
 import { useSearchNav } from "./SearchNav";
 
 const SORT_LABELS: Record<SearchSort, string> = {
@@ -41,10 +42,7 @@ export function SearchToolbar({
   return (
     <div className="flex flex-col gap-2 mb-4">
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          onClick={onOpenFilters}
-          className="md:hidden rounded-lg border border-subtle bg-muted px-3 py-1.5 text-sm text-cream-dim hover:border-accent hover:text-cream"
-        >
+        <button onClick={onOpenFilters} className={`md:hidden ${pillClass(chips.length > 0)}`}>
           Filters{chips.length > 0 && ` (${chips.length})`}
         </button>
 
@@ -69,14 +67,18 @@ export function SearchToolbar({
           ))}
         </div>
 
-        <select
-          aria-label="Sort"
-          value={state.sort}
-          onChange={(e) => navigate({ ...state, sort: e.target.value as SearchSort, page: 1 })}
-          className="rounded-lg border border-subtle bg-muted px-2 py-1.5 text-sm text-cream focus:border-accent focus:outline-none"
-        >
-          {SEARCH_SORTS.map((s) => <option key={s} value={s}>{SORT_LABELS[s]}</option>)}
-        </select>
+        <Dropdown label="Sort" active={state.sort !== "price_asc"} align="right" rounded>
+          <div className="py-1">
+            {SEARCH_SORTS.map((sort) => (
+              <OptionItem
+                key={sort}
+                label={SORT_LABELS[sort]}
+                checked={state.sort === sort}
+                onClick={() => navigate({ ...state, sort, page: 1 })}
+              />
+            ))}
+          </div>
+        </Dropdown>
       </div>
 
       {chips.length > 0 && (
@@ -86,14 +88,14 @@ export function SearchToolbar({
               key={`${key}:${value}`}
               onClick={() => navigate(toggleFilter(state, key, value))}
               aria-label={`Remove ${FACET_TITLES[key]} filter ${chipLabel(key, value)}`}
-              className="flex items-center gap-1 rounded-full border border-subtle bg-muted px-2.5 py-0.5 text-xs text-cream hover:border-accent"
+              className={`flex items-center gap-1 ${pillClass(true)}`}
             >
-              <span className="text-cream-dim/60">{FACET_TITLES[key]}:</span> {chipLabel(key, value)}
-              <span aria-hidden className="text-cream-dim/60">×</span>
+              <span className="opacity-60">{FACET_TITLES[key]}:</span> {chipLabel(key, value)}
+              <span aria-hidden className="opacity-60">×</span>
             </button>
           ))}
-          <button onClick={() => navigate(clearFilters(state))} className="text-xs text-cream-dim hover:text-accent">
-            Clear all
+          <button onClick={() => navigate(clearFilters(state))} className="shrink-0 px-2 text-[10px] text-cream-dim/40 hover:text-cream-dim transition-colors">
+            Reset
           </button>
         </div>
       )}

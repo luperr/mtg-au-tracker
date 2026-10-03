@@ -16,7 +16,6 @@ import { cardHref, fmtAUD, trackEvent } from "@/lib/utils";
 function AddToWantListButton({ tile }: { tile: SearchTile }) {
   const { addItem, hasItem } = useWantList();
   const added = hasItem(wantListItemId(tile.printing_id, tile.store_id, tile.url));
-  if (!tile.in_stock) return null;
 
   function handleClick() {
     if (added) return;
@@ -62,7 +61,6 @@ export function ListingTile({ tile, view, query }: { tile: SearchTile; view: Sea
     tile.finish !== "nonfoil" && facetValueLabel("finish", tile.finish),
     tile.treatment !== "normal" && facetValueLabel("treatment", tile.treatment),
     view === "all" && tile.condition,
-    !tile.in_stock && "Out of stock",
   ].filter(Boolean) as string[];
 
   return (
