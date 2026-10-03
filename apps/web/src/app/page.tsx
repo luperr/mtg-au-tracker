@@ -1,6 +1,10 @@
 import { searchCards } from "@/lib/db";
 import { SEARCH_PAGE_SIZE, SEARCH_MIN_QUERY_LENGTH } from "@/lib/config";
 import { SearchResults } from "./SearchResults";
+import { cookies } from "next/headers";
+import { parseSearchParams, SEARCH_V2_COOKIE, VIEW_COOKIE } from "@/lib/search-v2/params";
+import { searchListings } from "@/lib/search-v2/query";
+import { SearchV2 } from "./search-v2/SearchV2";
 
 // Next.js route segment config — must be a static literal, not an imported variable
 export const revalidate = 3600;
@@ -30,12 +34,22 @@ function LandingSearchForm() {
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { q } = await searchParams;
+  const params = await searchParams;
+  const q = Array.isArray(params.q) ? params.q[0] : params.q;
   const query = q?.trim() ?? "";
-  const { results, totalCount, capped, fuzzy } = await searchCards(query, 0);
   const tooShort = query.length > 0 && query.length < SEARCH_MIN_QUERY_LENGTH;
+
+  // Opt-in beta, toggled from the header (SearchV2Toggle). Only reached with a query:
+  // the landing page is shared, and v2 requires one (see searchListings()).
+  const jar = await cookies();
+  if (query && !tooShort && jar.get(SEARCH_V2_COOKIE)?.value === "1") {
+    const state = parseSearchParams(params, jar.get(VIEW_COOKIE)?.value);
+    return <SearchV2 state={state} result={await searchListings(state)} />;
+  }
+
+  const { results, totalCount, capped, fuzzy } = await searchCards(query, 0);
 
   if (!query) {
     return (

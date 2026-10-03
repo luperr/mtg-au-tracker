@@ -4,6 +4,7 @@ import Script from "next/script";
 import { Suspense } from "react";
 import "./globals.css";
 import { ThemeToggle } from "./ThemeToggle";
+import { SearchV2Toggle } from "./SearchV2Toggle";
 import { DragDropSearch } from "./DragDropSearch";
 import { WantListProvider } from "./WantListContext";
 import { AffiliateProvider } from "./AffiliateContext";
@@ -89,6 +90,7 @@ export default function RootLayout({
                 </div>
                 {/* Right: controls */}
                 <div className="flex items-center gap-3 shrink-0">
+                  <SearchV2Toggle />
                   <WantListBadge />
                   <ThemeToggle />
                 </div>

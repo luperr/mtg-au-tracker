@@ -14,6 +14,8 @@ interface BuyLinkProps {
   /** Printing being linked to — feeds the affiliate `customid` for per-card attribution. */
   printingId?: string;
   className?: string;
+  /** Link text. Defaults to "Buy ↗". */
+  children?: React.ReactNode;
 }
 
 /**
@@ -24,7 +26,7 @@ interface BuyLinkProps {
  *  - Fires a `store-click` Umami custom event on every click
  *  - Single place to add affiliate URL rewriting (see @/lib/affiliate)
  */
-export function BuyLink({ href, storeId, card, price, source, printingId, className }: BuyLinkProps) {
+export function BuyLink({ href, storeId, card, price, source, printingId, className, children }: BuyLinkProps) {
   const { campaignId, rotationId } = useAffiliate();
   const resolvedHref = applyAffiliateParams(href, storeId, {
     campaignId,
@@ -40,7 +42,7 @@ export function BuyLink({ href, storeId, card, price, source, printingId, classN
       className={className ?? "text-price hover:text-cream text-sm transition-colors"}
       onClick={() => trackEvent("store-click", { store: storeId, card, price, source })}
     >
-      Buy ↗
+      {children ?? "Buy ↗"}
     </a>
   );
 }
