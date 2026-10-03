@@ -31,6 +31,9 @@ export interface ScryfallCard {
   finishes: string[];            // e.g. ["nonfoil", "foil"]
   border_color?: string;         // "black" | "white" | "borderless" | "silver" | "gold"
   frame_effects?: string[];      // ["showcase"] | ["extendedart"] | ["fullart"] | ...
+  frame?: string;                // "1993" | "1997" | "2003" | "2015" | "future"
+  full_art?: boolean;
+  promo_types?: string[];        // ["serialized"] | ["surgefoil"] | ...
   image_uris?: { normal?: string };
   card_faces?: Array<{           // double-faced cards store images here
     image_uris?: { normal?: string };
@@ -68,6 +71,10 @@ export interface PrintingRow {
   finish: "nonfoil" | "foil" | "etched";
   borderColor: string | null;   // Scryfall border_color: "black" | "borderless" | "white" | ...
   frameEffects: string[];       // Scryfall frame_effects: ["showcase"] | ["extendedart"] | []
+  frame: string | null;         // Scryfall frame: "1993" | "1997" | "2003" | "2015" | "future"
+  fullArt: boolean;
+  promoTypes: string[];         // Scryfall promo_types: ["serialized"] | ...
+  treatment: Treatment;         // derived — see deriveTreatment()
   imageUri: string | null;
   imageUriBack: string | null;  // back face for DFCs; null for normal cards
   scryfallUri: string;
@@ -104,6 +111,37 @@ export function shouldImport(card: ScryfallCard): boolean {
   return true;
 }
 
+// ─── Treatment ────────────────────────────────────────────────────────────────
+
+export type Treatment =
+  | "serialized" | "borderless" | "showcase" | "extendedart" | "retro" | "fullart" | "normal";
+
+/**
+ * The 8th Edition release date — when the modern frame replaced the old one. An old
+ * frame on a card printed before this is just that card's frame; after it, it's a
+ * deliberate retro treatment (Modern Horizons, Brothers' War retro artifacts, ...).
+ */
+const MODERN_FRAME_SINCE = "2003-07-28";
+
+/**
+ * One label per printing for the search treatment filter. A printing often carries
+ * several (a serialized borderless showcase), so this picks by priority — rarest
+ * first, which is the one a buyer is actually filtering for. The names match the
+ * scraper vocabulary in extractTreatment() so the two can be compared.
+ */
+export function deriveTreatment(card: Pick<
+  ScryfallCard, "promo_types" | "border_color" | "frame_effects" | "frame" | "full_art" | "released_at"
+>): Treatment {
+  const effects = card.frame_effects ?? [];
+  if (card.promo_types?.includes("serialized")) return "serialized";
+  if (card.border_color === "borderless") return "borderless";
+  if (effects.includes("showcase")) return "showcase";
+  if (effects.includes("extendedart")) return "extendedart";
+  if ((card.frame === "1993" || card.frame === "1997") && card.released_at >= MODERN_FRAME_SINCE) return "retro";
+  if (card.full_art) return "fullart";
+  return "normal";
+}
+
 // ─── Transform ────────────────────────────────────────────────────────────────
 
 function getImageUris(card: ScryfallCard): { front: string | null; back: string | null } {
@@ -135,6 +173,7 @@ export function transform(card: ScryfallCard): {
 
   const { front: imageUri, back: imageUriBack } = getImageUris(card);
   const printingRows: PrintingRow[] = [];
+  const treatment = deriveTreatment(card);
 
   for (const f of card.finishes) {
     const finish = f as "nonfoil" | "foil" | "etched";
@@ -159,6 +198,10 @@ export function transform(card: ScryfallCard): {
       finish,
       borderColor: card.border_color ?? null,
       frameEffects: card.frame_effects ?? [],
+      frame: card.frame ?? null,
+      fullArt: card.full_art ?? false,
+      promoTypes: card.promo_types ?? [],
+      treatment,
       imageUri,
       imageUriBack,
       scryfallUri: card.scryfall_uri,
