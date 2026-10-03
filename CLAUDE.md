@@ -334,6 +334,20 @@ repopulate run, which is where the "re-run to repopulate" advice came from.)
 - Drag-to-search: drag any Scryfall card image onto the app
 - Umami events: `card-search` on new query, `card-click` on row click
 
+### Search v2 — beta, opt-in (`apps/web/src/app/search-v2/`, `apps/web/src/lib/search-v2/`)
+Listing-grained search with a filter sidebar, sort and three views (`view=card|printing|all`).
+Off by default: the header's "New search" button sets a `search_v2` cookie, and `page.tsx`
+renders `SearchV2` instead of the old results only when it is set. All state is URL params
+(`params.ts`); the last view is also kept in a `search_view` cookie so the server knows it on
+the first request.
+- **It reads `store_prices` live**, which the old search's denormalised columns exist to avoid.
+  The bound is the name query: mandatory (≥3 chars) and capped at `SEARCH_V2_CARD_CAP` cards
+  before any join. Don't add filter-only browsing without measuring it on prod disks.
+- One statement returns tiles and facet counts; `listings` is MATERIALIZED so it is read once.
+  Each facet group applies every filter except its own.
+- Finish filters on `printings.finish` (the printing id already carries it — no `store_prices.finish`).
+  Treatment filters on `printings.treatment`, derived at Scryfall import by `deriveTreatment()`.
+
 ### Card detail page (`apps/web/src/app/cards/[slug]/page.tsx`)
 - Two-column layout: sticky card image + info/table/chart
 - Market snapshot: Low / Scrymarket / High AUD, USD reference, trend badge
