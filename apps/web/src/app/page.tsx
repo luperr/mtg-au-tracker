@@ -1,6 +1,10 @@
-import { searchCards } from "@/lib/db";
-import { SEARCH_PAGE_SIZE, SEARCH_MIN_QUERY_LENGTH } from "@/lib/config";
+import { logCardSearch, searchCards } from "@/lib/db";
+import { SEARCH_PAGE_SIZE, SEARCH_MIN_QUERY_LENGTH, searchV2Default } from "@/lib/config";
 import { SearchResults } from "./SearchResults";
+import { cookies } from "next/headers";
+import { parseSearchParams, searchV2Enabled, FILTERS_COOKIE, LAST_QUERY_COOKIE, SEARCH_V2_COOKIE, SIDEBAR_COOKIE, VIEW_COOKIE } from "@/lib/search-v2/params";
+import { searchListings } from "@/lib/search-v2/query";
+import { SearchV2 } from "./search-v2/SearchV2";
 
 // Next.js route segment config — must be a static literal, not an imported variable
 export const revalidate = 3600;
@@ -27,15 +31,42 @@ function LandingSearchForm() {
   );
 }
 
+/** The cookie is written URI-encoded; compare both forms in case the framework already decoded it. */
+function sameQuery(cookie: string | undefined, q: string): boolean {
+  if (cookie === undefined) return false;
+  if (cookie === q) return true;
+  try {
+    return decodeURIComponent(cookie) === q;
+  } catch {
+    return false;
+  }
+}
+
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { q } = await searchParams;
+  const params = await searchParams;
+  const q = Array.isArray(params.q) ? params.q[0] : params.q;
   const query = q?.trim() ?? "";
-  const { results, totalCount, capped, fuzzy } = await searchCards(query, 0);
   const tooShort = query.length > 0 && query.length < SEARCH_MIN_QUERY_LENGTH;
+
+  // Beta, chosen from the header (SearchV2Toggle) or defaulted by SEARCH_V2_DEFAULT. Only reached with a query:
+  // the landing page is shared, and v2 requires one (see searchListings()).
+  const jar = await cookies();
+  if (query && !tooShort && searchV2Enabled(jar.get(SEARCH_V2_COOKIE)?.value, searchV2Default())) {
+    const state = parseSearchParams(params, jar.get(VIEW_COOKIE)?.value, jar.get(FILTERS_COOKIE)?.value);
+    const result = await searchListings(state);
+    // Same demand log as /api/search, once per new query: every filter, sort, view and
+    // page change re-renders this route too, for the query LAST_QUERY_COOKIE already holds.
+    if (!sameQuery(jar.get(LAST_QUERY_COOKIE)?.value, state.q)) {
+      logCardSearch(state.q, result.topCardId);
+    }
+    return <SearchV2 state={state} result={result} filtersHidden={jar.get(SIDEBAR_COOKIE)?.value === "hidden"} />;
+  }
+
+  const { results, totalCount, capped, fuzzy } = await searchCards(query, 0);
 
   if (!query) {
     return (

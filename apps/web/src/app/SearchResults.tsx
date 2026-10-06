@@ -258,7 +258,7 @@ export function SearchResults({ initialResults, query, initialHasMore, totalCoun
     setCards(initialResults);
     setHasMore(initialHasMore);
     offsetRef.current = initialResults.length;
-    if (query) trackEvent("card-search", { query });
+    if (query) trackEvent("card-search", { query, search: "v1" });
   }, [initialResults, initialHasMore, query]);
 
   useEffect(() => {

@@ -25,6 +25,13 @@ export function toSmallImage(uri: string | null): string | null {
   return uri ? uri.replace("/normal/", "/small/") : null;
 }
 
+/** Client-side cookie write, site-wide. `maxAge` 0 deletes it; omitted, it lasts the session. */
+export function setCookie(name: string, value: string, maxAge?: number): void {
+  document.cookie = `${name}=${value}; path=/;${maxAge === undefined ? "" : ` max-age=${maxAge};`} samesite=lax`;
+}
+
+export const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
+
 /** Fire an Umami analytics event. No-ops gracefully if Umami is absent. */
 export function trackEvent(event: string, data?: Record<string, unknown>): void {
   window.umami?.track(event, data);

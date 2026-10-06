@@ -132,6 +132,12 @@ export const printings = pgTable(
     finish: text("finish").notNull().default("nonfoil"),           // "nonfoil" | "foil" | "etched"
     borderColor: text("border_color"),                             // Scryfall border_color, nullable
     frameEffects: text("frame_effects").array().notNull().default([]), // e.g. ["showcase"] | ["extendedart"]
+    frame: text("frame"),                                          // Scryfall frame: "1997" | "2015" | ...
+    fullArt: boolean("full_art").notNull().default(false),
+    promoTypes: text("promo_types").array().notNull().default([]), // e.g. ["serialized"]
+    // One label for the search treatment filter, derived at import by deriveTreatment()
+    // in scryfall/transform.ts. Defaults to "normal" until the next import fills it.
+    treatment: text("treatment").notNull().default("normal"),
     imageUri: text("image_uri"),
     imageUriBack: text("image_uri_back"),                    // back face for DFCs; null for normal cards
     scryfallUri: text("scryfall_uri").notNull(),

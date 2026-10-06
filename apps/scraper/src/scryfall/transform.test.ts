@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shouldImport, transform, type ScryfallCard } from "./transform.js";
+import { shouldImport, transform, deriveTreatment, type ScryfallCard } from "./transform.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -197,5 +197,37 @@ describe("transform — image URIs", () => {
     );
     expect(printingRows[0].imageUri).toBeNull();
     expect(printingRows[0].imageUriBack).toBeNull();
+  });
+});
+
+// ─── deriveTreatment ──────────────────────────────────────────────────────────
+
+describe("deriveTreatment", () => {
+  it("is normal with no treatment fields", () => {
+    expect(deriveTreatment(baseCard())).toBe("normal");
+  });
+
+  it("picks the highest-priority treatment when several apply", () => {
+    const card = baseCard({
+      promo_types: ["serialized"], border_color: "borderless", frame_effects: ["showcase"],
+    });
+    expect(deriveTreatment(card)).toBe("serialized");
+    expect(deriveTreatment({ ...card, promo_types: [] })).toBe("borderless");
+    expect(deriveTreatment({ ...card, promo_types: [], border_color: "black" })).toBe("showcase");
+  });
+
+  it("maps extendedart and full_art", () => {
+    expect(deriveTreatment(baseCard({ frame_effects: ["extendedart"] }))).toBe("extendedart");
+    expect(deriveTreatment(baseCard({ full_art: true }))).toBe("fullart");
+  });
+
+  it("treats an old frame as retro only after the modern frame arrived", () => {
+    expect(deriveTreatment(baseCard({ frame: "1997", released_at: "2023-11-18" }))).toBe("retro");
+    expect(deriveTreatment(baseCard({ frame: "1993", released_at: "1993-08-05" }))).toBe("normal");
+  });
+
+  it("is copied onto every finish of the printing", () => {
+    const { printingRows } = transform(baseCard({ finishes: ["nonfoil", "foil"], border_color: "borderless" }));
+    expect(printingRows.map((p) => p.treatment)).toEqual(["borderless", "borderless"]);
   });
 });

@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import type { PrintingWithPrices } from "@/lib/db";
 import { useWantList, toWantListItem, wantListItemId } from "@/app/WantListContext";
 import { fmtAUD } from "@/lib/utils";
-import { Dropdown, OptionItem } from "@/app/Dropdown";
+import { Dropdown, OptionItem, pillClass } from "@/app/Dropdown";
 import { SetSymbol } from "@/app/SetSymbol";
 import { BuyLink } from "@/app/BuyLink";
 import { AffiliateDisclosure } from "@/app/AffiliateDisclosure";
@@ -31,13 +31,6 @@ interface Row {
   inStock: boolean;
   url: string | null;
 }
-
-const chipCls = (active: boolean) =>
-  `rounded-full border px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${
-    active
-      ? "border-accent bg-accent/10 text-accent-light"
-      : "border-subtle bg-muted/60 text-cream-dim hover:border-cream-dim/40 hover:text-cream"
-  }`;
 
 // ── Want list button ───────────────────────────────────────────────────────────
 
@@ -255,7 +248,7 @@ export function PricesTable({
       {/* ── Filter bar — always visible, horizontally scrollable ── */}
       <div className="flex items-center gap-2 mb-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {/* In Stock toggle */}
-        <button onClick={() => { setInStockOnly(!inStockOnly); setPage(0); }} className={chipCls(inStockOnly)}>
+        <button onClick={() => { setInStockOnly(!inStockOnly); setPage(0); }} className={pillClass(inStockOnly)}>
           In stock
         </button>
 

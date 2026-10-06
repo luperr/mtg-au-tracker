@@ -129,6 +129,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       EBAY_AFFILIATE_CAMPAIGN_ID: ${EBAY_AFFILIATE_CAMPAIGN_ID:-}
       EBAY_AFFILIATE_ROTATION_ID: ${EBAY_AFFILIATE_ROTATION_ID:-}
+      SEARCH_V2_DEFAULT: ${SEARCH_V2_DEFAULT:-}
     depends_on:
       db:
         condition: service_healthy

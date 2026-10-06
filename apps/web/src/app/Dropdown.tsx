@@ -3,6 +3,18 @@
 import { useState, useRef, useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
+/**
+ * The site's filter pill: Dropdown buttons, the card page's "In stock" toggle and the
+ * search filter chips all share it so they read as one control family.
+ */
+export function pillClass(active: boolean, shape: "rounded-full" | "rounded-lg" = "rounded-full"): string {
+  return `${shape} border px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${
+    active
+      ? "border-accent bg-accent/10 text-accent-light"
+      : "border-subtle bg-muted/60 text-cream-dim hover:border-cream-dim/40 hover:text-cream"
+  }`;
+}
+
 export function Dropdown({
   label,
   active,
@@ -65,17 +77,12 @@ export function Dropdown({
     };
   }, [open, align]);
 
-  const shape = rounded ? "rounded-full" : "rounded-lg";
-  const activeStyle = active
-    ? "border-accent bg-accent/10 text-accent-light"
-    : "border-subtle bg-muted/60 text-cream-dim hover:border-cream-dim/40 hover:text-cream";
-
   return (
     <div className="relative shrink-0">
       <button
         ref={buttonRef}
         onClick={() => setOpen(!open)}
-        className={`flex items-center gap-1.5 ${shape} border px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${activeStyle}`}
+        className={`flex items-center gap-1.5 ${pillClass(!!active, rounded ? "rounded-full" : "rounded-lg")}`}
       >
         {label}
         <span className="text-[9px] opacity-50">{open ? "▲" : "▼"}</span>
@@ -100,11 +107,14 @@ export function OptionItem({
   checked,
   onClick,
   type = "radio",
+  trailing,
 }: {
   label: string;
   checked: boolean;
   onClick: () => void;
   type?: "radio" | "check";
+  /** Right-aligned extra, e.g. a facet count. */
+  trailing?: ReactNode;
 }) {
   return (
     <button
@@ -118,7 +128,8 @@ export function OptionItem({
           checked ? "border-accent bg-accent" : "border-subtle"
         }`}
       />
-      {label}
+      <span className="flex-1">{label}</span>
+      {trailing}
     </button>
   );
 }
