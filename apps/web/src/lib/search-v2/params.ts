@@ -8,7 +8,7 @@
  * the values (store ids, set codes, enum labels) can contain a comma.
  */
 
-export const SEARCH_VIEWS = ["card", "printing", "all"] as const;
+export const SEARCH_VIEWS = ["card", "printing", "listings"] as const;
 export type SearchView = (typeof SEARCH_VIEWS)[number];
 export const DEFAULT_VIEW: SearchView = "printing";
 
@@ -21,6 +21,9 @@ export type FacetKey = (typeof FACET_KEYS)[number];
 
 export type SearchFilters = Record<FacetKey, string[]>;
 
+/** AUD bounds, inclusive. Either side may be open. */
+export type PriceRange = { min: number | null; max: number | null };
+
 export type SearchState = {
   q: string;
   view: SearchView;
@@ -28,10 +31,56 @@ export type SearchState = {
   /** 1-based. */
   page: number;
   filters: SearchFilters;
+  price: PriceRange;
 };
+
+/**
+ * Price filters a listing, so it only means something where a tile *is* one listing's
+ * price — printing and listing views. In card view the tile is the card's cheapest
+ * listing across every printing, where a range is rarely what anyone wants; the
+ * control is hidden there and any range in the URL is kept but not applied.
+ */
+export function priceFilterApplies(state: SearchState): boolean {
+  return state.view !== "card" && hasPrice(state);
+}
+
+function hasPrice(state: SearchState): boolean {
+  return state.price.min !== null || state.price.max !== null;
+}
+
+/**
+ * Treatment values that are the default rather than a choice. Unticked already
+ * means "any", so offering "Normal" as an option only adds noise.
+ */
+export const DEFAULT_TREATMENT = "normal";
 
 /** Cookie the view toggle writes, so the last choice survives without a URL param. */
 export const VIEW_COOKIE = "search_view";
+
+/** Cookie set to "hidden" when the desktop filter sidebar is collapsed — read server-side so it never flashes open. */
+export const SIDEBAR_COOKIE = "search_sidebar";
+
+/**
+ * Cookie holding the filters that carry over to the next search, as a query string.
+ * New searches (header box, drag-and-drop) navigate to a bare `/?q=`, so the server
+ * falls back to this whenever the URL names no filter at all.
+ */
+export const FILTERS_COOKIE = "search_filters";
+
+/**
+ * Session cookie holding the query the results page last rendered, so the server can
+ * tell a new search from a filter, sort, view or page change on the same one — the
+ * URL can't, since toQueryString() drops defaults and a cleared filter leaves a bare
+ * `/?q=` just like a fresh search.
+ */
+export const LAST_QUERY_COOKIE = "search_last_q";
+
+/**
+ * Facets that carry across searches. Set is left out: it describes the card that was
+ * searched, so carried into a different name it would mostly empty the results.
+ */
+const STICKY_KEYS: FacetKey[] = ["store", "condition", "finish", "treatment"];
+const FILTER_PARAMS = [...FACET_KEYS, "min", "max"];
 
 /** Cookie the header toggle writes to opt into the v2 search page. */
 export const SEARCH_V2_COOKIE = "search_v2";
@@ -52,11 +101,30 @@ function splitList(v: string | undefined): string[] {
   return [...new Set(v.split(",").map((s) => s.trim()).filter(Boolean))];
 }
 
-export function parseSearchParams(params: RawParams, fallbackView?: string): SearchState {
+/** A non-negative price rounded to cents, or null for anything else (empty, junk, negative). */
+export function parsePrice(v: string | undefined): number | null {
+  if (!v?.trim()) return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
+}
+
+/**
+ * `fallbackView` and `fallbackFilters` are the cookie-remembered view and filters,
+ * used only when the URL doesn't name its own.
+ */
+export function parseSearchParams(params: RawParams, fallbackView?: string, fallbackFilters?: string): SearchState {
+  if (fallbackFilters && !FILTER_PARAMS.some((k) => first(params[k]))) {
+    params = { ...Object.fromEntries(new URLSearchParams(fallbackFilters)), ...params };
+  }
   const filters = {} as SearchFilters;
   for (const key of FACET_KEYS) filters[key] = splitList(first(params[key]));
+  filters.treatment = filters.treatment.filter((t) => t !== DEFAULT_TREATMENT);
 
   const page = parseInt(first(params.page) ?? "1", 10);
+  let min = parsePrice(first(params.min));
+  let max = parsePrice(first(params.max));
+  // A reversed range is a typo, not a request for nothing.
+  if (min !== null && max !== null && min > max) [min, max] = [max, min];
 
   return {
     q: first(params.q)?.trim() ?? "",
@@ -64,19 +132,24 @@ export function parseSearchParams(params: RawParams, fallbackView?: string): Sea
     sort: oneOf(SEARCH_SORTS, first(params.sort)) ?? DEFAULT_SORT,
     page: Number.isFinite(page) && page > 0 ? page : 1,
     filters,
+    price: { min, max },
   };
 }
 
 /** Inverse of parseSearchParams — omits defaults so URLs stay short and canonical. */
+/** Writes `keys`' filter values and the price range — the URL and FILTERS_COOKIE share this. */
+function appendFilters(params: URLSearchParams, state: SearchState, keys: readonly FacetKey[]): void {
+  for (const key of keys) if (state.filters[key].length) params.set(key, state.filters[key].join(","));
+  if (state.price.min !== null) params.set("min", String(state.price.min));
+  if (state.price.max !== null) params.set("max", String(state.price.max));
+}
+
 export function toQueryString(state: SearchState): string {
   const params = new URLSearchParams();
   if (state.q) params.set("q", state.q);
   if (state.view !== DEFAULT_VIEW) params.set("view", state.view);
   if (state.sort !== DEFAULT_SORT) params.set("sort", state.sort);
-  for (const key of FACET_KEYS) {
-    const values = state.filters[key];
-    if (values.length) params.set(key, values.join(","));
-  }
+  appendFilters(params, state, FACET_KEYS);
   if (state.page > 1) params.set("page", String(state.page));
   return params.toString();
 }
@@ -91,15 +164,30 @@ export function toggleFilter(state: SearchState, key: FacetKey, value: string): 
   return { ...state, page: 1, filters: { ...state.filters, [key]: next } };
 }
 
-/** Active filters as removable chips. */
-export function activeChips(state: SearchState): { key: FacetKey; value: string }[] {
-  return FACET_KEYS.flatMap((key) => state.filters[key].map((value) => ({ key, value })));
+/**
+ * Ticked facet values plus a price range — the Filters badge count. Price counts even in
+ * card view, where it isn't applied: it's still remembered and carried to the next
+ * search, so Clear has to stay reachable.
+ */
+export function activeFilterCount(state: SearchState): number {
+  return FACET_KEYS.reduce((n, key) => n + state.filters[key].length, 0) + (hasPrice(state) ? 1 : 0);
+}
+
+/** The carry-over part of the state, for FILTERS_COOKIE. Already cookie-safe: URLSearchParams escapes `,` `;` and spaces. */
+export function stickyFilters(state: SearchState): string {
+  const params = new URLSearchParams();
+  appendFilters(params, state, STICKY_KEYS);
+  return params.toString();
 }
 
 export function clearFilters(state: SearchState): SearchState {
   const filters = {} as SearchFilters;
   for (const key of FACET_KEYS) filters[key] = [];
-  return { ...state, page: 1, filters };
+  return { ...state, page: 1, filters, price: { min: null, max: null } };
+}
+
+export function setPrice(state: SearchState, price: PriceRange): SearchState {
+  return { ...state, page: 1, price };
 }
 
 // ─── Display ──────────────────────────────────────────────────────────────────
@@ -115,7 +203,7 @@ export const FACET_TITLES: Record<FacetKey, string> = {
 const VALUE_LABELS: Partial<Record<FacetKey, Record<string, string>>> = {
   finish: { nonfoil: "Non-foil", foil: "Foil", etched: "Etched" },
   treatment: {
-    normal: "Normal", serialized: "Serialized", borderless: "Borderless", showcase: "Showcase",
+    serialized: "Serialized", borderless: "Borderless", showcase: "Showcase",
     extendedart: "Extended Art", retro: "Retro Frame", fullart: "Full Art",
   },
   condition: { unknown: "Unknown" },

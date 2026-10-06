@@ -1,10 +1,7 @@
 "use client";
 
-import {
-  activeChips, clearFilters, facetValueLabel, toggleFilter, FACET_TITLES, SEARCH_SORTS,
-  type SearchSort, type SearchView,
-} from "@/lib/search-v2/params";
-import type { Facets } from "@/lib/search-v2/types";
+import { activeFilterCount, SEARCH_SORTS, type SearchSort, type SearchView } from "@/lib/search-v2/params";
+import type { SearchV2Result } from "@/lib/search-v2/types";
 import { Dropdown, OptionItem, pillClass } from "@/app/Dropdown";
 import { useSearchNav } from "./SearchNav";
 
@@ -15,44 +12,32 @@ const SORT_LABELS: Record<SearchSort, string> = {
   set: "Set (newest)",
 };
 
-const VIEW_OPTIONS: { view: SearchView; label: string; title: string }[] = [
-  { view: "card", label: "Card", title: "One tile per card" },
-  { view: "printing", label: "Printing", title: "One tile per printing" },
-  { view: "all", label: "All", title: "Every listing" },
+const VIEW_TABS: { view: SearchView; label: string; title: string }[] = [
+  { view: "card", label: "Cards", title: "One tile per card, at its cheapest listing" },
+  { view: "printing", label: "Printings", title: "One tile per printing, at its cheapest listing" },
+  { view: "listings", label: "Listings", title: "Every listing" },
 ];
 
 export function SearchToolbar({
-  total, capped, facets, onOpenFilters,
+  result, onOpenFilters,
 }: {
-  total: number;
-  capped: boolean;
-  facets: Facets;
+  result: Pick<SearchV2Result, "counts" | "capped">;
   /** Opens the filter drawer; the button only shows below md, where the sidebar is hidden. */
   onOpenFilters: () => void;
 }) {
   const { state, navigate } = useSearchNav();
-  const chips = activeChips(state);
-
-  /** Chip label — store and set ids come back from the facet rows with their display name. */
-  function chipLabel(key: (typeof chips)[number]["key"], value: string) {
-    const label = facets[key].find((f) => f.value === value)?.label;
-    return facetValueLabel(key, value, label);
-  }
+  const activeCount = activeFilterCount(state);
 
   return (
     <div className="flex flex-col gap-2 mb-4">
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={onOpenFilters} className={`md:hidden ${pillClass(chips.length > 0)}`}>
-          Filters{chips.length > 0 && ` (${chips.length})`}
+        <button onClick={onOpenFilters} className={`md:hidden ${pillClass(activeCount > 0)}`}>
+          Filters{activeCount > 0 && ` (${activeCount})`}
         </button>
 
-        <p className="text-sm text-cream-dim mr-auto">
-          {total.toLocaleString()} result{total === 1 ? "" : "s"}
-          {capped && <span className="text-cream-dim/60"> · name matched too many cards, showing the closest</span>}
-        </p>
-
-        <div className="flex items-center gap-0.5 rounded-lg border border-subtle bg-muted p-0.5" role="group" aria-label="View">
-          {VIEW_OPTIONS.map(({ view, label, title }) => (
+        {/* What a tile is. Each option's count doubles as the result count for that view. */}
+        <div className="flex items-center gap-0.5 rounded-lg border border-subtle bg-muted p-0.5 mr-auto" role="group" aria-label="View">
+          {VIEW_TABS.map(({ view, label, title }) => (
             <button
               key={view}
               title={title}
@@ -62,7 +47,7 @@ export function SearchToolbar({
                 state.view === view ? "bg-surface text-cream shadow-sm" : "text-cream-dim/60 hover:text-cream-dim"
               }`}
             >
-              {label}
+              {label} <span className="tabular-nums opacity-60">{result.counts[view].toLocaleString()}</span>
             </button>
           ))}
         </div>
@@ -81,24 +66,10 @@ export function SearchToolbar({
         </Dropdown>
       </div>
 
-      {chips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {chips.map(({ key, value }) => (
-            <button
-              key={`${key}:${value}`}
-              onClick={() => navigate(toggleFilter(state, key, value))}
-              aria-label={`Remove ${FACET_TITLES[key]} filter ${chipLabel(key, value)}`}
-              className={`flex items-center gap-1 ${pillClass(true)}`}
-            >
-              <span className="opacity-60">{FACET_TITLES[key]}:</span> {chipLabel(key, value)}
-              <span aria-hidden className="opacity-60">×</span>
-            </button>
-          ))}
-          <button onClick={() => navigate(clearFilters(state))} className="shrink-0 px-2 text-[10px] text-cream-dim/40 hover:text-cream-dim transition-colors">
-            Reset
-          </button>
-        </div>
+      {result.capped && (
+        <p className="text-xs text-cream-dim/60">The name matched too many cards — showing the closest matches.</p>
       )}
+
     </div>
   );
 }

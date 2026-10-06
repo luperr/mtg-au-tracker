@@ -1,6 +1,6 @@
 import { sql } from "../db/client.js";
-import { MAX_SEARCH_OFFSET, SEARCH_MIN_QUERY_LENGTH } from "../config.js";
-import { FACET_KEYS, type FacetKey, type SearchState, type SearchView } from "./params.js";
+import { MAX_SEARCH_OFFSET, SEARCH_MIN_QUERY_LENGTH, SEARCH_FUZZY_MIN_SIMILARITY } from "../config.js";
+import { DEFAULT_TREATMENT, FACET_KEYS, priceFilterApplies, type FacetKey, type SearchState, type SearchView } from "./params.js";
 import { SEARCH_V2_PAGE_SIZE, type Facets, type SearchTile, type SearchV2Result } from "./types.js";
 
 /**
@@ -27,20 +27,23 @@ import { SEARCH_V2_PAGE_SIZE, type Facets, type SearchTile, type SearchV2Result 
  */
 export const SEARCH_V2_CARD_CAP = 500;
 
-/** listings column each facet filters and groups on, and the column that labels it. */
-const FACET_COLUMNS: Record<FacetKey, { value: string; label: string }> = {
+/**
+ * listings column each facet filters and groups on, the column that labels it, and a
+ * value never offered as an option (the default treatment — see DEFAULT_TREATMENT).
+ */
+const FACET_COLUMNS: Record<FacetKey, { value: string; label: string; omit?: string }> = {
   store: { value: "store_id", label: "store_name" },
   set: { value: "set_code", label: "set_name" },
   condition: { value: "condition_key", label: "condition_key" },
   finish: { value: "finish", label: "finish" },
-  treatment: { value: "treatment", label: "treatment" },
+  treatment: { value: "treatment", label: "treatment", omit: DEFAULT_TREATMENT },
 };
 
 /** What one tile is, per view. */
 const GROUP_KEY: Record<SearchView, string> = {
   card: "card_id",
   printing: "printing_id",
-  all: "listing_id",
+  listings: "listing_id",
 };
 
 function emptyFacets(): Facets {
@@ -56,12 +59,25 @@ export function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, (c) => "\\" + c);
 }
 
-/** AND of every active filter, optionally leaving one facet's own filter out. */
-function filterPredicate(state: SearchState, except?: FacetKey) {
+/**
+ * The price range, whatever the view. Every facet count respects it — it isn't a
+ * facet, so there is no "all filters except its own" for it.
+ */
+function priceRange({ price: { min, max } }: SearchState) {
+  return sql`${min === null ? sql`TRUE` : sql`price >= ${min}`} AND ${max === null ? sql`TRUE` : sql`price <= ${max}`}`;
+}
+
+/** AND of every facet filter, optionally leaving one facet's own filter out. Price is separate. */
+function facetPredicate(state: SearchState, except?: FacetKey) {
   return FACET_KEYS.filter((k) => k !== except && state.filters[k].length > 0).reduce(
     (acc, k) => sql`${acc} AND ${sql(FACET_COLUMNS[k].value)} = ANY(${state.filters[k]})`,
     sql`TRUE`,
   );
+}
+
+/** Every active filter, price included — what a tile has to pass. */
+function filterPredicate(state: SearchState, except?: FacetKey) {
+  return sql`${facetPredicate(state, except)} AND ${priceFilterApplies(state) ? priceRange(state) : sql`TRUE`}`;
 }
 
 /**
@@ -79,7 +95,10 @@ function orderBy(state: SearchState) {
 }
 
 export async function searchListings(state: SearchState): Promise<SearchV2Result> {
-  const empty: SearchV2Result = { tiles: [], total: 0, capped: false, facets: emptyFacets() };
+  const empty: SearchV2Result = {
+    tiles: [], counts: { card: 0, printing: 0, listings: 0 },
+    capped: false, fuzzy: false, topCardId: null, facets: emptyFacets(),
+  };
   if (state.q.length < SEARCH_MIN_QUERY_LENGTH) return empty;
 
   const offset = Math.min((state.page - 1) * SEARCH_V2_PAGE_SIZE, MAX_SEARCH_OFFSET);
@@ -96,20 +115,21 @@ export async function searchListings(state: SearchState): Promise<SearchV2Result
     END,
     word_similarity(${q}, c.name) DESC, length(c.name), c.name, c.id`;
 
-  // count(*) in `all` view: each listing is its own tile, so DISTINCT is wasted work.
-  const tileCount = state.view === "all" ? sql`count(*)` : sql`count(DISTINCT ${groupKey})`;
+  // count(*) in listings view: each listing is its own tile, so DISTINCT is wasted work.
+  const tileCount = state.view === "listings" ? sql`count(*)` : sql`count(DISTINCT ${groupKey})`;
 
   const facetQueries = FACET_KEYS.map((k) => sql`
     SELECT ${k}::text AS facet, ${sql(FACET_COLUMNS[k].value)}::text AS value,
            max(${sql(FACET_COLUMNS[k].label)})::text AS label, ${tileCount}::int AS count
     FROM listings
     WHERE ${filterPredicate(state, k)}
+      ${FACET_COLUMNS[k].omit ? sql`AND ${sql(FACET_COLUMNS[k].value)} <> ${FACET_COLUMNS[k].omit}` : sql``}
     GROUP BY 2
   `);
   const facetUnion = facetQueries.slice(1).reduce((acc, f) => sql`${acc} UNION ALL ${f}`, facetQueries[0]);
 
   // "+N more stores from $X" only means something when a tile groups several listings.
-  const others = state.view === "all"
+  const others = state.view === "listings"
     ? sql`NULL::int AS other_stores, NULL::numeric AS other_min`
     : sql`
         (SELECT count(DISTINCT f.store_id) FROM filtered f
@@ -117,13 +137,37 @@ export async function searchListings(state: SearchState): Promise<SearchV2Result
         (SELECT min(f.price) FROM filtered f
           WHERE f.${groupKey} = pg.group_key AND f.store_id <> pg.store_id) AS other_min`;
 
-  const [row] = await sql<{ tiles: SearchTile[] | null; facets: { facet: FacetKey; value: string; label: string; count: number }[] | null; total: number; card_count: number }[]>`
-    WITH cand AS MATERIALIZED (
+  const [row] = await sql<{
+    tiles: SearchTile[] | null;
+    facets: { facet: FacetKey; value: string; label: string; count: number }[] | null;
+    counts: SearchV2Result["counts"];
+    cand_count: number;
+    fuzzy: boolean;
+    top_card_id: string | null;
+  }[]>`
+    -- Two candidate passes, as in searchCards(): a literal substring match, and a
+    -- trigram fuzzy match that only runs when the literal pass found no card at all.
+    -- The NOT EXISTS is uncorrelated, so Postgres evaluates it once as a one-time
+    -- filter and skips the fuzzy scan entirely whenever lit has rows. Deciding on
+    -- *cards* rather than on this page's tiles keeps every page and every filter
+    -- combination of one query in the same mode.
+    WITH lit AS MATERIALIZED (
       SELECT c.id, c.slug, c.name, row_number() OVER (ORDER BY ${nameRank}) AS rnk
       FROM cards c
       WHERE c.name ILIKE ${"%" + escapeLike(q) + "%"}
       ORDER BY ${nameRank}
       LIMIT ${SEARCH_V2_CARD_CAP + 1}
+    ),
+    fz AS MATERIALIZED (
+      SELECT c.id, c.slug, c.name, row_number() OVER (ORDER BY ${nameRank}) AS rnk
+      FROM cards c
+      WHERE NOT EXISTS (SELECT 1 FROM lit)
+        AND ${q} <% c.name AND word_similarity(${q}, c.name) >= ${SEARCH_FUZZY_MIN_SIMILARITY}
+      ORDER BY ${nameRank}
+      LIMIT ${SEARCH_V2_CARD_CAP + 1}
+    ),
+    cand AS (
+      SELECT * FROM lit UNION ALL SELECT * FROM fz
     ),
     listings AS MATERIALIZED (
       SELECT
@@ -174,8 +218,16 @@ export async function searchListings(state: SearchState): Promise<SearchV2Result
           'other_stores', other_stores, 'other_min', other_min
         ) ORDER BY ord) FROM tiles) AS tiles,
       (SELECT json_agg(f ORDER BY f.facet, f.count DESC, f.label) FROM (${facetUnion}) f) AS facets,
-      (SELECT count(*)::int FROM winners) AS total,
-      (SELECT count(*)::int FROM cand) AS card_count
+      -- Tile counts for every view, so the view tabs can show what each would give.
+      -- One pass: price only applies outside card view, so it's a FILTER on the others.
+      (SELECT json_build_object(
+          'card', count(DISTINCT card_id),
+          'printing', count(DISTINCT printing_id) FILTER (WHERE ${priceRange(state)}),
+          'listings', count(*) FILTER (WHERE ${priceRange(state)})
+        ) FROM listings WHERE ${facetPredicate(state)}) AS counts,
+      (SELECT count(*)::int FROM cand) AS cand_count,
+      EXISTS (SELECT 1 FROM fz) AS fuzzy,
+      (SELECT id FROM cand ORDER BY rnk LIMIT 1) AS top_card_id
   `;
 
   const facets = emptyFacets();
@@ -188,8 +240,10 @@ export async function searchListings(state: SearchState): Promise<SearchV2Result
       price: Number(t.price),
       other_min: t.other_min === null ? null : Number(t.other_min),
     })),
-    total: row?.total ?? 0,
-    capped: (row?.card_count ?? 0) > SEARCH_V2_CARD_CAP,
+    counts: row?.counts ?? empty.counts,
+    capped: (row?.cand_count ?? 0) > SEARCH_V2_CARD_CAP,
+    fuzzy: row?.fuzzy ?? false,
+    topCardId: row?.top_card_id ?? null,
     facets,
   };
 }

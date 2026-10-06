@@ -1,10 +1,11 @@
 "use client";
 
-import { toQueryString, type SearchState } from "@/lib/search-v2/params";
+import { activeFilterCount, toQueryString, SIDEBAR_COOKIE, type SearchState } from "@/lib/search-v2/params";
+import { setCookie, ONE_YEAR_SECONDS } from "@/lib/utils";
 import { SEARCH_V2_PAGE_SIZE, type SearchV2Result } from "@/lib/search-v2/types";
 import { useEffect, useState } from "react";
 import { pillClass } from "@/app/Dropdown";
-import { FilterSidebar } from "./FilterSidebar";
+import { ClearFiltersButton, FilterSidebar } from "./FilterSidebar";
 import { ListingTile } from "./ListingTile";
 import { SearchNavProvider, useSearchNav } from "./SearchNav";
 import { SearchToolbar } from "./SearchToolbar";
@@ -50,8 +51,9 @@ function FilterDrawer({ open, onClose, children }: { open: boolean; onClose: () 
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex items-center justify-between mb-1 px-3">
-          <h2 className="text-sm font-semibold text-cream">Filters</h2>
+        <div className="flex items-center gap-1 mb-1 px-3">
+          <h2 className="mr-auto text-sm font-semibold text-cream">Filters</h2>
+          <ClearFiltersButton />
           <button onClick={onClose} aria-label="Close filters" className="text-cream-dim hover:text-cream text-lg leading-none px-1">×</button>
         </div>
         {children}
@@ -61,22 +63,61 @@ function FilterDrawer({ open, onClose, children }: { open: boolean; onClose: () 
 }
 
 /** `rendered` is the state these results were computed for — the nav state may already be ahead of it. */
-function Results({ result, rendered }: { result: SearchV2Result; rendered: SearchState }) {
+function Results({ result, rendered, filtersHidden }: { result: SearchV2Result; rendered: SearchState; filtersHidden: boolean }) {
   const { state, pending } = useSearchNav();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(!filtersHidden);
+  const activeCount = activeFilterCount(state);
+  const total = result.counts[rendered.view];
+
+  /** Desktop only — below md the sidebar is a drawer. Remembered in a cookie. */
+  function setSidebar(open: boolean) {
+    setSidebarOpen(open);
+    setCookie(SIDEBAR_COOKIE, open ? "" : "hidden", open ? 0 : ONE_YEAR_SECONDS);
+  }
 
   return (
     <div className="flex gap-6">
-      <aside className="hidden md:block w-56 shrink-0" aria-label="Filters">
-        <FilterSidebar facets={result.facets} />
-      </aside>
+      {sidebarOpen ? (
+        <aside className="hidden md:block w-56 shrink-0" aria-label="Filters">
+          <div className="flex items-center gap-1 mb-1.5 pl-1">
+            <h2 className="mr-auto text-xs font-medium uppercase tracking-wide text-cream-dim/60">Filters</h2>
+            <ClearFiltersButton />
+            <button
+              onClick={() => setSidebar(false)}
+              title="Hide filters"
+              aria-label="Hide filters"
+              className="rounded px-1.5 text-sm text-cream-dim/60 hover:text-cream hover:bg-muted/40 transition-colors"
+            >
+              «
+            </button>
+          </div>
+          <FilterSidebar facets={result.facets} />
+        </aside>
+      ) : (
+        <button
+          onClick={() => setSidebar(true)}
+          title="Show filters"
+          aria-label="Show filters"
+          className="hidden md:block self-start shrink-0 -mr-3 rounded px-1.5 text-sm text-cream-dim/60 hover:text-cream hover:bg-muted/40 transition-colors"
+        >
+          »{activeCount > 0 && <span className="ml-1 text-xs text-accent-light">{activeCount}</span>}
+        </button>
+      )}
       <FilterDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
         <FilterSidebar facets={result.facets} framed={false} />
       </FilterDrawer>
 
       <div className="min-w-0 flex-1">
-        <SearchToolbar total={result.total} capped={result.capped} facets={result.facets} onOpenFilters={() => setDrawerOpen(true)} />
-        {result.tiles.length === 0 && result.total > 0 ? (
+        <SearchToolbar result={result} onOpenFilters={() => setDrawerOpen(true)} />
+        {/* The fuzzy pass only runs when no card name contained the query, so say so —
+            otherwise a typo silently returns cards the user never typed. */}
+        {result.fuzzy && (
+          <p className="mb-4 text-sm text-cream-dim">
+            No exact match for &ldquo;{rendered.q}&rdquo;. Showing the closest cards instead.
+          </p>
+        )}
+        {result.tiles.length === 0 && total > 0 ? (
           <p className="text-cream-dim">
             There&rsquo;s no page {state.page}.{" "}
             <a href={`/?${toQueryString({ ...state, page: 1 })}`} className="text-accent hover:text-accent-light">Back to page 1</a>
@@ -84,23 +125,23 @@ function Results({ result, rendered }: { result: SearchV2Result; rendered: Searc
         ) : result.tiles.length === 0 ? (
           <p className="text-cream-dim">No listings match &ldquo;{state.q}&rdquo; with these filters.</p>
         ) : (
-          <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 transition-opacity ${pending ? "opacity-50" : ""}`}>
+          <div className={`grid grid-cols-2 sm:grid-cols-3 ${sidebarOpen ? "lg:grid-cols-4" : "lg:grid-cols-5"} gap-3 transition-opacity ${pending ? "opacity-50" : ""}`}>
             {result.tiles.map((tile) => (
               <ListingTile key={tile.key} tile={tile} view={rendered.view} query={rendered.q} />
             ))}
           </div>
         )}
-        <Pagination total={result.total} />
+        <Pagination total={total} />
       </div>
     </div>
   );
 }
 
 /** v2 search page, rendered by `/` when the search_v2 cookie is set. */
-export function SearchV2({ state, result }: { state: SearchState; result: SearchV2Result }) {
+export function SearchV2({ state, result, filtersHidden = false }: { state: SearchState; result: SearchV2Result; filtersHidden?: boolean }) {
   return (
     <SearchNavProvider state={state}>
-      <Results result={result} rendered={state} />
+      <Results result={result} rendered={state} filtersHidden={filtersHidden} />
     </SearchNavProvider>
   );
 }

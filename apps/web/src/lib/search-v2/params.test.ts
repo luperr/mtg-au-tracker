@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  parseSearchParams, toQueryString, toggleFilter, activeChips, clearFilters, facetValueLabel,
+  parseSearchParams, toQueryString, toggleFilter, activeFilterCount, clearFilters, facetValueLabel,
+  priceFilterApplies, stickyFilters,
 } from "./params.js";
 
 describe("parseSearchParams", () => {
@@ -21,7 +22,7 @@ describe("parseSearchParams", () => {
 
   it("falls back to the remembered view only when the URL has none", () => {
     expect(parseSearchParams({}, "card").view).toBe("card");
-    expect(parseSearchParams({ view: "all" }, "card").view).toBe("all");
+    expect(parseSearchParams({ view: "listings" }, "card").view).toBe("listings");
     expect(parseSearchParams({}, "bogus").view).toBe("printing");
   });
 
@@ -40,7 +41,7 @@ describe("toQueryString", () => {
   });
 
   it("round-trips a full state", () => {
-    const qs = "q=bolt&view=all&sort=name&store=a%2Cb&set=mh3&page=3";
+    const qs = "q=bolt&view=listings&sort=name&store=a%2Cb&set=mh3&page=3";
     expect(toQueryString(parseSearchParams(Object.fromEntries(new URLSearchParams(qs))))).toBe(qs);
   });
 });
@@ -55,13 +56,12 @@ describe("toggleFilter", () => {
   });
 });
 
-describe("activeChips / clearFilters", () => {
-  it("lists every active value and clears them all", () => {
-    const s = parseSearchParams({ set: "mh3", finish: "foil,etched" });
-    expect(activeChips(s)).toEqual([
-      { key: "set", value: "mh3" }, { key: "finish", value: "foil" }, { key: "finish", value: "etched" },
-    ]);
-    expect(activeChips(clearFilters(s))).toEqual([]);
+describe("activeFilterCount / clearFilters", () => {
+  it("counts every ticked value plus a remembered price range, and clears them all", () => {
+    const s = parseSearchParams({ set: "mh3", finish: "foil,etched", min: "5" });
+    expect(activeFilterCount(s)).toBe(4);
+    expect(activeFilterCount({ ...s, view: "card" })).toBe(4);
+    expect(activeFilterCount(clearFilters(s))).toBe(0);
   });
 });
 
@@ -69,5 +69,49 @@ describe("facetValueLabel", () => {
   it("maps enum values and prefers DB labels otherwise", () => {
     expect(facetValueLabel("finish", "nonfoil")).toBe("Non-foil");
     expect(facetValueLabel("store", "mtg_mate", "MTG Mate")).toBe("MTG Mate");
+  });
+});
+
+describe("price range", () => {
+  it("rounds to cents, drops junk and swaps a reversed range", () => {
+    expect(parseSearchParams({ min: "1.234", max: "abc" }).price).toEqual({ min: 1.23, max: null });
+    expect(parseSearchParams({ min: "-5" }).price).toEqual({ min: null, max: null });
+    expect(parseSearchParams({ min: "20", max: "5" }).price).toEqual({ min: 5, max: 20 });
+  });
+
+  it("round-trips through the query string and is cleared with the filters", () => {
+    const s = parseSearchParams({ q: "bolt", min: "5", max: "20" });
+    expect(toQueryString(s)).toBe("q=bolt&min=5&max=20");
+    expect(clearFilters(s).price).toEqual({ min: null, max: null });
+  });
+
+  it("applies outside card view only", () => {
+    expect(priceFilterApplies(parseSearchParams({ min: "5", view: "printing" }))).toBe(true);
+    expect(priceFilterApplies(parseSearchParams({ min: "5", view: "card" }))).toBe(false);
+    expect(priceFilterApplies(parseSearchParams({ view: "listings" }))).toBe(false);
+  });
+
+});
+
+describe("treatment", () => {
+  it("drops the default treatment from the URL", () => {
+    expect(parseSearchParams({ treatment: "normal,borderless" }).filters.treatment).toEqual(["borderless"]);
+  });
+});
+
+describe("filters carried across searches", () => {
+  it("keeps sticky facets and price, but not set", () => {
+    const s = parseSearchParams({ q: "bolt", store: "a,b", set: "mh3", condition: "NM", min: "5" });
+    expect(stickyFilters(s)).toBe("store=a%2Cb&condition=NM&min=5");
+  });
+
+  it("applies remembered filters only when the URL names none", () => {
+    const remembered = "store=a&min=5";
+    expect(parseSearchParams({ q: "bolt" }, undefined, remembered)).toMatchObject({
+      filters: { store: ["a"] }, price: { min: 5, max: null },
+    });
+    const own = parseSearchParams({ q: "bolt", finish: "foil" }, undefined, remembered);
+    expect(own.filters.store).toEqual([]);
+    expect(own.price.min).toBeNull();
   });
 });

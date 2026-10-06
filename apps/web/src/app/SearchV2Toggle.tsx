@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { SEARCH_V2_COOKIE } from "@/lib/search-v2/params";
+import { setCookie, ONE_YEAR_SECONDS } from "@/lib/utils";
 
 /**
  * Header switch between the current search and the v2 (filters + view modes) page.
@@ -19,9 +20,7 @@ export function SearchV2Toggle() {
 
   function toggle() {
     const next = !on;
-    document.cookie = next
-      ? `${SEARCH_V2_COOKIE}=1; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`
-      : `${SEARCH_V2_COOKIE}=; path=/; max-age=0; samesite=lax`;
+    setCookie(SEARCH_V2_COOKIE, next ? "1" : "", next ? ONE_YEAR_SECONDS : 0);
     setOn(next);
     router.refresh();
   }

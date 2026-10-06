@@ -4,7 +4,7 @@ import { BuyLink } from "@/app/BuyLink";
 import { SetSymbol } from "@/app/SetSymbol";
 import { useWantList, toWantListItem, wantListItemId } from "@/app/WantListContext";
 import { MTG_CARD_ASPECT_RATIO } from "@/lib/config";
-import { facetValueLabel, type SearchView } from "@/lib/search-v2/params";
+import { facetValueLabel, DEFAULT_TREATMENT, type SearchView } from "@/lib/search-v2/params";
 import type { SearchTile } from "@/lib/search-v2/types";
 import { cardHref, fmtAUD, trackEvent } from "@/lib/utils";
 
@@ -59,8 +59,8 @@ export function ListingTile({ tile, view, query }: { tile: SearchTile; view: Sea
   const href = cardHref(tile.slug, tile.card_id, query);
   const badges = [
     tile.finish !== "nonfoil" && facetValueLabel("finish", tile.finish),
-    tile.treatment !== "normal" && facetValueLabel("treatment", tile.treatment),
-    view === "all" && tile.condition,
+    tile.treatment !== DEFAULT_TREATMENT && facetValueLabel("treatment", tile.treatment),
+    view === "listings" && tile.condition,
   ].filter(Boolean) as string[];
 
   return (

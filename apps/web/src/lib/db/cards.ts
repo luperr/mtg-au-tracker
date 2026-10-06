@@ -391,3 +391,11 @@ export async function getPrintingsWithPrices(
   }
   return Array.from(map.values());
 }
+
+/**
+ * Demand log for the demand-gap report: the query and its top card (null when nothing
+ * matched). Fire-and-forget — a failed insert must never fail the search.
+ */
+export function logCardSearch(query: string, cardId: string | null): void {
+  sql`INSERT INTO card_searches (query, card_id) VALUES (${query}, ${cardId})`.execute().catch(() => {});
+}

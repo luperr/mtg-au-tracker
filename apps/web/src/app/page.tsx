@@ -1,8 +1,8 @@
-import { searchCards } from "@/lib/db";
+import { logCardSearch, searchCards } from "@/lib/db";
 import { SEARCH_PAGE_SIZE, SEARCH_MIN_QUERY_LENGTH } from "@/lib/config";
 import { SearchResults } from "./SearchResults";
 import { cookies } from "next/headers";
-import { parseSearchParams, SEARCH_V2_COOKIE, VIEW_COOKIE } from "@/lib/search-v2/params";
+import { parseSearchParams, FILTERS_COOKIE, LAST_QUERY_COOKIE, SEARCH_V2_COOKIE, SIDEBAR_COOKIE, VIEW_COOKIE } from "@/lib/search-v2/params";
 import { searchListings } from "@/lib/search-v2/query";
 import { SearchV2 } from "./search-v2/SearchV2";
 
@@ -31,6 +31,17 @@ function LandingSearchForm() {
   );
 }
 
+/** The cookie is written URI-encoded; compare both forms in case the framework already decoded it. */
+function sameQuery(cookie: string | undefined, q: string): boolean {
+  if (cookie === undefined) return false;
+  if (cookie === q) return true;
+  try {
+    return decodeURIComponent(cookie) === q;
+  } catch {
+    return false;
+  }
+}
+
 export default async function HomePage({
   searchParams,
 }: {
@@ -45,8 +56,14 @@ export default async function HomePage({
   // the landing page is shared, and v2 requires one (see searchListings()).
   const jar = await cookies();
   if (query && !tooShort && jar.get(SEARCH_V2_COOKIE)?.value === "1") {
-    const state = parseSearchParams(params, jar.get(VIEW_COOKIE)?.value);
-    return <SearchV2 state={state} result={await searchListings(state)} />;
+    const state = parseSearchParams(params, jar.get(VIEW_COOKIE)?.value, jar.get(FILTERS_COOKIE)?.value);
+    const result = await searchListings(state);
+    // Same demand log as /api/search, once per new query: every filter, sort, view and
+    // page change re-renders this route too, for the query LAST_QUERY_COOKIE already holds.
+    if (!sameQuery(jar.get(LAST_QUERY_COOKIE)?.value, state.q)) {
+      logCardSearch(state.q, result.topCardId);
+    }
+    return <SearchV2 state={state} result={result} filtersHidden={jar.get(SIDEBAR_COOKIE)?.value === "hidden"} />;
   }
 
   const { results, totalCount, capped, fuzzy } = await searchCards(query, 0);
