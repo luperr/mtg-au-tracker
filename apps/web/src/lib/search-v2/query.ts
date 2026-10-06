@@ -1,4 +1,5 @@
 import { sql } from "../db/client.js";
+import { logger } from "../utils.js";
 import { MAX_SEARCH_OFFSET, SEARCH_MIN_QUERY_LENGTH, SEARCH_FUZZY_MIN_SIMILARITY } from "../config.js";
 import { DEFAULT_TREATMENT, FACET_KEYS, priceFilterApplies, type FacetKey, type SearchState, type SearchView } from "./params.js";
 import { SEARCH_V2_PAGE_SIZE, type Facets, type SearchTile, type SearchV2Result } from "./types.js";
@@ -26,6 +27,9 @@ import { SEARCH_V2_PAGE_SIZE, type Facets, type SearchTile, type SearchV2Result 
  * searchCards() so the cap keeps the best name matches.
  */
 export const SEARCH_V2_CARD_CAP = 500;
+
+/** A v2 search slower than this logs at warn. */
+const SLOW_SEARCH_MS = 2000;
 
 /**
  * listings column each facet filters and groups on, the column that labels it, and a
@@ -137,6 +141,7 @@ export async function searchListings(state: SearchState): Promise<SearchV2Result
         (SELECT min(f.price) FROM filtered f
           WHERE f.${groupKey} = pg.group_key AND f.store_id <> pg.store_id) AS other_min`;
 
+  const started = performance.now();
   const [row] = await sql<{
     tiles: SearchTile[] | null;
     facets: { facet: FacetKey; value: string; label: string; count: number }[] | null;
@@ -229,6 +234,13 @@ export async function searchListings(state: SearchState): Promise<SearchV2Result
       EXISTS (SELECT 1 FROM fz) AS fuzzy,
       (SELECT id FROM cand ORDER BY rnk LIMIT 1) AS top_card_id
   `;
+
+  // Prod latency evidence for flipping SEARCH_V2_DEFAULT — v2 reads store_prices live,
+  // which the old search's denormalised columns avoid. Grafana: component="search-v2".
+  const ms = Math.round(performance.now() - started);
+  const log = { component: "search-v2", q: state.q, view: state.view, page: state.page, ms, cards: row?.cand_count ?? 0, fuzzy: row?.fuzzy ?? false };
+  if (ms > SLOW_SEARCH_MS) logger.warn(log, "slow v2 search");
+  else logger.info(log, "v2 search");
 
   const facets = emptyFacets();
   for (const f of row?.facets ?? []) facets[f.facet].push({ value: f.value, label: f.label, count: f.count });

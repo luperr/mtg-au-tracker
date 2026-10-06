@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   parseSearchParams, toQueryString, toggleFilter, activeFilterCount, clearFilters, facetValueLabel,
-  priceFilterApplies, stickyFilters,
+  priceFilterApplies, searchV2Enabled, stickyFilters,
 } from "./params.js";
 
 describe("parseSearchParams", () => {
@@ -113,5 +113,15 @@ describe("filters carried across searches", () => {
     const own = parseSearchParams({ q: "bolt", finish: "foil" }, undefined, remembered);
     expect(own.filters.store).toEqual([]);
     expect(own.price.min).toBeNull();
+  });
+});
+
+describe("searchV2Enabled", () => {
+  it("lets an explicit choice win and falls back to the default", () => {
+    expect(searchV2Enabled("1", false)).toBe(true);
+    expect(searchV2Enabled("0", true)).toBe(false);
+    expect(searchV2Enabled(undefined, true)).toBe(true);
+    expect(searchV2Enabled(undefined, false)).toBe(false);
+    expect(searchV2Enabled("", true)).toBe(true);
   });
 });

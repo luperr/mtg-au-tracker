@@ -89,6 +89,19 @@ export const SITE_URL = "https://scrymarket.au";
 export const ANALYTICS_SCRIPT_URL = "https://umami.scrymarket.au/script.js";
 export const GITHUB_API_URL = "https://api.github.com";
 
+// ── Search v2 rollout ────────────────────────────────────────────────────────
+
+/**
+ * SEARCH_V2_DEFAULT=true makes the v2 search the default for anyone who hasn't
+ * chosen via the header toggle. Runtime config, not NEXT_PUBLIC_, for the same reason
+ * as the EPN campaign id: prod images are built by CI, so a build-time value would
+ * need a rebuild to flip. **Server only** — read it in a server component and pass
+ * it down. Unset = opt-in beta; unsetting it is the rollback.
+ */
+export function searchV2Default(): boolean {
+  return process.env.SEARCH_V2_DEFAULT?.trim() === "true";
+}
+
 // ── eBay Partner Network (affiliate) ─────────────────────────────────────────
 //
 // The campaign id itself is runtime config (EBAY_AFFILIATE_CAMPAIGN_ID) and has no

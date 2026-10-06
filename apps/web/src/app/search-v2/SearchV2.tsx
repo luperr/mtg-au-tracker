@@ -1,7 +1,7 @@
 "use client";
 
 import { activeFilterCount, toQueryString, SIDEBAR_COOKIE, type SearchState } from "@/lib/search-v2/params";
-import { setCookie, ONE_YEAR_SECONDS } from "@/lib/utils";
+import { setCookie, trackEvent, ONE_YEAR_SECONDS } from "@/lib/utils";
 import { SEARCH_V2_PAGE_SIZE, type SearchV2Result } from "@/lib/search-v2/types";
 import { useEffect, useState } from "react";
 import { pillClass } from "@/app/Dropdown";
@@ -139,6 +139,11 @@ function Results({ result, rendered, filtersHidden }: { result: SearchV2Result; 
 
 /** v2 search page, rendered by `/` when the search_v2 cookie is set. */
 export function SearchV2({ state, result, filtersHidden = false }: { state: SearchState; result: SearchV2Result; filtersHidden?: boolean }) {
+  // One event per query, not per filter or page change — same as v1's card-search.
+  useEffect(() => {
+    trackEvent("card-search", { query: state.q, search: "v2" });
+  }, [state.q]);
+
   return (
     <SearchNavProvider state={state}>
       <Results result={result} rendered={state} filtersHidden={filtersHidden} />

@@ -65,7 +65,7 @@ export function ListingTile({ tile, view, query }: { tile: SearchTile; view: Sea
 
   return (
     <div className="flex flex-col rounded-lg overflow-hidden border border-subtle bg-surface hover:border-accent transition-colors group">
-      <a href={href} onClick={() => trackEvent("card-click", { card: tile.name })} className="block w-full overflow-hidden">
+      <a href={href} onClick={() => trackEvent("card-click", { card: tile.name, source: "search-v2" })} className="block w-full overflow-hidden">
         {tile.image_uri ? (
           <img
             src={tile.image_uri}

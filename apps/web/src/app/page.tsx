@@ -1,8 +1,8 @@
 import { logCardSearch, searchCards } from "@/lib/db";
-import { SEARCH_PAGE_SIZE, SEARCH_MIN_QUERY_LENGTH } from "@/lib/config";
+import { SEARCH_PAGE_SIZE, SEARCH_MIN_QUERY_LENGTH, searchV2Default } from "@/lib/config";
 import { SearchResults } from "./SearchResults";
 import { cookies } from "next/headers";
-import { parseSearchParams, FILTERS_COOKIE, LAST_QUERY_COOKIE, SEARCH_V2_COOKIE, SIDEBAR_COOKIE, VIEW_COOKIE } from "@/lib/search-v2/params";
+import { parseSearchParams, searchV2Enabled, FILTERS_COOKIE, LAST_QUERY_COOKIE, SEARCH_V2_COOKIE, SIDEBAR_COOKIE, VIEW_COOKIE } from "@/lib/search-v2/params";
 import { searchListings } from "@/lib/search-v2/query";
 import { SearchV2 } from "./search-v2/SearchV2";
 
@@ -52,10 +52,10 @@ export default async function HomePage({
   const query = q?.trim() ?? "";
   const tooShort = query.length > 0 && query.length < SEARCH_MIN_QUERY_LENGTH;
 
-  // Opt-in beta, toggled from the header (SearchV2Toggle). Only reached with a query:
+  // Beta, chosen from the header (SearchV2Toggle) or defaulted by SEARCH_V2_DEFAULT. Only reached with a query:
   // the landing page is shared, and v2 requires one (see searchListings()).
   const jar = await cookies();
-  if (query && !tooShort && jar.get(SEARCH_V2_COOKIE)?.value === "1") {
+  if (query && !tooShort && searchV2Enabled(jar.get(SEARCH_V2_COOKIE)?.value, searchV2Default())) {
     const state = parseSearchParams(params, jar.get(VIEW_COOKIE)?.value, jar.get(FILTERS_COOKIE)?.value);
     const result = await searchListings(state);
     // Same demand log as /api/search, once per new query: every filter, sort, view and

@@ -82,8 +82,16 @@ export const LAST_QUERY_COOKIE = "search_last_q";
 const STICKY_KEYS: FacetKey[] = ["store", "condition", "finish", "treatment"];
 const FILTER_PARAMS = [...FACET_KEYS, "min", "max"];
 
-/** Cookie the header toggle writes to opt into the v2 search page. */
+/**
+ * Cookie the header toggle writes: "1" opts into the v2 search page, "0" opts out.
+ * Absent, the site default applies (SEARCH_V2_DEFAULT — see searchV2Default()).
+ */
 export const SEARCH_V2_COOKIE = "search_v2";
+
+/** Whether `/` renders v2: an explicit choice in the cookie wins, otherwise the default. */
+export function searchV2Enabled(cookie: string | undefined, defaultOn: boolean): boolean {
+  return cookie === "1" || (cookie !== "0" && defaultOn);
+}
 
 type RawParams = Record<string, string | string[] | undefined>;
 

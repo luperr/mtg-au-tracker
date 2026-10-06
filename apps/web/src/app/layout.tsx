@@ -11,7 +11,7 @@ import { AffiliateProvider } from "./AffiliateContext";
 import { WantListBadge } from "./WantListBadge";
 import { HeaderSearch } from "./HeaderSearch";
 import { BuyMeACoffee } from "./BuyMeACoffee";
-import { SITE_URL, ANALYTICS_SCRIPT_URL } from "@/lib/config";
+import { SITE_URL, ANALYTICS_SCRIPT_URL, searchV2Default } from "@/lib/config";
 import { getAffiliateConfig } from "@/lib/affiliate";
 
 const bitcount = Bitcount_Prop_Double({ subsets: ["latin"], weight: ["400"] });
@@ -44,6 +44,7 @@ export default function RootLayout({
 }) {
   // Read on the server so the campaign id stays runtime config (see @/lib/affiliate).
   const affiliate = getAffiliateConfig();
+  const v2Default = searchV2Default();
 
   return (
     <html lang="en">
@@ -90,7 +91,7 @@ export default function RootLayout({
                 </div>
                 {/* Right: controls */}
                 <div className="flex items-center gap-3 shrink-0">
-                  <SearchV2Toggle />
+                  <SearchV2Toggle defaultOn={v2Default} />
                   <WantListBadge />
                   <ThemeToggle />
                 </div>

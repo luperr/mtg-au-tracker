@@ -335,11 +335,20 @@ repopulate run, which is where the "re-run to repopulate" advice came from.)
 - Umami events: `card-search` on new query, `card-click` on row click
 
 ### Search v2 — beta, opt-in (`apps/web/src/app/search-v2/`, `apps/web/src/lib/search-v2/`)
-Listing-grained search with a filter sidebar (store, set, condition, finish, treatment), sort and three views (`view=card|printing|all`).
-Off by default: the header's "New search" button sets a `search_v2` cookie, and `page.tsx`
-renders `SearchV2` instead of the old results only when it is set. All state is URL params
-(`params.ts`); the last view is also kept in a `search_view` cookie so the server knows it on
-the first request.
+Listing-grained search with a filter sidebar (store, set, condition, finish, treatment, price), sort and three views (`view=card|printing|listings`).
+- **Rollout.** `search_v2` cookie is three-state: `1` on, `0` off, absent = `SEARCH_V2_DEFAULT`
+  (runtime env, read by `searchV2Default()` in `lib/config.ts`; decided by `searchV2Enabled()`).
+  The header toggle always writes an explicit `1`/`0`, so an opt-out survives a later flip.
+  Unset = opt-in beta. To make it the default: set `SEARCH_V2_DEFAULT=true` in prod `.env` and
+  `docker compose up -d web`; unset it to roll back. **Don't flip without prod latency
+  evidence** — Loki `component="search-v2"` logs `ms` per query (warn above 2s); check p95 and a
+  capped query such as "the" on a cold morning. Umami `card-search` / `card-click` carry
+  `search: "v1"|"v2"` / `source: "search-v2"` to compare the two. Static pages render the
+  layout at build time, so their header toggle can't see the flag — it only matters on `/`.
+- All state is URL params (`params.ts`). Cookies carry the rest: `search_view` (last view),
+  `search_filters` (store/condition/finish/treatment/price carried into the next search —
+  used only when the URL names no filter; set is deliberately not sticky), `search_sidebar`
+  (desktop sidebar collapsed), `search_last_q` (so `card_searches` logs each query once).
 - **It reads `store_prices` live**, which the old search's denormalised columns exist to avoid.
   The bound is the name query: mandatory (≥3 chars) and capped at `SEARCH_V2_CARD_CAP` cards
   before any join. Don't add filter-only browsing without measuring it on prod disks.
@@ -446,6 +455,7 @@ See `.env.example` for all variables. Key ones:
 | `MTGMATE_FULL_SCAN_DAYS` | Days between full MTG Mate set-code rescans | `7` |
 | `EBAY_AFFILIATE_CAMPAIGN_ID` | EPN campaign id for outbound eBay links. Unset = no affiliate params | unset (off) |
 | `EBAY_AFFILIATE_ROTATION_ID` | EPN rotation id for the eBay AU site | `705-53470-19255-0` |
+| `SEARCH_V2_DEFAULT` | `true` = new search is the default (toggle becomes opt-out). Runtime; unset is the rollback | unset (opt-in) |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Token for `cloudflared` tunnel service | — |
 | `IMAGE_REGISTRY` | Registry+namespace for prod images (ECR-swap lever) | `ghcr.io/luperr` |
 | `IMAGE_TAG` | Which prod image to run; `main-<sha>` to pin/rollback | `latest` |
