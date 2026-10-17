@@ -1,15 +1,7 @@
 name: Changelog
 
-# Flags in commit messages drive the /changelog page. Each must start its line, lowercase:
-#   changelog: "Added Example Games."   → an entry, added on merge
-#   no-changelog                        → no entry
-# The quotes are required: an unquoted `changelog: ...` line is ordinary commit prose.
-#
-# check — on every PR, fails unless some commit carries a flag or entries.json was edited.
-# apply — on push to main, joins the flags into one entry, commits it, and re-dispatches
-#         deploy-images.yml so it ships now. That dispatch is explicit because a push made
-#         with GITHUB_TOKEN deliberately triggers no other workflow; deploy-images queues
-#         rather than cancels, so the merge's own build still finishes first.
+# Commit-message flags drive the /changelog page — the format is documented in CLAUDE.md
+# ("Changelog flags"). `check` gates PRs; `apply` turns flags into an entry on merge.
 
 on:
   pull_request:
@@ -31,26 +23,20 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
-
       - env:
-          BASE: origin/${{ github.base_ref }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
+          PR: repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}
         run: |
-          # BASE..HEAD excludes everything already on main, including commits brought in by
-          # merging main into the branch.
-          msgs=$(git log --format=%B "$BASE..$HEAD_SHA")
-          notes=$(sed -nE "$FLAG" <<< "$msgs")
+          # The PR commits endpoint already excludes what's on main, so no checkout is needed.
+          msgs=$(gh api "$PR/commits" --paginate --jq '.[].commit.message')
 
-          if [ -n "$notes" ]; then
-            echo "Entry on merge: $(paste -sd' ' <<< "$notes")"
+          if sed -nE "$FLAG" <<< "$msgs" | grep -q .; then
+            echo "Entry on merge: $(sed -nE "$FLAG" <<< "$msgs" | paste -sd' ')"
           elif grep -qE '^no-changelog[[:space:]]*$' <<< "$msgs"; then
             echo "no-changelog"
-          elif ! git diff --quiet "$BASE...$HEAD_SHA" -- "$ENTRIES_PATH"; then
+          elif gh api "$PR/files" --paginate --jq '.[].filename' | grep -qxF "$ENTRIES_PATH"; then
             echo "entries.json edited directly"
           else
             echo "::error::No changelog flag. Add a line to a commit message in this PR — 'changelog: \"<sentence for users>\"' or 'no-changelog' — or edit $ENTRIES_PATH."
@@ -67,7 +53,6 @@ jobs:
     permissions:
       contents: write
       actions: write            # to dispatch deploy-images.yml
-      pull-requests: read       # to look up the merged PR's number
     steps:
       - uses: actions/checkout@v4
         with:
@@ -82,23 +67,22 @@ jobs:
           text=$(git log --format=%B "$BEFORE..$AFTER" | sed -nE "$FLAG" | paste -sd' ')
           [ -n "$text" ] || { echo "No changelog flags in this push."; exit 0; }
 
-          # A re-run for a push already applied.
-          if jq -e --arg text "$text" 'any(.[]; .text == $text)' "$ENTRIES_PATH" > /dev/null; then
-            echo "Entry already present."; exit 0
+          # A re-run for a push already applied: its bot commit names this push's sha.
+          if git log --format=%s "$AFTER..HEAD" | grep -qF "${AFTER::7}"; then
+            echo "Entry already applied."; exit 0
           fi
 
-          pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$AFTER/pulls" --jq '.[0].number // empty' || true)
           # The site's audience is in Australia; a UTC date would be a day early for morning merges.
-          date=$(TZ=Australia/Sydney date +%F)
-
-          jq --arg date "$date" --arg text "$text" --arg pr "$pr" \
-            '[{date: $date, text: $text} + (if $pr == "" then {} else {pr: ($pr | tonumber)} end)] + .' \
-            "$ENTRIES_PATH" > entries.tmp && mv entries.tmp "$ENTRIES_PATH"
+          jq --arg date "$(TZ=Australia/Sydney date +%F)" --arg text "$text" \
+            '[{date: $date, text: $text}] + .' "$ENTRIES_PATH" > entries.tmp
+          mv entries.tmp "$ENTRIES_PATH"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$ENTRIES_PATH"
-          git commit -m "chore(changelog): add entry${pr:+ for #$pr}"
+          git commit -am "chore(changelog): add entry from ${AFTER::7}"
           git push
 
+          # A push made with GITHUB_TOKEN triggers no workflows, so without this the entry would
+          # only ship with the next merge. deploy-images queues rather than cancels, so the
+          # merge's own build still finishes first.
           gh workflow run deploy-images.yml --ref main

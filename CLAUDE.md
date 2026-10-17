@@ -495,15 +495,16 @@ changelog: "Added Example Games."   ← becomes a /changelog entry on merge
 no-changelog                        ← infra, refactors, internal fixes
 ```
 
-Both flags are lowercase and case-sensitive, and must start the line. The quotes are
-required — an unquoted `changelog: ...` line is ordinary commit prose and is ignored. Keep example flags out of
-commit bodies at the start of a line — they'd be read as real ones.
+Both are lowercase, case-sensitive and must start a line; the quotes are required. Anything
+else — including an unquoted `changelog: ...` line — is ordinary commit prose.
 
 On merge, the flags from the PR's commits are joined into one entry (dated in Sydney time),
 prepended to `apps/web/src/app/changelog/entries.json`, committed to main by the bot, and
 `deploy-images.yml` is re-dispatched so it ships immediately. Editing `entries.json` directly
-in the PR also satisfies the check. Write entries for users, not developers — new stores,
-features they'll see, fixes to things they'd have noticed.
+in the PR also satisfies the check. `apply` reads the flags from the commits a push brings to
+main, so it relies on merge commits (or squash messages that keep the commit bodies). Write
+entries for users, not developers — new stores, features they'll see, fixes to things they'd
+have noticed.
 
 ---
 

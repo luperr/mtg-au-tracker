@@ -6,9 +6,8 @@ export const metadata: Metadata = {
   description: "Recent updates and improvements to Scrymarket.",
 };
 
-// Newest first; `pr` is the PR the change shipped in. New entries are added on merge from
-// `changelog: "<text>"` lines in commit messages — see .github/workflows/changelog.yml.
-const entries: { date: string; text: string; pr?: number }[] = changelog;
+// Newest first; new entries are prepended on merge by .github/workflows/changelog.yml.
+const entries: { date: string; text: string }[] = changelog;
 
 export default function ChangelogPage() {
   return (
