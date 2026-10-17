@@ -1,5 +1,9 @@
 [
   {
+    "date": "2026-10-18",
+    "text": "Added Arcane Alfred."
+  },
+  {
     "date": "2026-10-07",
     "text": "New search, in beta: filter by store, set, condition, finish, treatment and price, and view results by card, by printing, or as individual store listings. Switch it on with the toggle in the header."
   },

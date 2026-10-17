@@ -498,13 +498,16 @@ no-changelog                        ← infra, refactors, internal fixes
 Both are lowercase, case-sensitive and must start a line; the quotes are required. Anything
 else — including an unquoted `changelog: ...` line — is ordinary commit prose.
 
-On merge, the flags from the PR's commits are joined into one entry (dated in Sydney time),
-prepended to `apps/web/src/app/changelog/entries.json`, committed to main by the bot, and
-`deploy-images.yml` is re-dispatched so it ships immediately. Editing `entries.json` directly
-in the PR also satisfies the check. `apply` reads the flags from the commits a push brings to
-main, so it relies on merge commits (or squash messages that keep the commit bodies). Write
-entries for users, not developers — new stores, features they'll see, fixes to things they'd
-have noticed.
+While the PR is open, the check joins the flags from its commits into one entry (dated in
+Sydney time), prepends it to `apps/web/src/app/changelog/entries.json` and commits that to the
+PR branch as `github-actions[bot]`, so the entry ships with the merge — `main` is protected, so
+the bot can't commit there afterwards. The entry is rebuilt from the base branch's file on each
+push, so rewording a flag replaces it rather than adding a second. Pull before pushing again
+after the bot commits. That bot commit is made with `GITHUB_TOKEN`, so it triggers no
+workflows — CI's last result is for the commit before it. Editing `entries.json` directly in
+the PR also satisfies the check. Two open PRs with entries will conflict on `entries.json`;
+the second to merge needs a rebase and the check re-run. Write entries for users, not
+developers — new stores, features they'll see, fixes to things they'd have noticed.
 
 ---
 
