@@ -1,52 +1,86 @@
 name: Changelog
 
-# On merge to main, turns a `<!-- changelog: ... -->` marker in the PR description into an
-# entry in the /changelog page's entries.json, commits it to main, then rebuilds the images
-# so the entry ships without waiting for the next merge.
+# Commit-message flags drive the /changelog page (see .github/scripts/changelog.mjs):
+#   Changelog: <sentence>   → an entry, added on merge
+#   Changelog: none         → no entry
 #
-# The rebuild is dispatched explicitly because a push made with GITHUB_TOKEN deliberately
-# doesn't trigger other workflows — deploy-images.yml would never see this commit otherwise.
-# deploy-images queues rather than cancels, so the merge's own build finishes first.
+# check — on every PR, fails unless some commit carries a flag or entries.json was edited.
+# apply — on push to main, turns the flags into an entry, commits it, and re-dispatches
+#         deploy-images.yml so it ships now. That dispatch is explicit because a push made
+#         with GITHUB_TOKEN deliberately triggers no other workflow; deploy-images queues
+#         rather than cancels, so the merge's own build still finishes first.
 
 on:
   pull_request:
-    types: [closed]
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  push:
     branches: [main]
 
-# Two merges in quick succession would otherwise race to push entries.json.
-concurrency:
-  group: changelog
-  cancel-in-progress: false
+env:
+  ENTRIES_PATH: apps/web/src/app/changelog/entries.json
 
 jobs:
-  changelog:
-    if: github.event.pull_request.merged == true
+  check:
+    name: Changelog flag
+    # Dependabot can't write flags; a skipped job still satisfies a required check.
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      actions: write            # to dispatch deploy-images.yml
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main             # the PR's merge sha can already be behind main
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - env:
+          BASE: origin/${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # BASE..HEAD excludes everything already on main, including commits brought in by
+          # merging main into the branch.
+          if git diff --quiet "$BASE...$HEAD_SHA" -- "$ENTRIES_PATH"; then changed=false; else changed=true; fi
+          git log --format=%B%x1e "$BASE..$HEAD_SHA" \
+            | ENTRIES_CHANGED=$changed node .github/scripts/changelog.mjs check
+
+  apply:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    # Two merges in quick succession would otherwise race to push entries.json.
+    concurrency:
+      group: changelog-apply
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      actions: write            # to dispatch deploy-images.yml
+      pull-requests: read       # to look up the merged PR's number
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main             # a queued run can be behind main by the time it starts
 
       - id: entry
         env:
-          # Passed through env, never interpolated into the script — the body is user input.
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          MERGED_AT: ${{ github.event.pull_request.merged_at }}
-          ENTRIES_PATH: apps/web/src/app/changelog/entries.json
-        run: echo "result=$(node .github/scripts/changelog-entry.mjs)" >> "$GITHUB_OUTPUT"
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$AFTER/pulls" --jq '.[0].number // empty' || true)
+          result=$(git log --format=%B%x1e "$BEFORE..$AFTER" \
+            | PR_NUMBER=$pr node .github/scripts/changelog.mjs apply)
+          echo "result=$result" >> "$GITHUB_OUTPUT"
+          echo "pr=$pr" >> "$GITHUB_OUTPUT"
 
       - if: steps.entry.outputs.result == 'changed'
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR: ${{ steps.entry.outputs.pr }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/web/src/app/changelog/entries.json
-          git commit -m "chore(changelog): add entry for #${PR_NUMBER}"
+          git add "$ENTRIES_PATH"
+          git commit -m "chore(changelog): add entry${PR:+ for #$PR}"
           git push
 
       - if: steps.entry.outputs.result == 'changed'
