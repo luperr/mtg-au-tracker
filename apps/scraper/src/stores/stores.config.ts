@@ -19,7 +19,11 @@
 export interface ShopifyStoreConfig {
   id: string;               // matches stores.id in DB (e.g. "good_games")
   baseUrl: string;          // e.g. "https://tcg.goodgames.com.au"
-  collectionHandle: string; // Shopify collection slug (e.g. "mtg-singles-all-products")
+  // Shopify collection slug (e.g. "mtg-singles-all-products"). null when the
+  // store sells nothing but MTG singles and has no collection naming them —
+  // Shopify's virtual "all" collection isn't exposed to the Storefront API. The
+  // whole in-stock catalogue is then walked with no product-type filter.
+  collectionHandle: string | null;
   // Per-store product-title dialect. Omit for the default parser (SKU first,
   // then the title conventions in title-parsers/standard.ts). Each value maps to
   // one file in title-parsers/, which documents the shape it reads.
@@ -27,7 +31,8 @@ export interface ShopifyStoreConfig {
   //                        title, single "Default Title" variant (Raptor Games).
   //                        e.g. "Zenos yae Galvus (Borderless) 384 Rare FINAL FANTASY Foil NM/M"
   //   "flag-prefix"        "[FOIL] Mountain (Chocobo Track Foil) #481 - LAND FIC - Commander: FINAL FANTASY"
-  titleFormat?: "all-in-title" | "flag-prefix";
+  //   "set-slash-collector" "Haru-Onna PLST/SOK-132" — Scryfall set + collector after the name
+  titleFormat?: "all-in-title" | "flag-prefix" | "set-slash-collector";
   // true: variants represent physical store locations (e.g. "Bendigo", "Geelong"),
   // not condition/foil. Collapse per-foil-type; condition implied NM; foil from SKU;
   // inStock = true if any location variant is available. (GUF-style stores.)
@@ -216,6 +221,11 @@ export const STORE_REGISTRY: StoreConfig[] = [
   {
     id: "spellroo_gaming", name: "Spellroo Gaming", baseUrl: "https://www.spellroogaming.com.au", scraperEnabled: true, logoUrl: null,
     flatShippingAud: 9.0, shopify: { collectionHandle: "magic-the-gathering-singles" },
+  },
+  {
+    // Sells only MTG singles, filed in per-set collections with no umbrella one.
+    id: "arcane_alfred", name: "Arcane Alfred", baseUrl: "https://www.arcanealfred.com.au", scraperEnabled: true, logoUrl: null,
+    flatShippingAud: 5.85, shopify: { collectionHandle: null, titleFormat: "set-slash-collector" },
   },
   {
     // A sweep is ~3,500 requests that visibly degrades their server (see the

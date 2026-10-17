@@ -259,6 +259,12 @@ describe("buildProductQuery", () => {
     );
   });
 
+  it("drops the type filter for a store that sells nothing but singles", () => {
+    expect(buildProductQuery(null, Date.UTC(2024, 0, 1))).toBe(
+      "available_for_sale:true AND created_at:>=2024-01-01T00:00:00.000Z",
+    );
+  });
+
   // An unescaped quote would end the literal early and silently widen the match.
   it("escapes a single quote in the product type", () => {
     expect(buildProductQuery("Collector's Single")).toContain("product_type:'Collector\\'s Single'");
