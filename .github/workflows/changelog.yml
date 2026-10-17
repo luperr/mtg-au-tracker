@@ -1,0 +1,55 @@
+name: Changelog
+
+# On merge to main, turns a `<!-- changelog: ... -->` marker in the PR description into an
+# entry in the /changelog page's entries.json, commits it to main, then rebuilds the images
+# so the entry ships without waiting for the next merge.
+#
+# The rebuild is dispatched explicitly because a push made with GITHUB_TOKEN deliberately
+# doesn't trigger other workflows — deploy-images.yml would never see this commit otherwise.
+# deploy-images queues rather than cancels, so the merge's own build finishes first.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+# Two merges in quick succession would otherwise race to push entries.json.
+concurrency:
+  group: changelog
+  cancel-in-progress: false
+
+jobs:
+  changelog:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write            # to dispatch deploy-images.yml
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main             # the PR's merge sha can already be behind main
+
+      - id: entry
+        env:
+          # Passed through env, never interpolated into the script — the body is user input.
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MERGED_AT: ${{ github.event.pull_request.merged_at }}
+          ENTRIES_PATH: apps/web/src/app/changelog/entries.json
+        run: echo "result=$(node .github/scripts/changelog-entry.mjs)" >> "$GITHUB_OUTPUT"
+
+      - if: steps.entry.outputs.result == 'changed'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/app/changelog/entries.json
+          git commit -m "chore(changelog): add entry for #${PR_NUMBER}"
+          git push
+
+      - if: steps.entry.outputs.result == 'changed'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy-images.yml --ref main

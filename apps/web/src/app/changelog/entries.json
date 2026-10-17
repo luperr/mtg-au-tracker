@@ -1,0 +1,116 @@
+[
+  {
+    "date": "2026-10-07",
+    "text": "New search, in beta: filter by store, set, condition, finish, treatment and price, and view results by card, by printing, or as individual store listings. Switch it on with the toggle in the header.",
+    "pr": 136
+  },
+  {
+    "date": "2026-09-28",
+    "text": "Listings that carry a set and collector number are now cross-checked against the card name, so fewer end up on the wrong card. Gameology's foil and etched foil listings now match correctly.",
+    "pr": 134
+  },
+  {
+    "date": "2026-09-26",
+    "text": "Search results show a \"from $X\" price again — the cheapest in-stock price across all stores — instead of \"no prices\".",
+    "pr": 132
+  },
+  {
+    "date": "2026-09-15",
+    "text": "Added The Games Cube. Stores are now scraped in parallel, so prices are updated earlier each morning.",
+    "pr": 131
+  },
+  {
+    "date": "2026-09-08",
+    "text": "Added The Dragon's Beard.",
+    "pr": 128
+  },
+  {
+    "date": "2026-09-07",
+    "text": "Search ranking reworked so closer name matches come first, and search results load faster.",
+    "pr": 126
+  },
+  {
+    "date": "2026-08-29",
+    "text": "Added a Buy Me a Coffee link in the footer, if you'd like to help cover hosting.",
+    "pr": 124
+  },
+  {
+    "date": "2026-08-26",
+    "text": "Added Aether Wyvern Games. Fixed matching for Spellroo, Cherry Collectables and Chromatic listings. eBay links now go through the eBay Partner Network — Scrymarket may earn a small commission at no extra cost to you. The Sets pages have been removed: they were slowing down the whole site. Card price history charts are unaffected.",
+    "pr": 120
+  },
+  {
+    "date": "2026-08-25",
+    "text": "Added Spellroo Gaming. Requested via community feedback.",
+    "pr": 119
+  },
+  {
+    "date": "2026-08-23",
+    "text": "Card pages load much faster — the price history chart now loads on its own and no longer holds up the rest of the page.",
+    "pr": 115
+  },
+  {
+    "date": "2026-08-20",
+    "text": "Added Cherry Collectables. Community contribution.",
+    "pr": 113
+  },
+  {
+    "date": "2026-08-18",
+    "text": "Added The Hall Of Heroes. Community contribution.",
+    "pr": 111
+  },
+  {
+    "date": "2026-08-17",
+    "text": "Big speed-ups across the site: search no longer scans every printing on each query, and the database keeps far more in memory instead of reading from disk.",
+    "pr": 109
+  },
+  {
+    "date": "2026-08-11",
+    "text": "Large Shopify stores now show their full range. Shopify caps its old product listing at 25,000 items, so 13 of the bigger stores were only partly tracked — Cardhouse went from about 22,000 tracked printings to over 41,000.",
+    "pr": 105
+  },
+  {
+    "date": "2026-08-06",
+    "text": "Added The Games District."
+  },
+  {
+    "date": "2026-08-02",
+    "text": "Update scryfall API endpoint.  We've had no new cards for a bit..."
+  },
+  {
+    "date": "2026-07-10",
+    "text": "Want List optimiser sped up significantly for large lists — was timing out on 100+ cards, now returns in well under a second."
+  },
+  {
+    "date": "2026-07-06",
+    "text": "Identified issues with underlying infrastructure that caused slow load times and cards to fail to be imported from scryfall. Infra updated to improve speed and reduce excessive memory consumption.  Import from scryfall function updated to stream JSON data alloying for all cards to be imported."
+  },
+  {
+    "date": "2026-06-09",
+    "text": "Reviewed logic for sets page to ensure new sets show and upcoming sets appear when enough cards are listed."
+  },
+  {
+    "date": "2026-06-02",
+    "text": "Mega Games match rate improved again."
+  },
+  {
+    "date": "2026-05-31",
+    "text": "Issue with match rate for Crit Hit and Mega Games resolved."
+  },
+  {
+    "date": "2026-05-30",
+    "text": "Fixed store scrapers for Area 52, Elemental Arcade, and GUF — all three were returning zero results due to wrong collection handles or location-based variant formats. Added a Changelog page so you can track what's new."
+  },
+  {
+    "date": "2026-05-08",
+    "text": "Added Shuffle and Cut Games as a new tracked store. Requested via community feedback."
+  },
+  {
+    "date": "2026-03-31",
+    "text": "Double-faced cards now match correctly and show a flip button on the card detail page. The Want List printing selector shows variant labels (Etched, Borderless Foil, Showcase, etc.) so you can tell printings apart at a glance. Mobile layout improvements on the card detail prices table."
+  },
+  {
+    "date": "2026-03-01",
+    "text": "Launched Scrymarket in public beta. Tracks Australian dollar prices across 30+ local stores and eBay AU, updated daily. Includes a Want List with an optimiser that finds the cheapest store combination factoring in flat-rate postage."
+  }
+]
