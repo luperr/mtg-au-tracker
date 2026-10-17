@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 };
 
 // Newest first; `pr` is the PR the change shipped in. New entries are added on merge from
-// `changelog: <text>` lines in commit messages — see .github/workflows/changelog.yml.
+// `changelog: "<text>"` lines in commit messages — see .github/workflows/changelog.yml.
 const entries: { date: string; text: string; pr?: number }[] = changelog;
 
 export default function ChangelogPage() {

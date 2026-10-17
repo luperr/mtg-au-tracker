@@ -1,8 +1,9 @@
 name: Changelog
 
 # Flags in commit messages drive the /changelog page. Each must start its line, lowercase:
-#   changelog: Added Example Games.     → an entry, added on merge (surrounding quotes stripped)
+#   changelog: "Added Example Games."   → an entry, added on merge
 #   no-changelog                        → no entry
+# The quotes are required: an unquoted `changelog: ...` line is ordinary commit prose.
 #
 # check — on every PR, fails unless some commit carries a flag or entries.json was edited.
 # apply — on push to main, joins the flags into one entry, commits it, and re-dispatches
@@ -19,6 +20,8 @@ on:
 
 env:
   ENTRIES_PATH: apps/web/src/app/changelog/entries.json
+  # sed -nE program printing the quoted text of each entry flag, and nothing else.
+  FLAG: 's/^changelog:[[:space:]]*"(.*[^[:space:]].*)"[[:space:]]*$/\1/p'
 
 jobs:
   check:
@@ -41,9 +44,7 @@ jobs:
           # BASE..HEAD excludes everything already on main, including commits brought in by
           # merging main into the branch.
           msgs=$(git log --format=%B "$BASE..$HEAD_SHA")
-          notes=$(grep -E '^changelog:' <<< "$msgs" \
-            | sed -E 's/^changelog:[[:space:]]*//; s/[[:space:]]+$//; s/^("|'\''|“)(.*)("|'\''|”)$/\2/' \
-            | grep -v '^[[:space:]]*$' || true)
+          notes=$(sed -nE "$FLAG" <<< "$msgs")
 
           if [ -n "$notes" ]; then
             echo "Entry on merge: $(paste -sd' ' <<< "$notes")"
@@ -52,7 +53,7 @@ jobs:
           elif ! git diff --quiet "$BASE...$HEAD_SHA" -- "$ENTRIES_PATH"; then
             echo "entries.json edited directly"
           else
-            echo "::error::No changelog flag. Add a line to a commit message in this PR — 'changelog: <sentence for users>' or 'no-changelog' — or edit $ENTRIES_PATH."
+            echo "::error::No changelog flag. Add a line to a commit message in this PR — 'changelog: \"<sentence for users>\"' or 'no-changelog' — or edit $ENTRIES_PATH."
             exit 1
           fi
 
@@ -78,10 +79,7 @@ jobs:
           AFTER: ${{ github.sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          text=$(git log --format=%B "$BEFORE..$AFTER" \
-            | grep -E '^changelog:' \
-            | sed -E 's/^changelog:[[:space:]]*//; s/[[:space:]]+$//; s/^("|'\''|“)(.*)("|'\''|”)$/\2/' \
-            | grep -v '^[[:space:]]*$' | paste -sd' ' || true)
+          text=$(git log --format=%B "$BEFORE..$AFTER" | sed -nE "$FLAG" | paste -sd' ')
           [ -n "$text" ] || { echo "No changelog flags in this push."; exit 0; }
 
           # A re-run for a push already applied.
