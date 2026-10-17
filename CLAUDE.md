@@ -485,6 +485,27 @@ server; the `build:` blocks remain only as an emergency fallback. This is delibe
 image is the deploy artifact, migrations are a discrete command, and `IMAGE_REGISTRY` makes
 GHCR→ECR a config swap. Full runbook: `docs/prod-release.md`.
 
+### Changelog flags
+
+Every PR must carry a changelog flag as a line in at least one commit message, or the
+`Changelog flag` check (`.github/workflows/changelog.yml`) fails:
+
+```
+changelog: "Added Example Games."   ← becomes a /changelog entry on merge
+no-changelog                        ← infra, refactors, internal fixes
+```
+
+Both are lowercase, case-sensitive and must start a line; the quotes are required. Anything
+else — including an unquoted `changelog: ...` line — is ordinary commit prose.
+
+On merge, the flags from the PR's commits are joined into one entry (dated in Sydney time),
+prepended to `apps/web/src/app/changelog/entries.json`, committed to main by the bot, and
+`deploy-images.yml` is re-dispatched so it ships immediately. Editing `entries.json` directly
+in the PR also satisfies the check. `apply` reads the flags from the commits a push brings to
+main, so it relies on merge commits (or squash messages that keep the commit bodies). Write
+entries for users, not developers — new stores, features they'll see, fixes to things they'd
+have noticed.
+
 ---
 
 ## Adding a new Shopify store scraper

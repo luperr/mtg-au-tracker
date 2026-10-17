@@ -1,0 +1,88 @@
+name: Changelog
+
+# Commit-message flags drive the /changelog page — the format is documented in CLAUDE.md
+# ("Changelog flags"). `check` gates PRs; `apply` turns flags into an entry on merge.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+env:
+  ENTRIES_PATH: apps/web/src/app/changelog/entries.json
+  # sed -nE program printing the quoted text of each entry flag, and nothing else.
+  FLAG: 's/^changelog:[[:space:]]*"(.*[^[:space:]].*)"[[:space:]]*$/\1/p'
+
+jobs:
+  check:
+    name: Changelog flag
+    # Dependabot can't write flags; a skipped job still satisfies a required check.
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PR: repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}
+        run: |
+          # The PR commits endpoint already excludes what's on main, so no checkout is needed.
+          msgs=$(gh api "$PR/commits" --paginate --jq '.[].commit.message')
+
+          if sed -nE "$FLAG" <<< "$msgs" | grep -q .; then
+            echo "Entry on merge: $(sed -nE "$FLAG" <<< "$msgs" | paste -sd' ')"
+          elif grep -qE '^no-changelog[[:space:]]*$' <<< "$msgs"; then
+            echo "no-changelog"
+          elif gh api "$PR/files" --paginate --jq '.[].filename' | grep -qxF "$ENTRIES_PATH"; then
+            echo "entries.json edited directly"
+          else
+            echo "::error::No changelog flag. Add a line to a commit message in this PR — 'changelog: \"<sentence for users>\"' or 'no-changelog' — or edit $ENTRIES_PATH."
+            exit 1
+          fi
+
+  apply:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    # Two merges in quick succession would otherwise race to push entries.json.
+    concurrency:
+      group: changelog-apply
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      actions: write            # to dispatch deploy-images.yml
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main             # a queued run can be behind main by the time it starts
+
+      - env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          text=$(git log --format=%B "$BEFORE..$AFTER" | sed -nE "$FLAG" | paste -sd' ')
+          [ -n "$text" ] || { echo "No changelog flags in this push."; exit 0; }
+
+          # A re-run for a push already applied: its bot commit names this push's sha.
+          if git log --format=%s "$AFTER..HEAD" | grep -qF "${AFTER::7}"; then
+            echo "Entry already applied."; exit 0
+          fi
+
+          # The site's audience is in Australia; a UTC date would be a day early for morning merges.
+          jq --arg date "$(TZ=Australia/Sydney date +%F)" --arg text "$text" \
+            '[{date: $date, text: $text}] + .' "$ENTRIES_PATH" > entries.tmp
+          mv entries.tmp "$ENTRIES_PATH"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(changelog): add entry from ${AFTER::7}"
+          git push
+
+          # A push made with GITHUB_TOKEN triggers no workflows, so without this the entry would
+          # only ship with the next merge. deploy-images queues rather than cancels, so the
+          # merge's own build still finishes first.
+          gh workflow run deploy-images.yml --ref main
