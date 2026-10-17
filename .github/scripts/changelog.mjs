@@ -1,8 +1,11 @@
 // Changelog flags in commit messages. Run by .github/workflows/changelog.yml.
 //
 // Every PR needs one of these as a line in some commit message (or an edit to entries.json):
-//   Changelog: Added Example Games.     ← becomes a /changelog entry on merge
-//   Changelog: none                     ← nothing users would notice
+//   changelog: Added Example Games.     ← becomes a /changelog entry on merge
+//   changelog: "Added Example Games."   ← same; surrounding quotes are stripped
+//   no-changelog                        ← nothing users would notice
+// Both are lowercase and case-sensitive, so prose that happens to start with "Changelog:"
+// is not mistaken for a flag.
 //
 // Commit messages arrive on stdin, each terminated by a \x1e (git log --format=%B%x1e).
 //
@@ -12,23 +15,28 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 
-const FLAG = /^changelog:[ \t]*(.*)$/gim;
+const ENTRY = /^changelog:[ \t]*(.*)$/gm;
+const SKIP = /^no-changelog[ \t]*$/m;
+
+const unquote = (s) => s.replace(/^["'“](.*)["'”]$/, "$1").trim();
 
 const messages = readFileSync(0, "utf8").split("\x1e");
-const flags = messages.flatMap((m) => [...m.matchAll(FLAG)].map((x) => x[1].trim()));
-const notes = flags.filter((f) => f && f.toLowerCase() !== "none");
+const notes = messages
+  .flatMap((m) => [...m.matchAll(ENTRY)].map((x) => unquote(x[1].trim())))
+  .filter(Boolean);
+const skip = messages.some((m) => SKIP.test(m));
 
 const mode = process.argv[2];
 
 if (mode === "check") {
-  if (flags.length > 0 || process.env.ENTRIES_CHANGED === "true") {
-    console.log(notes.length ? `Changelog entry: ${notes.join(" ")}` : "Changelog: none, or edited directly");
+  if (notes.length > 0 || skip || process.env.ENTRIES_CHANGED === "true") {
+    console.log(notes.length ? `changelog entry: ${notes.join(" ")}` : "no-changelog, or entries.json edited directly");
     process.exit(0);
   }
   console.error(
     "No changelog flag found. Add a line to a commit message in this PR:\n" +
-      "  Changelog: <one plain-English sentence users would care about>\n" +
-      "  Changelog: none\n" +
+      "  changelog: <one plain-English sentence users would care about>\n" +
+      "  no-changelog\n" +
       "or edit apps/web/src/app/changelog/entries.json directly.",
   );
   process.exit(1);

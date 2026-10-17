@@ -491,9 +491,13 @@ Every PR must carry a changelog flag as a line in at least one commit message, o
 `Changelog flag` check (`.github/workflows/changelog.yml`) fails:
 
 ```
-Changelog: Added Example Games.   ← becomes a /changelog entry on merge
-Changelog: none                   ← infra, refactors, internal fixes
+changelog: Added Example Games.     ← becomes a /changelog entry on merge
+changelog: "Added Example Games."   ← same; quotes are stripped
+no-changelog                        ← infra, refactors, internal fixes
 ```
+
+Both flags are lowercase and case-sensitive, and must start the line. Keep example flags out of
+commit bodies at the start of a line — they'd be read as real ones.
 
 On merge, the flags from the PR's commits are joined into one entry (dated in Sydney time),
 prepended to `apps/web/src/app/changelog/entries.json`, committed to main by the bot, and

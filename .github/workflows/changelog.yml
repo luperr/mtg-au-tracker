@@ -1,8 +1,8 @@
 name: Changelog
 
 # Commit-message flags drive the /changelog page (see .github/scripts/changelog.mjs):
-#   Changelog: <sentence>   → an entry, added on merge
-#   Changelog: none         → no entry
+#   changelog: <sentence>   → an entry, added on merge (quotes around it are optional)
+#   no-changelog            → no entry
 #
 # check — on every PR, fails unless some commit carries a flag or entries.json was edited.
 # apply — on push to main, turns the flags into an entry, commits it, and re-dispatches
