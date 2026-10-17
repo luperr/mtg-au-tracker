@@ -4,7 +4,7 @@
  * Any store running Shopify can be added by creating a registry entry with a
  * `shopify` block in stores.config.ts — no scraper code changes needed.
  *
- * Drives 35 AU stores — see shopifyStores() in stores.config.ts for the live list.
+ * Drives 36 AU stores — see shopifyStores() in stores.config.ts for the live list.
  *
  * Strategy:
  *   Cursor-walk the Storefront GraphQL API — see shopify-graphql.ts for why
@@ -53,6 +53,7 @@ import { parseSkuData } from "./sku-parser.js";
 import { parseStandardTitle } from "./title-parsers/standard.js";
 import { parseAllInTitleFormat } from "./title-parsers/all-in-title.js";
 import { parseFlagPrefixTitle } from "./title-parsers/flag-prefix.js";
+import { parseSetSlashCollectorTitle } from "./title-parsers/set-slash-collector.js";
 import { logger } from "../lib/logger.js";
 
 export { parseProductTitle, isSkippedVariant } from "./title-parsers/standard.js";
@@ -65,8 +66,8 @@ export { parseSkuData } from "./sku-parser.js";
 // uses it (Good Games, Ronin, Plenty of Games) also has Format A SKUs, so skuFoil
 // is always non-null and tagFoil is never reached in the ?? chain.  If a future
 // store has (a) no/null-foil SKU AND (b) uses "Foil" as a catalog-wide tag (not
-// a per-product indicator), it will be mis-classified.  Gate with a config flag
-// (e.g. trustFoilTag: true) if that ever happens.
+// a per-product indicator), it will be mis-classified.  Such a store sets
+// `ignoreFoilTags` (Arcane Alfred tags a product "Foil" if any variant is).
 function extractFoilFromTags(tags: string[]): boolean | null {
   for (const tag of tags) {
     const lower = tag.toLowerCase();
@@ -86,7 +87,7 @@ interface ParsedVariant {
   finish: "nonfoil" | "foil" | "etched";
 }
 
-const FOIL_KEYWORDS = ["foil", "etched foil", "galaxy foil", "gilded foil", "surge foil", "rainbow foil", "textured foil"];
+const FOIL_KEYWORDS = ["foil", "etched", "galaxy foil", "gilded foil", "surge foil", "rainbow foil", "textured foil"];
 const NON_FOIL_KEYWORDS = ["non-foil", "nonfoil", "non foil", "regular"];
 const CONDITION_AXES = ["condition", "conditions"];
 const FOIL_AXES = ["finish", "foil", "treatment", "printing"];
@@ -166,11 +167,20 @@ export function isTokenOrEmblem(product: ShopifyProduct): boolean {
   const lower = product.title.toLowerCase();
   if (/\btoken\b/.test(lower)) return true;
   if (/\bemblem\b/.test(lower)) return true;
-  if (product.product_type.toLowerCase() === "token") return true;
+  // "Token" alone, or a full type line ("Token Creature — Beast", "Emblem — Ajani").
+  if (/^(token|emblem)\b/i.test(product.product_type)) return true;
   return false;
 }
 
 // ── Product → ScrapedCard[] ───────────────────────────────────────────────────
+
+// Dialects that produce a full DialectTitleResult, and may reject a listing:
+// Cherry's playsets are priced per four cards; on a store-wide walk with no
+// product-type filter, an Arcane Alfred title without its code is sealed product.
+const DIALECT_PARSERS: Partial<Record<NonNullable<ShopifyStoreConfig["titleFormat"]>, (p: ShopifyProduct) => DialectTitleResult | null>> = {
+  "flag-prefix": parseFlagPrefixTitle,
+  "set-slash-collector": parseSetSlashCollectorTitle,
+};
 
 export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig): ScrapedCard[] {
   const baseUrl = config.baseUrl;
@@ -185,15 +195,11 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
   let dialectTreatment: string | null = null;
   let skuFoil: boolean | null = null;
 
-  let dialect: DialectTitleResult | null = null;
-  if (config.titleFormat === "flag-prefix") {
-    // Cherry alone needs its own parser, and alone can reject a listing —
-    // playsets are priced per four cards.
-    dialect = parseFlagPrefixTitle(product);
+  const parseDialect = config.titleFormat ? DIALECT_PARSERS[config.titleFormat] : undefined;
+  if (parseDialect) {
+    // A null result means the listing isn't a single and is skipped.
+    const dialect = parseDialect(product);
     if (dialect === null) return [];
-  }
-
-  if (dialect) {
     cardName = dialect.cardName;
     setCode = dialect.setCode;
     setName = dialect.setName;
@@ -220,7 +226,7 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
     if (parsed.titleFinish !== null) titleFoil = true;
   }
 
-  const tagFoil = extractFoilFromTags(product.tags);
+  const tagFoil = config.ignoreFoilTags ? null : extractFoilFromTags(product.tags);
   const treatment = dialectTreatment ?? extractTreatment(product.title);
 
   const sourceUrl = `${baseUrl}/products/${product.handle}`;
@@ -301,6 +307,23 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
 
 // ── Scraper class ─────────────────────────────────────────────────────────────
 
+type ScrapeSource = "collection" | "product-type" | "store-wide";
+type HealthHint = { cause: string; hint: string };
+
+// What an empty run most likely means, by where the products came from.
+const COLLECTION_HINTS: { noProducts: HealthHint; noCards: HealthHint } = {
+  noProducts: { cause: "empty_collection_or_bad_product_type", hint: "check collection handle or store availability" },
+  noCards: { cause: "handle_returns_wrong_product_type", hint: "collection handle may point to wrong product type" },
+};
+const HEALTH_HINTS: Record<ScrapeSource, typeof COLLECTION_HINTS> = {
+  "collection": COLLECTION_HINTS,
+  "product-type": COLLECTION_HINTS,
+  "store-wide": {
+    noProducts: { cause: "empty_store", hint: "store has no in-stock products, or is unreachable" },
+    noCards: { cause: "title_format_changed", hint: "titles no longer fit the configured titleFormat" },
+  },
+};
+
 export class ShopifyScraper extends BaseScraper {
   private readonly log;
 
@@ -335,13 +358,13 @@ export class ShopifyScraper extends BaseScraper {
    * "Single Cards", "TCG Singles") and the collection already names exactly the
    * products we want.
    */
-  private async detectProductType(): Promise<string> {
+  private async detectProductType(handle: string): Promise<string> {
     const response = await this.postJson<ProductTypeResponse>(storefrontUrl(this.config.baseUrl), {
       query: PRODUCT_TYPE_QUERY,
-      variables: { handle: this.config.collectionHandle, pageSize: GRAPHQL_PAGE_SIZE },
+      variables: { handle, pageSize: GRAPHQL_PAGE_SIZE },
     });
     this.requests++;
-    return dominantProductType(response, this.config.collectionHandle);
+    return dominantProductType(response, handle);
   }
 
   /** Fetch one cursor page. Throws — see shopify-graphql.ts on why not null. */
@@ -368,6 +391,9 @@ export class ShopifyScraper extends BaseScraper {
    * Each fallback is triggered by Shopify's own pagination-limit error rather
    * than a configured threshold, so a store moves between tiers on its own as
    * its catalogue grows.
+   *
+   * A store configured with no collection sells nothing but singles, so it skips
+   * straight to tier 3 with no product-type filter.
    */
   async *scrapeAll(): AsyncGenerator<ScrapedCard> {
     this.totalProducts = 0;
@@ -377,9 +403,17 @@ export class ShopifyScraper extends BaseScraper {
     this.lastCreatedAt = null;
     this.seen.clear();
 
+    const handle = this.config.collectionHandle;
+    if (handle === null) {
+      this.log.info({ api: "storefront-products" }, "Starting Shopify scrape of the whole in-stock catalogue");
+      yield* this.walkByCreationDate(null);
+      this.reportRunHealth("store-wide");
+      return;
+    }
+
     try {
       this.log.info({ api: "storefront-collection" }, "Starting Shopify scrape");
-      yield* this.walkCollection();
+      yield* this.walkCollection(handle);
       this.reportRunHealth("collection");
       return;
     } catch (err) {
@@ -395,7 +429,7 @@ export class ShopifyScraper extends BaseScraper {
     // query below doesn't re-yield them as duplicate rows. A large store
     // therefore ends up with the union: that first slice, including its
     // out-of-stock listings, plus every in-stock product found below.
-    const productType = await this.detectProductType();
+    const productType = await this.detectProductType(handle);
     this.log.info({ api: "storefront-products", product_type: productType }, "Scraping by product type");
 
     yield* this.walkByCreationDate(productType);
@@ -417,7 +451,7 @@ export class ShopifyScraper extends BaseScraper {
    * `>=` rather than `>` so products sharing the watermark second are not
    * skipped; `seen` absorbs the resulting overlap.
    */
-  private async *walkByCreationDate(productType: string): AsyncGenerator<ScrapedCard> {
+  private async *walkByCreationDate(productType: string | null): AsyncGenerator<ScrapedCard> {
     let since: number | null = null;
     let window = 0;
 
@@ -452,7 +486,7 @@ export class ShopifyScraper extends BaseScraper {
   }
 
   /** Cursor-walk the configured collection, yielding cards as they arrive. */
-  private async *walkCollection(): AsyncGenerator<ScrapedCard> {
+  private async *walkCollection(handle: string): AsyncGenerator<ScrapedCard> {
     let cursor: string | null = null;
     let page = 0;
 
@@ -461,14 +495,14 @@ export class ShopifyScraper extends BaseScraper {
       const response = await this.postJson<CollectionResponse>(storefrontUrl(this.config.baseUrl), {
         query: COLLECTION_QUERY,
         variables: {
-          handle: this.config.collectionHandle,
+          handle,
           cursor,
           pageSize: GRAPHQL_PAGE_SIZE,
           variantLimit: GRAPHQL_VARIANT_LIMIT,
         },
       });
       this.requests++;
-      const result = parseCollectionPage(response, this.config.collectionHandle);
+      const result = parseCollectionPage(response, handle);
 
       yield* this.emit(result);
 
@@ -528,7 +562,8 @@ export class ShopifyScraper extends BaseScraper {
     }
   }
 
-  private reportRunHealth(source: "collection" | "product-type"): void {
+  private reportRunHealth(source: ScrapeSource): void {
+    const hints = HEALTH_HINTS[source];
     if (this.truncatedVariants > 0) {
       this.log.warn(
         { products: this.truncatedVariants, variant_limit: GRAPHQL_VARIANT_LIMIT },
@@ -538,13 +573,13 @@ export class ShopifyScraper extends BaseScraper {
 
     if (this.totalProducts === 0) {
       this.log.error(
-        { store: this.config.id, likely_cause: "empty_collection_or_bad_product_type" },
-        "Store returned zero products — check collection handle or store availability",
+        { store: this.config.id, likely_cause: hints.noProducts.cause },
+        `Store returned zero products — ${hints.noProducts.hint}`,
       );
     } else if (this.totalCards === 0) {
       this.log.error(
-        { store: this.config.id, total_products: this.totalProducts, likely_cause: "handle_returns_wrong_product_type" },
-        "Store returned products but zero cards were parsed — collection handle may point to wrong product type",
+        { store: this.config.id, total_products: this.totalProducts, likely_cause: hints.noCards.cause },
+        `Store returned products but zero cards were parsed — ${hints.noCards.hint}`,
       );
     }
 

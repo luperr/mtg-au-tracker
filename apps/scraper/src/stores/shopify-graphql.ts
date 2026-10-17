@@ -281,15 +281,16 @@ function quote(value: string): string {
 }
 
 /**
- * Build the search query for a store's in-stock singles, optionally narrowed to
- * a price window.
+ * Build the search query for a store's in-stock singles, optionally resuming
+ * from a creation date. A null productType means the whole store is singles.
  *
  * `available_for_sale:true` is both the cap workaround and the right filter on
  * the merits — an out-of-stock listing has no price worth storing, the same
  * reasoning crystalcommerce.ts already applies.
  */
-export function buildProductQuery(productType: string, since?: number | null): string {
-  const terms = [`available_for_sale:true`, `product_type:${quote(productType)}`];
+export function buildProductQuery(productType: string | null, since?: number | null): string {
+  const terms = [`available_for_sale:true`];
+  if (productType !== null) terms.push(`product_type:${quote(productType)}`);
   if (since != null) terms.push(`created_at:>=${new Date(since).toISOString()}`);
   return terms.join(" AND ");
 }

@@ -54,6 +54,59 @@ describe("isTokenOrEmblem", () => {
   });
 });
 
+// ─── mapProduct — Arcane Alfred (set-slash-collector dialect, finish from
+// the "Treatment" option) ─────────────────────────────────────────────────────
+
+const arcaneConfig: ShopifyStoreConfig = {
+  id: "arcane_alfred",
+  baseUrl: "https://www.arcanealfred.com.au",
+  collectionHandle: null,
+  titleFormat: "set-slash-collector",
+  ignoreFoilTags: true,
+};
+
+function arcaneProduct(title: string, finishes: string[], product_type = "Land", tags: string[] = []) {
+  return {
+    id: 1,
+    title,
+    handle: "test",
+    product_type,
+    tags,
+    options: [{ name: "Condition", values: ["Near Mint"] }, { name: "Treatment", values: finishes }],
+    variants: finishes.map((finish, i) => ({
+      id: i, title: `Near Mint / ${finish}`, price: "2.00", sku: "B61B091C-48B4-46F3-94CA-2C941170B5F9",
+      available: true, inventory_quantity: 0, option1: "Near Mint", option2: finish, option3: null,
+    })),
+  };
+}
+
+describe("mapProduct — Arcane Alfred titles", () => {
+  it("reads set and collector from the title and finish from the Treatment option", () => {
+    const cards = mapProduct(arcaneProduct("Shipwreck Marsh FRA/401", ["Regular", "Foil", "Etched"]), arcaneConfig);
+    expect(cards.map((c) => [c.rawName, c.setCode, c.collectorNumber, c.finish, c.isFoil])).toEqual([
+      ["Shipwreck Marsh", "fra", "401", "nonfoil", false],
+      ["Shipwreck Marsh", "fra", "401", "foil", true],
+      ["Shipwreck Marsh", "fra", "401", "etched", true],
+    ]);
+  });
+
+  // The store tags a product "Foil" when any of its variants is foil.
+  it("ignores a product-level Foil tag in favour of each variant's Treatment", () => {
+    const cards = mapProduct(arcaneProduct("Forest FRA/395", ["Regular", "Foil"], "Basic Land — Forest", ["Foil", "Land"]), arcaneConfig);
+    expect(cards.map((c) => c.finish)).toEqual(["nonfoil", "foil"]);
+  });
+
+  // Tokens and emblems aren't imported from Scryfall; this store puts the full type line in product_type.
+  it("skips a token or emblem whose title doesn't say so", () => {
+    expect(mapProduct(arcaneProduct("Treasure TFRA/15", ["Regular"], "Token Artifact — Treasure"), arcaneConfig)).toEqual([]);
+    expect(mapProduct(arcaneProduct("Ajani, Adversary of Tyrants TMKM/20", ["Regular"], "Emblem — Ajani"), arcaneConfig)).toEqual([]);
+  });
+
+  it("skips a product whose title isn't a single's", () => {
+    expect(mapProduct(arcaneProduct("Foundations Play Booster", ["Regular"], "Booster"), arcaneConfig)).toEqual([]);
+  });
+});
+
 // ─── mapProduct — Mega Games title parsing (exercises the standard-dialect
 // dispatch path end-to-end, including tag/SKU foil resolution) ───────────────
 

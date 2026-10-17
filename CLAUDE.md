@@ -222,7 +222,7 @@ product beyond it. Measured: Cardhouse 41,210 printings (was 22,355), Plenty of 
 - `quantityAvailable` needs an inventory scope we don't have; `inventory_quantity` is set to 0
   and `isInStock()` reads `availableForSale` instead.
 
-`stores.config.ts` is the single source of truth for store registration — see [Adding a new Shopify store scraper](#adding-a-new-shopify-store-scraper) below. `shopifyStores()` derives the active Shopify store list (currently 35) from `STORE_REGISTRY`; `seedStores()` (`apps/scraper/src/seed.ts`) and the web app's shipping fallback (`apps/web/src/lib/store-shipping.ts`) derive from the same file, so a store exists in exactly one place.
+`stores.config.ts` is the single source of truth for store registration — see [Adding a new Shopify store scraper](#adding-a-new-shopify-store-scraper) below. `shopifyStores()` derives the active Shopify store list (currently 36) from `STORE_REGISTRY`; `seedStores()` (`apps/scraper/src/seed.ts`) and the web app's shipping fallback (`apps/web/src/lib/store-shipping.ts`) derive from the same file, so a store exists in exactly one place.
 
 ### `apps/scraper/src/stores/crystalcommerce.ts`
 Generic CrystalCommerce scraper — one class drives all stores on the CrystalCommerce
@@ -526,6 +526,12 @@ Any AU MTG store running Shopify can be added with a config change only — no n
 
 To find the collection handle, browse to `/collections.json` on the store's domain and look for the MTG singles collection slug.
 
+A store that sells **only** MTG singles and files them in per-set collections with no umbrella
+one (Arcane Alfred) takes `collectionHandle: null`. Shopify's virtual `all` collection is not
+exposed to the Storefront API, so the scraper skips the collection tier and walks the whole
+in-stock catalogue with no `product_type` filter — which matters when, as there, `product_type`
+holds each card's type line rather than a "singles" label.
+
 ## Adding a new CrystalCommerce store scraper
 
 Same deal for stores on CrystalCommerce (Rails — check for `crystalcommerce` in the page source,
@@ -552,7 +558,7 @@ product URL (`/catalog/magic_singles-standard-bloomburrow/card_name/693640` → 
 - [x] Scryfall bulk import (~32k cards, ~141k printings)
 - [x] Card matcher with exact / name-only / fuzzy / collector-number matching
 - [x] eBay AU import pipeline (OAuth → Browse API → title parser → DB)
-- [x] Generic Shopify scraper — 35 AU stores, config-driven
+- [x] Generic Shopify scraper — 36 AU stores, config-driven
 - [x] Generic CrystalCommerce scraper — config-driven, The Games Cube
 - [x] MTG Mate HTML scraper
 - [x] Next.js web UI — search, card detail, price history charts
