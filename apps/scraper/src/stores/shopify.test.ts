@@ -62,6 +62,7 @@ const arcaneConfig: ShopifyStoreConfig = {
   baseUrl: "https://www.arcanealfred.com.au",
   collectionHandle: null,
   titleFormat: "set-slash-collector",
+  ignoreFoilTags: true,
 };
 
 function arcaneProduct(title: string, finishes: string[], product_type = "Land", tags: string[] = []) {

@@ -37,6 +37,9 @@ export interface ShopifyStoreConfig {
   // not condition/foil. Collapse per-foil-type; condition implied NM; foil from SKU;
   // inStock = true if any location variant is available. (GUF-style stores.)
   locationVariants?: true;
+  // true: the store's "Foil" tag is product-wide, not per-variant (it marks any
+  // product with a foil variant), so finish comes from the variant options alone.
+  ignoreFoilTags?: true;
 }
 
 // The subset of fields CrystalCommerceScraper needs. Same split as
@@ -225,7 +228,7 @@ export const STORE_REGISTRY: StoreConfig[] = [
   {
     // Sells only MTG singles, filed in per-set collections with no umbrella one.
     id: "arcane_alfred", name: "Arcane Alfred", baseUrl: "https://www.arcanealfred.com.au", scraperEnabled: true, logoUrl: null,
-    flatShippingAud: 5.85, shopify: { collectionHandle: null, titleFormat: "set-slash-collector" },
+    flatShippingAud: 5.85, shopify: { collectionHandle: null, titleFormat: "set-slash-collector", ignoreFoilTags: true },
   },
   {
     // A sweep is ~3,500 requests that visibly degrades their server (see the

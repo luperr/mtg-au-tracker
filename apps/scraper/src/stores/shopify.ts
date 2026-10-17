@@ -66,8 +66,8 @@ export { parseSkuData } from "./sku-parser.js";
 // uses it (Good Games, Ronin, Plenty of Games) also has Format A SKUs, so skuFoil
 // is always non-null and tagFoil is never reached in the ?? chain.  If a future
 // store has (a) no/null-foil SKU AND (b) uses "Foil" as a catalog-wide tag (not
-// a per-product indicator), it will be mis-classified.  Gate with a config flag
-// (e.g. trustFoilTag: true) if that ever happens.
+// a per-product indicator), it will be mis-classified.  Such a store sets
+// `ignoreFoilTags` (Arcane Alfred tags a product "Foil" if any variant is).
 function extractFoilFromTags(tags: string[]): boolean | null {
   for (const tag of tags) {
     const lower = tag.toLowerCase();
@@ -174,6 +174,14 @@ export function isTokenOrEmblem(product: ShopifyProduct): boolean {
 
 // ── Product → ScrapedCard[] ───────────────────────────────────────────────────
 
+// Dialects that produce a full DialectTitleResult, and may reject a listing:
+// Cherry's playsets are priced per four cards; on a store-wide walk with no
+// product-type filter, an Arcane Alfred title without its code is sealed product.
+const DIALECT_PARSERS: Partial<Record<NonNullable<ShopifyStoreConfig["titleFormat"]>, (p: ShopifyProduct) => DialectTitleResult | null>> = {
+  "flag-prefix": parseFlagPrefixTitle,
+  "set-slash-collector": parseSetSlashCollectorTitle,
+};
+
 export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig): ScrapedCard[] {
   const baseUrl = config.baseUrl;
   if (isTokenOrEmblem(product)) return [];
@@ -187,20 +195,11 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
   let dialectTreatment: string | null = null;
   let skuFoil: boolean | null = null;
 
-  let dialect: DialectTitleResult | null = null;
-  if (config.titleFormat === "flag-prefix") {
-    // Cherry alone needs its own parser, and alone can reject a listing —
-    // playsets are priced per four cards.
-    dialect = parseFlagPrefixTitle(product);
+  const parseDialect = config.titleFormat ? DIALECT_PARSERS[config.titleFormat] : undefined;
+  if (parseDialect) {
+    // A null result means the listing isn't a single and is skipped.
+    const dialect = parseDialect(product);
     if (dialect === null) return [];
-  } else if (config.titleFormat === "set-slash-collector") {
-    // Rejects anything not titled like a single — the store-wide walk has no
-    // product-type filter to keep sealed product out.
-    dialect = parseSetSlashCollectorTitle(product);
-    if (dialect === null) return [];
-  }
-
-  if (dialect) {
     cardName = dialect.cardName;
     setCode = dialect.setCode;
     setName = dialect.setName;
@@ -227,9 +226,7 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
     if (parsed.titleFinish !== null) titleFoil = true;
   }
 
-  // Arcane Alfred tags a product "Foil" when any variant is foil, so the tag
-  // would mark its Regular variants foil too; the Treatment option is exact.
-  const tagFoil = config.titleFormat === "set-slash-collector" ? null : extractFoilFromTags(product.tags);
+  const tagFoil = config.ignoreFoilTags ? null : extractFoilFromTags(product.tags);
   const treatment = dialectTreatment ?? extractTreatment(product.title);
 
   const sourceUrl = `${baseUrl}/products/${product.handle}`;
@@ -309,6 +306,23 @@ export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig):
 }
 
 // ── Scraper class ─────────────────────────────────────────────────────────────
+
+type ScrapeSource = "collection" | "product-type" | "store-wide";
+type HealthHint = { cause: string; hint: string };
+
+// What an empty run most likely means, by where the products came from.
+const COLLECTION_HINTS: { noProducts: HealthHint; noCards: HealthHint } = {
+  noProducts: { cause: "empty_collection_or_bad_product_type", hint: "check collection handle or store availability" },
+  noCards: { cause: "handle_returns_wrong_product_type", hint: "collection handle may point to wrong product type" },
+};
+const HEALTH_HINTS: Record<ScrapeSource, typeof COLLECTION_HINTS> = {
+  "collection": COLLECTION_HINTS,
+  "product-type": COLLECTION_HINTS,
+  "store-wide": {
+    noProducts: { cause: "empty_store", hint: "store has no in-stock products, or is unreachable" },
+    noCards: { cause: "title_format_changed", hint: "titles no longer fit the configured titleFormat" },
+  },
+};
 
 export class ShopifyScraper extends BaseScraper {
   private readonly log;
@@ -548,8 +562,8 @@ export class ShopifyScraper extends BaseScraper {
     }
   }
 
-  private reportRunHealth(source: "collection" | "product-type" | "store-wide"): void {
-    const where = source === "store-wide" ? "store has no in-stock products, or is unreachable" : "check collection handle";
+  private reportRunHealth(source: ScrapeSource): void {
+    const hints = HEALTH_HINTS[source];
     if (this.truncatedVariants > 0) {
       this.log.warn(
         { products: this.truncatedVariants, variant_limit: GRAPHQL_VARIANT_LIMIT },
@@ -559,15 +573,13 @@ export class ShopifyScraper extends BaseScraper {
 
     if (this.totalProducts === 0) {
       this.log.error(
-        { store: this.config.id, likely_cause: source === "store-wide" ? "empty_store" : "empty_collection_or_bad_product_type" },
-        `Store returned zero products — ${where}`,
+        { store: this.config.id, likely_cause: hints.noProducts.cause },
+        `Store returned zero products — ${hints.noProducts.hint}`,
       );
     } else if (this.totalCards === 0) {
       this.log.error(
-        { store: this.config.id, total_products: this.totalProducts, likely_cause: source === "store-wide" ? "title_format_changed" : "handle_returns_wrong_product_type" },
-        source === "store-wide"
-          ? "Store returned products but zero cards were parsed — titles no longer fit the configured titleFormat"
-          : "Store returned products but zero cards were parsed — collection handle may point to wrong product type",
+        { store: this.config.id, total_products: this.totalProducts, likely_cause: hints.noCards.cause },
+        `Store returned products but zero cards were parsed — ${hints.noCards.hint}`,
       );
     }
 
