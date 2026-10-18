@@ -174,6 +174,10 @@ export const MTGMATE_CONCURRENCY = 3;
 /** Days between full re-probes of every set code (vs. only those known to be valid). */
 export const MTGMATE_FULL_SCAN_DAYS = positiveIntEnv("MTGMATE_FULL_SCAN_DAYS", 7);
 
+// ── Cardtastic ───────────────────────────────────────────────────────────────
+
+export const CARDTASTIC_BASE_URL = "https://www.cardtastic.com.au";
+
 // ── CrystalCommerce ──────────────────────────────────────────────────────────
 
 /** CrystalCommerce drops connections under sustained load — retry before skipping a page. */

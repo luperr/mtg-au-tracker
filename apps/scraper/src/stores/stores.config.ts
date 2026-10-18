@@ -236,6 +236,11 @@ export const STORE_REGISTRY: StoreConfig[] = [
     id: "games_cube", name: "The Games Cube", baseUrl: "https://www.thegamescube.com", scraperEnabled: true, logoUrl: null,
     flatShippingAud: 6.50, crystalCommerce: { categoryPrefix: "magic_singles", maxPagesPerCategory: 25 },
   },
+  {
+    // Bespoke ASP.NET store — scraped by cardtastic.ts, registered in run-all.ts.
+    id: "cardtastic", name: "Cardtastic", baseUrl: "https://www.cardtastic.com.au", scraperEnabled: true, logoUrl: null,
+    flatShippingAud: 11.0,
+  },
   { id: "mtg_singles_aus", name: "MTG Singles Australia", baseUrl: "https://www.mtgsinglesaustralia.com.au", scraperEnabled: false, logoUrl: null, flatShippingAud: null },
   { id: "dragons_beard", name: "The Dragon's Beard", baseUrl: "https://thedragonsbeard.com.au", scraperEnabled: true, logoUrl: null, flatShippingAud: 6.00, shopify: { collectionHandle: "mtg-singles" } },
   {
