@@ -1,9 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { searchV2Enabled, SEARCH_V2_COOKIE } from "@/lib/search-v2/params";
-import { setCookie, ONE_YEAR_SECONDS } from "@/lib/utils";
+import { setSearchV2, useSearchV2 } from "@/lib/search-v2/client";
 
 /**
  * Header switch between the current search and the v2 (filters + view modes) page.
@@ -12,18 +10,10 @@ import { setCookie, ONE_YEAR_SECONDS } from "@/lib/utils";
  */
 export function SearchV2Toggle({ defaultOn }: { defaultOn: boolean }) {
   const router = useRouter();
-  const [on, setOn] = useState(defaultOn);
+  const on = useSearchV2(defaultOn);
 
-  useEffect(() => {
-    const cookie = document.cookie.split("; ").find((c) => c.startsWith(`${SEARCH_V2_COOKIE}=`))?.split("=")[1];
-    setOn(searchV2Enabled(cookie, defaultOn));
-  }, [defaultOn]);
-
-  /** Always an explicit "1" or "0", so an opt-out survives the default being flipped later. */
   function toggle() {
-    const next = !on;
-    setCookie(SEARCH_V2_COOKIE, next ? "1" : "0", ONE_YEAR_SECONDS);
-    setOn(next);
+    setSearchV2(!on);
     router.refresh();
   }
 

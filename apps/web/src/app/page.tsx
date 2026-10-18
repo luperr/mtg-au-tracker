@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { parseSearchParams, searchV2Enabled, FILTERS_COOKIE, LAST_QUERY_COOKIE, SEARCH_V2_COOKIE, SIDEBAR_COOKIE, VIEW_COOKIE } from "@/lib/search-v2/params";
 import { searchListings } from "@/lib/search-v2/query";
 import { SearchV2 } from "./search-v2/SearchV2";
+import { LandingNotices } from "./LandingNotices";
 
 // Next.js route segment config — must be a static literal, not an imported variable
 export const revalidate = 3600;
@@ -79,6 +80,7 @@ export default async function HomePage({
         </p>
         <div className="w-full max-w-lg">
           <LandingSearchForm />
+          <LandingNotices searchV2On={searchV2Enabled(jar.get(SEARCH_V2_COOKIE)?.value, searchV2Default())} />
         </div>
       </div>
     );

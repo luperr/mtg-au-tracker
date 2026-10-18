@@ -39,6 +39,18 @@
   --color-price:       #FD8B51;  /* bright orange — price display          */
   --color-cta:         #CB6040;  /* terracotta — buttons (hover→price)     */
   --color-price-muted: #2a1408;  /* subtle bg tint                         */
+
+  /* ── Retro notices — landing-page strip (LandingNotices.tsx) ─────────── */
+  --color-link:         #6b9bff;  /* classic hyperlink blue, lifted for dark */
+  --color-link-visited: #b38cff;  /* visited purple                         */
+  --color-alert:        var(--color-price);  /* "new!" and ★ markers — price orange, own token so it can diverge */
+
+  --font-retro: Verdana, Tahoma, sans-serif;
+
+  --animate-blink: blink 2s steps(1) infinite;
+  @keyframes blink {
+    50% { opacity: 0.25; }
+  }
 }
 
 /* ── Logo gradient text ──────────────────────────────────────────────── */
@@ -78,6 +90,9 @@ html[data-theme="light"] {
 
   --color-price:       #CB6040;  /* terracotta — better contrast on light  */
   --color-price-muted: #f0d8d0;  /* light terracotta tint                  */
+
+  --color-link:         #2b5ce6;  /* hyperlink blue on light                 */
+  --color-link-visited: #7a3fc4;  /* visited purple                          */
 }
 
 /* ── Light theme gradient background ────────────────────────────────── */

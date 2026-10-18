@@ -37,6 +37,16 @@ const config: Config = {
           muted:   "var(--color-price-muted)",
         },
         cta: "var(--color-cta)",
+
+        // Retro notices
+        link: {
+          DEFAULT: "var(--color-link)",
+          visited: "var(--color-link-visited)",
+        },
+        alert: "var(--color-alert)",
+      },
+      fontFamily: {
+        retro: "var(--font-retro)",
       },
     },
   },
