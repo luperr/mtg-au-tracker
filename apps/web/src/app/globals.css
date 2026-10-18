@@ -47,7 +47,7 @@
 
   --font-retro: Verdana, Tahoma, sans-serif;
 
-  --animate-blink: blink 1.2s steps(1) infinite;
+  --animate-blink: blink 2s steps(1) infinite;
   @keyframes blink {
     50% { opacity: 0.25; }
   }

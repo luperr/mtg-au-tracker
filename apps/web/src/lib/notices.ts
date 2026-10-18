@@ -5,6 +5,7 @@
  * changelog entry so it never needs updating by hand. Pure — `today` is passed in.
  */
 
+/** "new" pulses — keep it for a promo line or something being actively trialled, never routine news. */
 export type NoticeMarker = "new" | "star";
 
 /** Client behaviours a notice can trigger instead of navigating — see NoticeAction.tsx. */
@@ -25,9 +26,6 @@ export type Notice = {
 
 export const MAX_LANDING_NOTICES = 3;
 
-/** A changelog entry this many days old or newer gets the pulsing "new!" marker. */
-export const NOTICE_NEW_DAYS = 3;
-
 const SUMMARY_MAX_CHARS = 48;
 
 /** Hand-written lines, in display order. The latest-changelog line is appended after them. */
@@ -41,10 +39,6 @@ export function sydneyToday(now: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Sydney" }).format(now);
 }
 
-function daysBetween(from: string, to: string): number {
-  return Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
-}
-
 /** First clause of a changelog entry, trimmed at a word boundary to fit on one line. */
 export function summarise(text: string): string {
   const clause = text.split(/[.:]\s/)[0].replace(/\.$/, "").trim();
@@ -55,7 +49,8 @@ export function summarise(text: string): string {
 
 /**
  * The lines to render, at most MAX_LANDING_NOTICES. The changelog line always keeps its
- * slot; unexpired pinned lines fill the rest in order.
+ * slot; unexpired pinned lines fill the rest in order. The changelog line is always a
+ * star — the pulse is reserved for pinned promo lines.
  */
 export function landingNotices(
   today: string,
@@ -66,7 +61,7 @@ export function landingNotices(
   if (!latest) return active.slice(0, MAX_LANDING_NOTICES);
 
   const changelog: Notice = {
-    marker: daysBetween(latest.date, today) <= NOTICE_NEW_DAYS ? "new" : "star",
+    marker: "star",
     text: `latest: ${summarise(latest.text)}`,
     link: { label: "changelog", href: "/changelog" },
   };

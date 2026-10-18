@@ -32,9 +32,8 @@ describe("landingNotices", () => {
     expect(out[1].link).toEqual({ label: "changelog", href: "/changelog" });
   });
 
-  it("marks a recent entry new and an old one with a star", () => {
-    expect(landingNotices("2026-10-21", latest, [])[0].marker).toBe("new");
-    expect(landingNotices("2026-10-22", latest, [])[0].marker).toBe("star");
+  it("never pulses the changelog line, even on the day of the entry", () => {
+    expect(landingNotices("2026-10-18", latest, [])[0].marker).toBe("star");
   });
 
   it("drops pinned lines after their until date", () => {
