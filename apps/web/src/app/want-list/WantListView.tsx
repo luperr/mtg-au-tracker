@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useWantList, toWantListItem, type WantListItem } from "@/app/WantListContext";
-import { fmtAUD } from "@/lib/utils";
+import { fmtAUD, trackEvent } from "@/lib/utils";
 import { SetSymbol } from "@/app/SetSymbol";
 import { BuyLink } from "@/app/BuyLink";
 import { AffiliateDisclosure } from "@/app/AffiliateDisclosure";
@@ -161,7 +161,7 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
     });
   }
 
-  async function runOptimise(locked: Set<string>) {
+  async function runOptimise(locked: Set<string>, rerun: boolean) {
     setOptimiseLoading(true);
     try {
       const res = await fetch("/api/optimize", {
@@ -178,15 +178,24 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
       setOptimiseResult(data);
       // Default: check all changed cards
       const currentByCardId = new Map(items.map((i) => [i.cardId, i]));
-      setCheckedCardIds(new Set(
-        data.assignments
-          .filter((a) => {
-            const cur = currentByCardId.get(a.cardId);
-            return cur && (a.printingId !== cur.printingId || a.storeId !== cur.storeId);
-          })
-          .map((a) => a.cardId)
-      ));
+      const changed = data.assignments
+        .filter((a) => {
+          const cur = currentByCardId.get(a.cardId);
+          return cur && (a.printingId !== cur.printingId || a.storeId !== cur.storeId);
+        })
+        .map((a) => a.cardId);
+      setCheckedCardIds(new Set(changed));
+      // Whole dollars: enough to tell "saved nothing" from "saved $40" without logging the basket.
+      trackEvent("optimise-run", {
+        items: items.length,
+        changed: changed.length,
+        stores: data.storeBreakdown.length,
+        unavailable: data.unavailable.length,
+        saving: Math.round(grandTotal - data.totalCost),
+        rerun,
+      });
     } catch {
+      trackEvent("optimise-run", { items: items.length, error: true });
       // keep modal open, result stays null — loading spinner disappears
     } finally {
       setOptimiseLoading(false);
@@ -199,11 +208,11 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
     setLockedPrintingIds(new Set());
     setCheckedCardIds(new Set());
     setUnchangedExpanded(false);
-    runOptimise(new Set());
+    runOptimise(new Set(), false);
   }
 
   function handleReoptimise() {
-    runOptimise(lockedPrintingIds);
+    runOptimise(lockedPrintingIds, true);
   }
 
   function handleToggleLock(cardId: string) {
@@ -241,6 +250,7 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
 
   function applyOptimisedPlan() {
     if (!optimiseResult) return;
+    let applied = 0;
     for (const a of optimiseResult.assignments) {
       if (!checkedCardIds.has(a.cardId)) continue;
       const current = items.find((i) => i.cardId === a.cardId);
@@ -248,7 +258,9 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
       if (current.storeId === a.storeId && current.printingId === a.printingId) continue;
       removeItem(current.id);
       addItem(toWantListItem(a, current));
+      applied++;
     }
+    trackEvent("optimise-apply", { items: items.length, applied });
     setOptimiseOpen(false);
     setOptimiseResult(null);
     setLockedPrintingIds(new Set());

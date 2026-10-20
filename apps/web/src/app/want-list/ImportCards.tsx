@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { useWantList, toWantListItem, wantListItemId } from "@/app/WantListContext";
 import type { BulkLookupResult, BulkLookupInput } from "@/app/api/cards/bulk-lookup/route";
-import { cardHref } from "@/lib/utils";
+import { cardHref, trackEvent } from "@/lib/utils";
 
 /**
  * Parse a card list in any of these formats:
@@ -85,6 +85,8 @@ export function ImportCards() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [added, setAdded] = useState<Set<string>>(new Set());
+  // Whether the text came from "Upload .txt" rather than being pasted; typing resets it.
+  const [fromFile, setFromFile] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function handleImport() {
@@ -93,6 +95,7 @@ export function ImportCards() {
       setError("No card names found. Enter one card name per line.");
       return;
     }
+    const source = fromFile ? "file" : "paste";
     setParsed(cards);
     setLoading(true);
     setError(null);
@@ -108,7 +111,13 @@ export function ImportCards() {
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json() as { results: BulkLookupResult[] };
       setResults(data.results);
+      trackEvent("bulk-import", {
+        source,
+        cards: cards.length,
+        found: data.results.filter((r) => r.cheapest).length,
+      });
     } catch (err) {
+      trackEvent("bulk-import", { source, cards: cards.length, error: true });
       setError(err instanceof Error ? err.message : "Lookup failed");
     } finally {
       setLoading(false);
@@ -138,6 +147,7 @@ export function ImportCards() {
       }, { cardId: r.cardId, cardSlug: r.cardSlug, cardName: r.cardName }));
       newAdded.add(itemId);
     }
+    trackEvent("bulk-add", { mode: "all", added: newAdded.size - added.size });
     setAdded(newAdded);
   }
 
@@ -158,6 +168,7 @@ export function ImportCards() {
       url: r.cheapest.url,
       imageUri: r.imageUri,
     }, { cardId: r.cardId, cardSlug: r.cardSlug, cardName: r.cardName }));
+    trackEvent("bulk-add", { mode: "one", added: 1 });
     setAdded((prev) => new Set([...prev, itemId]));
   }
 
@@ -167,6 +178,7 @@ export function ImportCards() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       setText(ev.target?.result as string ?? "");
+      setFromFile(true);
       setExpanded(true);   // auto-expand so the user sees the loaded content
       setResults(null);
       setError(null);
@@ -218,7 +230,7 @@ export function ImportCards() {
         <div className="p-4 space-y-3 border-b border-subtle">
           <textarea
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => { setText(e.target.value); setFromFile(false); }}
             placeholder={"1 Lightning Bolt (M11) 146\n4x Counterspell\n9 Forest (EOE) 275 #!Land"}
             rows={6}
             className="w-full rounded-lg border border-subtle bg-bg text-cream text-sm px-3 py-2 resize-y placeholder:text-cream-dim/25 focus:outline-none focus:border-accent-border"
