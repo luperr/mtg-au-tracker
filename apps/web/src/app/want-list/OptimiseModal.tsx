@@ -199,12 +199,16 @@ export function OptimiseModal({
                                 <span className="mx-1">→</span>
                                 <span className="text-cream-dim/70">{a.storeName}</span>
                                 {printingChanged && <span className="text-cream-dim/70"> · {a.setName}{aBadge && ` · ${aBadge}`}</span>}
-                                {conditionChanged && (
-                                  <span className="text-amber-400/80"> · {cur.condition ?? "?"} → {a.condition ?? "condition not stated"}</span>
-                                )}
                               </>
                             )}
                           </div>
+                          {/* Own line: the line above truncates, and a printing change is
+                              exactly when it runs long enough to hide this. */}
+                          {conditionChanged && (
+                            <div className="text-[10px] text-amber-400/90 mt-0.5">
+                              Condition {cur.condition ?? "not stated"} → {a.condition ?? "not stated"}
+                            </div>
+                          )}
                         </div>
 
                         {/* Price + delta — show original price when locked */}
@@ -212,7 +216,7 @@ export function OptimiseModal({
                           <div className="text-xs text-price font-semibold">{fmtAUD(display.priceAud)}</div>
                           {!isLocked && Math.abs(priceDelta) > 0.005 && (
                             <div className={`text-[10px] ${priceDelta < 0 ? "text-green-400" : "text-red-400/70"}`}>
-                              {priceDelta < 0 ? "" : "+"}{fmtAUD(priceDelta)}
+                              {priceDelta < 0 ? "−" : "+"}{fmtAUD(Math.abs(priceDelta))}
                             </div>
                           )}
                         </div>
@@ -283,13 +287,16 @@ export function OptimiseModal({
             >
               Dismiss
             </button>
-            <button
-              onClick={onApply}
-              disabled={checkedCount === 0 || loading}
-              className="rounded-lg bg-price text-bg px-3 py-1.5 text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
-            >
-              Apply selected ({checkedCount})
-            </button>
+            {/* Nothing to apply until a run has succeeded. */}
+            {result && !error && (
+              <button
+                onClick={onApply}
+                disabled={checkedCount === 0 || loading}
+                className="rounded-lg bg-price text-bg px-3 py-1.5 text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
+              >
+                Apply selected ({checkedCount})
+              </button>
+            )}
           </div>
         </div>
 
