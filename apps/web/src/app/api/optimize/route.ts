@@ -7,12 +7,16 @@ import { withApiGuard } from "@/lib/api-helpers";
 import { RATE_LIMIT_OPTIMIZE_PER_MINUTE, OPTIMIZE_DEADLINE_MS, OPTIMIZE_EXACT_MAX_STORES } from "@/lib/config";
 import { branchAndBound, evaluateSubset, localSearch, dedupeCheapestPerStore } from "./algorithm";
 import type { OptimizeItem, Listing } from "./algorithm";
+import { parseOptimizeRequest } from "./request";
 import { mapListingRow, type StoreListing, type StoreListingRow } from "@/lib/store-listing";
 
 export type { OptimizeItem };
 
 const log = logger.child({ component: "api-optimize" });
 const checkRateLimit = createRateLimiter(RATE_LIMIT_OPTIMIZE_PER_MINUTE, 60 * 1000);
+
+/** Above this, a run logs at warn — the same bar search v2 uses. */
+const SLOW_OPTIMIZE_MS = 2000;
 
 export type OptimizeAssignment = StoreListing & {
   cardId: string;
@@ -46,18 +50,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const items = (body as { items?: unknown }).items;
-  if (!Array.isArray(items) || items.length === 0) {
-    return NextResponse.json({ error: "Expected { items: OptimizeItem[] }" }, { status: 400 });
+  const parsed = parseOptimizeRequest(body);
+  if ("error" in parsed) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
-
-  const typedItems = items as OptimizeItem[];
-  // lockedPrintingIds: these cards must stay on their current printing
-  const lockedPrintingIds = new Set<string>(
-    (body as { lockedPrintingIds?: string[] }).lockedPrintingIds ?? []
-  );
-  // Per-store shipping overrides from the client (user-edited values)
-  const shippingOverrides = (body as { shippingOverrides?: Record<string, number> }).shippingOverrides ?? {};
+  const { items: typedItems, lockedPrintingIds, shippingOverrides } = parsed;
   const storeShippingRates = await getStoreShippingRates();
   const flatRates: Record<string, number | null> = { ...storeShippingRates, ...shippingOverrides };
   if (Object.keys(shippingOverrides).length > 0) {
@@ -66,7 +63,9 @@ export async function POST(request: NextRequest) {
 
   const cardIds = typedItems.map((i) => i.cardId);
 
-  // Fetch all in-stock sell listings for all cardIds across all stores and printings
+  // Fetch all in-stock sell listings for all cardIds across all stores and printings.
+  // Disabled stores are skipped: their last scrape's rows linger in store_prices.
+  const started = performance.now();
   const rows = await sql<(StoreListingRow & { card_id: string })[]>`
     SELECT
       p.id AS printing_id,
@@ -89,10 +88,11 @@ export async function POST(request: NextRequest) {
     JOIN store_prices sp ON sp.printing_id = p.id
       AND sp.in_stock = true
       AND sp.price_type = 'sell'
-    JOIN stores s ON s.id = sp.store_id
+    JOIN stores s ON s.id = sp.store_id AND s.scraper_enabled = true
     WHERE p.card_id = ANY(${cardIds})
     ORDER BY p.card_id, sp.price_aud::numeric ASC
   `;
+  const sqlMs = Math.round(performance.now() - started);
 
   // Build byCard map: cardId → listings
   // For locked cards, only include the locked printingId
@@ -196,39 +196,41 @@ export async function POST(request: NextRequest) {
   // Exact prove-or-improve pass. Skipped outright when the store count makes
   // finishing hopeless (2^N nodes) — measured runs at N≈30 never improve on
   // local search, they just burn the full deadline.
-  if (sortedPoolStores.length <= OPTIMIZE_EXACT_MAX_STORES) {
-    const completed = branchAndBound(
-      {
-        stores: sortedPoolStores,
-        available,
-        byCard,
-        allPoolStoreIds,
-        flatRates,
-        best,
-        deadline,
-        rank: new Map(sortedPoolStores.map((s, i) => [s, i])),
-      },
-      0,
-      new Set<string>(),
-    );
+  const exact = sortedPoolStores.length <= OPTIMIZE_EXACT_MAX_STORES;
+  const completed = exact && branchAndBound(
+    {
+      stores: sortedPoolStores,
+      available,
+      byCard,
+      allPoolStoreIds,
+      flatRates,
+      best,
+      deadline,
+      rank: new Map(sortedPoolStores.map((s, i) => [s, i])),
+    },
+    0,
+    new Set<string>(),
+  );
 
-    if (!completed) {
-      log.warn(
-        { pool_stores: sortedPoolStores.length, item_count: available.length, cost: best.cost },
-        "Optimiser hit its deadline — returning best plan found so far",
-      );
-    }
-  } else {
-    log.debug(
-      { pool_stores: sortedPoolStores.length, item_count: available.length, cost: best.cost },
-      "Exact search skipped (store count too large) — using local-search plan",
-    );
-  }
-
-  if (best.assignments) {
-    const usedStores = new Set([...best.assignments.values()].map(l => l.storeId));
-    log.debug({ stores: [...usedStores], total_cost: best.cost, item_count: available.length }, "Optimiser result");
-  }
+  // Prod latency evidence for the optimiser rework. Grafana: component="api-optimize".
+  // `exact` false = B&B skipped for store count; `completed` false with `exact` true =
+  // it hit the deadline, so the plan is local search's rather than provably optimal.
+  const solveMs = Math.round(performance.now() - started) - sqlMs;
+  const summary = {
+    items: typedItems.length,
+    available: available.length,
+    locked: lockedPrintingIds.size,
+    rows: rows.length,
+    pool_stores: sortedPoolStores.length,
+    exact,
+    completed,
+    sql_ms: sqlMs,
+    solve_ms: solveMs,
+    ms: sqlMs + solveMs,
+    stores_used: best.assignments ? new Set([...best.assignments.values()].map(l => l.storeId)).size : 0,
+  };
+  if (summary.ms > SLOW_OPTIMIZE_MS) log.warn(summary, "slow optimiser run");
+  else log.info(summary, "optimiser run");
 
   if (!best.assignments) {
     log.error({ item_count: available.length }, "Optimiser could not find valid assignment");

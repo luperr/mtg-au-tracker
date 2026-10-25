@@ -35,7 +35,8 @@ export async function GET(req: NextRequest) {
         s.name AS store_name
       FROM printings p
       JOIN store_prices sp ON sp.printing_id = p.id
-      JOIN stores s ON s.id = sp.store_id
+      -- Disabled stores' last scrape lingers in store_prices; don't offer it.
+      JOIN stores s ON s.id = sp.store_id AND s.scraper_enabled = true
       WHERE p.card_id = ${cardId}
         AND sp.in_stock = true
         AND sp.price_type = 'sell'

@@ -102,12 +102,13 @@ function EditablePostageRow({
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/** Keyed by storeId — names aren't unique keys, ids are. */
 function groupByStore(items: WantListItem[]): Map<string, WantListItem[]> {
   const map = new Map<string, WantListItem[]>();
   for (const item of items) {
-    const group = map.get(item.storeName) ?? [];
+    const group = map.get(item.storeId) ?? [];
     group.push(item);
-    map.set(item.storeName, group);
+    map.set(item.storeId, group);
   }
   return map;
 }
@@ -147,22 +148,24 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
   }
   const [optimiseLoading, setOptimiseLoading] = useState(false);
   const [optimiseResult, setOptimiseResult] = useState<OptimizeResult | null>(null);
+  const [optimiseError, setOptimiseError] = useState<string | null>(null);
   const [lockedPrintingIds, setLockedPrintingIds] = useState<Set<string>>(new Set());
   const [checkedCardIds, setCheckedCardIds] = useState<Set<string>>(new Set());
   const [unchangedExpanded, setUnchangedExpanded] = useState(false);
   const [collapsedStores, setCollapsedStores] = useState<Set<string>>(new Set());
 
-  function toggleStore(storeName: string) {
+  function toggleStore(storeId: string) {
     setCollapsedStores((prev) => {
       const next = new Set(prev);
-      if (next.has(storeName)) next.delete(storeName);
-      else next.add(storeName);
+      if (next.has(storeId)) next.delete(storeId);
+      else next.add(storeId);
       return next;
     });
   }
 
   async function runOptimise(locked: Set<string>, rerun: boolean) {
     setOptimiseLoading(true);
+    setOptimiseError(null);
     try {
       const res = await fetch("/api/optimize", {
         method: "POST",
@@ -173,7 +176,13 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
           shippingOverrides: storeShippingOverrides,
         }),
       });
-      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      if (!res.ok) {
+        throw new Error(
+          res.status === 429 ? "Too many optimiser runs — wait a minute and try again."
+          : res.status === 400 ? ((await res.json().catch(() => null))?.error ?? "Your want list couldn't be read.")
+          : "The optimiser failed. Try again in a moment.",
+        );
+      }
       const data = await res.json() as OptimizeResult;
       setOptimiseResult(data);
       // Default: check all changed cards
@@ -194,9 +203,10 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
         saving: Math.round(grandTotal - data.totalCost),
         rerun,
       });
-    } catch {
+    } catch (err) {
       trackEvent("optimise-run", { items: items.length, error: true });
-      // keep modal open, result stays null — loading spinner disappears
+      // Keep the modal open on its error state, which offers a retry.
+      setOptimiseError(err instanceof Error && err.message ? err.message : "The optimiser failed. Try again in a moment.");
     } finally {
       setOptimiseLoading(false);
     }
@@ -345,7 +355,8 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
         </div>
       ) : (
         <div className="space-y-6 mb-8">
-          {Array.from(byStore.entries()).map(([storeName, storeItems]) => {
+          {Array.from(byStore.entries()).map(([storeId, storeItems]) => {
+            const storeName = storeItems[0].storeName;
             const { isPerItem, flatAmount } = getStoreShipping(storeItems, storeShippingOverrides, storeShippingAud);
             const itemsTotal = storeItems.reduce((s, i) => s + i.priceAud, 0);
             const perItemPostage = isPerItem
@@ -353,17 +364,18 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
               : 0;
             const storeTotal = itemsTotal + (isPerItem ? perItemPostage : (flatAmount ?? 0));
 
-            const collapsed = collapsedStores.has(storeName);
+            const collapsed = collapsedStores.has(storeId);
             return (
-              <React.Fragment key={storeName}>
+              <React.Fragment key={storeId}>
               {/* EPN / ACL: disclosure must directly precede the affiliate links */}
-              {storeItems[0]?.storeId === "ebay_au" && (
+              {storeId === "ebay_au" && (
                 <AffiliateDisclosure className="!mb-2 px-1" />
               )}
               <div className="rounded-lg border border-subtle bg-surface">
                 {/* Store header */}
                 <button
-                  onClick={() => toggleStore(storeName)}
+                  onClick={() => toggleStore(storeId)}
+                  aria-expanded={!collapsed}
                   className="w-full flex items-center justify-between px-4 py-2.5 bg-cream-muted border-b border-subtle hover:bg-muted transition-colors rounded-t-lg"
                 >
                   <span className="font-semibold text-cream text-sm">{storeName}</span>
@@ -466,8 +478,8 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
                     {!isPerItem && (
                       <EditablePostageRow
                         amount={flatAmount}
-                        isOverride={storeItems[0]?.storeId in storeShippingOverrides}
-                        onSave={(amt) => setStoreShipping(storeItems[0]?.storeId, amt)}
+                        isOverride={storeId in storeShippingOverrides}
+                        onSave={(amt) => setStoreShipping(storeId, amt)}
                       />
                     )}
                     {isPerItem && perItemPostage > 0 && (
@@ -519,6 +531,7 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
         <OptimiseModal
           result={optimiseResult}
           loading={optimiseLoading}
+          error={optimiseError}
           currentItems={items}
           currentPostage={grandPostage}
           lockedPrintingIds={lockedPrintingIds}
@@ -528,6 +541,7 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
           onToggleChecked={handleToggleChecked}
           onToggleAll={handleToggleAll}
           onReoptimise={handleReoptimise}
+          onRetry={() => runOptimise(lockedPrintingIds, true)}
           onApply={applyOptimisedPlan}
           onDismiss={() => setOptimiseOpen(false)}
           onToggleUnchanged={() => setUnchangedExpanded((v) => !v)}
