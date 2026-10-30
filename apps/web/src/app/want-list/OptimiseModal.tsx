@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import type { WantListItem } from "@/app/WantListContext";
 import { fmtAUD } from "@/lib/utils";
 import { SetSymbol } from "@/app/SetSymbol";
@@ -9,6 +10,7 @@ import { variantBadgeWithFoil } from "@/lib/variant-utils";
 export function OptimiseModal({
   result,
   loading,
+  error,
   currentItems,
   currentPostage,
   lockedPrintingIds,
@@ -18,12 +20,15 @@ export function OptimiseModal({
   onToggleChecked,
   onToggleAll,
   onReoptimise,
+  onRetry,
   onApply,
   onDismiss,
   onToggleUnchanged,
 }: {
   result: OptimizeResult | null;
   loading: boolean;
+  /** Set when the last run failed; the body shows it with a retry. */
+  error: string | null;
   currentItems: WantListItem[];
   currentPostage: number;
   lockedPrintingIds: Set<string>;
@@ -33,10 +38,17 @@ export function OptimiseModal({
   onToggleChecked: (cardId: string) => void;
   onToggleAll: (cardIds: string[]) => void;
   onReoptimise: () => void;
+  onRetry: () => void;
   onApply: () => void;
   onDismiss: () => void;
   onToggleUnchanged: () => void;
 }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onDismiss(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onDismiss]);
+
   const currentByCardId = new Map(currentItems.map((i) => [i.cardId, i]));
 
   const changed = result?.assignments.filter((a) => {
@@ -60,12 +72,16 @@ export function OptimiseModal({
       <div className="absolute inset-0 bg-black/60" onClick={onDismiss} />
 
       {/* Panel */}
-      <div className="relative z-10 w-full max-w-md flex flex-col max-h-[85vh] rounded-xl border border-subtle bg-surface shadow-2xl overflow-hidden">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="optimise-title"
+        className="relative z-10 w-full max-w-md flex flex-col max-h-[85vh] rounded-xl border border-subtle bg-surface shadow-2xl overflow-hidden">
 
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-subtle shrink-0">
           <div className="flex items-center gap-2.5">
-            <span className="font-semibold text-cream">Optimise plan</span>
+            <span id="optimise-title" className="font-semibold text-cream">Optimise plan</span>
             {savings > 0.005 && (
               <span className="text-xs text-green-400 font-bold bg-green-900/20 px-2 py-0.5 rounded-full">
                 save {fmtAUD(savings)}
@@ -77,6 +93,7 @@ export function OptimiseModal({
           </div>
           <button
             onClick={onDismiss}
+            aria-label="Close"
             className="text-cream-dim/40 hover:text-cream transition-colors text-lg leading-none"
           >
             ✕
@@ -106,6 +123,18 @@ export function OptimiseModal({
             </div>
           )}
 
+          {!loading && error && (
+            <div role="alert" className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+              <p className="text-sm text-red-400">{error}</p>
+              <button
+                onClick={onRetry}
+                className="rounded-lg border border-accent-border bg-accent-muted/40 px-3 py-1.5 text-xs font-semibold text-accent-light hover:bg-accent-muted transition-colors"
+              >
+                Try again
+              </button>
+            </div>
+          )}
+
           {!loading && result && (
             <>
               {/* Changed cards */}
@@ -123,6 +152,9 @@ export function OptimiseModal({
                     // When locked, display the original (current) printing; otherwise show optimised
                     const display = isLocked ? cur : a;
                     const printingChanged = !isLocked && a.printingId !== cur.printingId;
+                    // Condition is the change people most need to see: a cheaper copy
+                    // is often a worse one (MTG Mate, The Games Cube and eBay all sell below NM).
+                    const conditionChanged = !isLocked && (a.condition ?? null) !== (cur.condition ?? null);
                     const priceDelta = a.priceAud - cur.priceAud;
                     const curBadge = variantBadgeWithFoil(cur);
                     const aBadge = variantBadgeWithFoil(a);
@@ -132,6 +164,7 @@ export function OptimiseModal({
                         {/* Checkbox — hidden when locked */}
                         <input
                           type="checkbox"
+                          aria-label={`Apply the change for ${a.cardName}`}
                           checked={isChecked}
                           disabled={isLocked}
                           onChange={() => onToggleChecked(a.cardId)}
@@ -141,6 +174,8 @@ export function OptimiseModal({
                         {/* Lock button */}
                         <button
                           onClick={() => onToggleLock(a.cardId)}
+                          aria-label={isLocked ? `Unlock ${a.cardName}` : `Lock ${a.cardName} to its current printing`}
+                          aria-pressed={isLocked}
                           title={isLocked ? "Unlock — allow optimizer to change printing" : "Lock to current printing"}
                           className={`shrink-0 text-sm leading-none transition-colors ${
                             isLocked ? "text-amber-400" : "text-cream-dim/20 hover:text-cream-dim/50"
@@ -167,6 +202,13 @@ export function OptimiseModal({
                               </>
                             )}
                           </div>
+                          {/* Own line: the line above truncates, and a printing change is
+                              exactly when it runs long enough to hide this. */}
+                          {conditionChanged && (
+                            <div className="text-[10px] text-amber-400/90 mt-0.5">
+                              Condition {cur.condition ?? "not stated"} → {a.condition ?? "not stated"}
+                            </div>
+                          )}
                         </div>
 
                         {/* Price + delta — show original price when locked */}
@@ -174,7 +216,7 @@ export function OptimiseModal({
                           <div className="text-xs text-price font-semibold">{fmtAUD(display.priceAud)}</div>
                           {!isLocked && Math.abs(priceDelta) > 0.005 && (
                             <div className={`text-[10px] ${priceDelta < 0 ? "text-green-400" : "text-red-400/70"}`}>
-                              {priceDelta < 0 ? "" : "+"}{fmtAUD(priceDelta)}
+                              {priceDelta < 0 ? "−" : "+"}{fmtAUD(Math.abs(priceDelta))}
                             </div>
                           )}
                         </div>
@@ -245,13 +287,16 @@ export function OptimiseModal({
             >
               Dismiss
             </button>
-            <button
-              onClick={onApply}
-              disabled={checkedCount === 0 || loading}
-              className="rounded-lg bg-price text-bg px-3 py-1.5 text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
-            >
-              Apply selected ({checkedCount})
-            </button>
+            {/* Nothing to apply until a run has succeeded. */}
+            {result && !error && (
+              <button
+                onClick={onApply}
+                disabled={checkedCount === 0 || loading}
+                className="rounded-lg bg-price text-bg px-3 py-1.5 text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
+              >
+                Apply selected ({checkedCount})
+              </button>
+            )}
           </div>
         </div>
 

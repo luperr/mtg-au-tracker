@@ -188,9 +188,14 @@ export function ImportCards() {
     e.target.value = "";
   }
 
+  // The lookup answers in input order, so results[i] is parsed[i] — the only reliable
+  // way back to a line's collector number when two lines share a card name.
+  const collectorByResult = new Map(results?.map((r, i) => [r, parsed[i]?.collectorNumber]) ?? []);
+  const resultItemId = (r: BulkLookupResult) =>
+    r.cheapest ? wantListItemId(r.cheapest.printingId, r.cheapest.storeId ?? "", r.cheapest.url) : "";
   const found = results?.filter((r) => r.cheapest) ?? [];
   const notFound = results?.filter((r) => !r.cheapest) ?? [];
-  const allAdded = found.length > 0 && found.every((r) => r.cheapest && added.has(`${r.cheapest.printingId}-${r.cheapest.storeName}`));
+  const allAdded = found.length > 0 && found.every((r) => added.has(resultItemId(r)));
 
   return (
     <div className="rounded-lg border border-subtle bg-surface overflow-hidden">
@@ -300,11 +305,10 @@ export function ImportCards() {
                 </tr>
               </thead>
               <tbody>
-                {found.map((r: BulkLookupResult) => {
-                  const itemId = r.cheapest ? `${r.cheapest.printingId}-${r.cheapest.storeName}` : "";
-                  const isAdded = added.has(itemId);
+                {found.map((r: BulkLookupResult, i) => {
+                  const isAdded = added.has(resultItemId(r));
                   return (
-                    <tr key={r.inputName} className="border-b border-subtle/40 last:border-0 hover:bg-muted transition-colors">
+                    <tr key={`${r.inputName}-${i}`} className="border-b border-subtle/40 last:border-0 hover:bg-muted transition-colors">
                       <td className="px-4 py-2.5">
                         <div className="flex items-baseline gap-1.5">
                           {r.qty > 1 && (
@@ -319,7 +323,7 @@ export function ImportCards() {
                         )}
                         {r.cheapest && (
                           <div className="text-xs text-cream-dim/50 mt-0.5">
-                            {r.cheapest.setName.toUpperCase()} #{parsed.find(p => p.name === r.inputName)?.collectorNumber ?? ""}{r.cheapest.isFoil ? " ✦" : ""}
+                            {r.cheapest.setName.toUpperCase()}{collectorByResult.get(r) ? ` #${collectorByResult.get(r)}` : ""}{r.cheapest.isFoil ? " ✦" : ""}
                           </div>
                         )}
                       </td>
@@ -352,8 +356,8 @@ export function ImportCards() {
             <div className="px-4 py-3 border-t border-subtle/40">
               <p className="text-xs text-cream-dim/40 mb-1.5">Not found in database:</p>
               <div className="flex flex-wrap gap-1.5">
-                {notFound.map((r) => (
-                  <span key={r.inputName} className="rounded bg-muted px-2 py-0.5 text-xs text-cream-dim/40">
+                {notFound.map((r, i) => (
+                  <span key={`${r.inputName}-${i}`} className="rounded bg-muted px-2 py-0.5 text-xs text-cream-dim/40">
                     {r.inputName}
                   </span>
                 ))}

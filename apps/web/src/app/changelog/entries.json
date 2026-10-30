@@ -1,5 +1,9 @@
 [
   {
+    "date": "2026-10-31",
+    "text": "The want list optimiser now shows when a cheaper copy is in a worse condition, and offers a retry instead of a blank window when it fails."
+  },
+  {
     "date": "2026-10-18",
     "text": "Added a notices strip under the search box on the home page."
   },
