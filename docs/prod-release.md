@@ -44,13 +44,32 @@ private, run once on the server:
 
 That's it — `deploy.sh` runs `git pull` (which refreshes the compose file and the script
 itself; migrations are baked into the image, not read from the checkout),
-`docker compose pull web scraper`, `db:migrate`, then `up -d`, prunes dangling images and
+`docker compose pull` (every service), `db:migrate`, then `up -d`, prunes dangling images and
 prints `ps`. Then:
 
 ```bash
 docker compose -f docker-compose.prod.yml logs web --tail=50
 docker compose -f docker-compose.prod.yml logs scraper --tail=50
 ```
+
+---
+
+## Bumping a third-party image (cloudflared, Postgres)
+
+`db` and `tunnel` are pinned to exact tags in `docker-compose.prod.yml`. Upgrading one is a
+one-line PR changing the tag, then a normal `./scripts/deploy.sh` — it pulls every service,
+and `up -d` recreates only the containers whose image changed.
+
+- **cloudflared** — read the
+  [release notes](https://github.com/cloudflare/cloudflared/blob/master/RELEASE_NOTES) and
+  [CHANGES.md](https://github.com/cloudflare/cloudflared/blob/master/CHANGES.md) (breaking
+  changes live there). The site is down for the few seconds the tunnel restarts. After
+  deploying, `docker compose -f docker-compose.prod.yml ps tunnel` should show `healthy`
+  within a minute; if it stays `starting`/`unhealthy`, check `logs tunnel` and see
+  [Rollback](#rollback) — `deploy.sh <tag>` alone can't undo a pin.
+- **Postgres** — minor versions within 16 are a restart; check the release notes for a
+  "REINDEX" advisory first. A major version is a `pg_upgrade` or dump/restore and is its own
+  planned job, never a tag edit.
 
 ---
 
@@ -75,7 +94,7 @@ git pull --ff-only
 export IMAGE_TAG=latest   # or main-<sha>
 
 # 1. Pull the new images
-docker compose -f docker-compose.prod.yml pull web scraper
+docker compose -f docker-compose.prod.yml pull
 
 # 2. Apply migration (safe against live DB)
 docker compose -f docker-compose.prod.yml run --rm scraper \
@@ -150,7 +169,8 @@ backing out of `main`.
 
 Note that `deploy.sh` runs `git pull --ff-only` first, so a rollback pairs the **old image**
 with the **newest compose file**. That's usually fine, but if the bad release also changed
-`docker-compose.prod.yml`, check out the matching commit and skip the script:
+`docker-compose.prod.yml` — including a `db` or `tunnel` tag bump, which `IMAGE_TAG` doesn't
+cover — check out the matching commit and skip the script (then revert on `main`):
 
 ```bash
 git checkout <commit-of-good-release>

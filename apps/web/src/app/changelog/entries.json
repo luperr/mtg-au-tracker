@@ -1,6 +1,10 @@
 [
   {
     "date": "2026-10-31",
+    "text": "security update"
+  },
+  {
+    "date": "2026-10-31",
     "text": "The want list optimiser now shows when a cheaper copy is in a worse condition, and offers a retry instead of a blank window when it fails."
   },
   {

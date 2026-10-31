@@ -1,6 +1,10 @@
 services:
   promtail:
-    image: grafana/promtail:latest
+    # Promtail is end-of-life — Grafana stopped shipping it with Loki releases after 3.6
+    # (Loki is on 3.7). Pinned to the last release so it at least stops moving; the
+    # replacement is Grafana Alloy (`alloy convert --source-format=promtail` translates
+    # docker/promtail.yml), which wants testing against the Loki box before it swaps in.
+    image: grafana/promtail:3.6.11
     restart: unless-stopped
     # Runs as root — required to read /var/lib/docker/containers (root:root 710)
     # and the Docker socket. No safe non-root UID exists for log shipping.

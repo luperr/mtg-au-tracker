@@ -1,6 +1,12 @@
+# Image tags: third-party images the server pulls (db, tunnel) are pinned to an exact
+# version, because deploy.sh pulls every service and a floating tag would move them on
+# whatever day someone happened to deploy. Bump them on purpose, after reading the
+# release notes. Our own images (web, scraper) float their base's patch level instead —
+# CI rebuilds them on every merge, which is how security patches get in.
 services:
   db:
-    image: postgres:16-alpine
+    # Bumping: see "Bumping a third-party image" in docs/prod-release.md.
+    image: postgres:16.15-alpine3.24
     restart: always
     shm_size: 256mb
     # Postgres ran on stock defaults until now: shared_buffers=128MB against a ~20GB
@@ -37,6 +43,14 @@ services:
       test: ["CMD-SHELL", "pg_isready -U mtg -d mtg_tracker"]
       interval: 5s
       retries: 5
+      # Crash recovery can replay up to max_wal_size (4GB) at ~40 IOPS. Probes that fail
+      # inside this window don't count, so a slow recovery isn't marked unhealthy and
+      # doesn't fail the deploy's `run ... db:migrate` on dependency health.
+      start_period: 10m
+    # Compose's default is 10s, then SIGKILL. The shutdown checkpoint flushes up to 2GB
+    # of shared_buffers to the same disks, so 10s turns every recreate (an image bump —
+    # deploy.sh pulls db now) into a crash and a WAL replay.
+    stop_grace_period: 5m
     networks:
       - backend
 
@@ -94,6 +108,10 @@ services:
       NODE_OPTIONS: --max-old-space-size=1024
     mem_limit: 2g
     memswap_limit: 2g
+    # Verified: Playwright launches Chromium with --no-sandbox by default, so it needs no
+    # capabilities — and this is the service parsing untrusted HTML.
+    cap_drop:
+      - ALL
     depends_on:
       db:
         condition: service_healthy
@@ -130,6 +148,16 @@ services:
       EBAY_AFFILIATE_CAMPAIGN_ID: ${EBAY_AFFILIATE_CAMPAIGN_ID:-}
       EBAY_AFFILIATE_ROTATION_ID: ${EBAY_AFFILIATE_ROTATION_ID:-}
       SEARCH_V2_DEFAULT: ${SEARCH_V2_DEFAULT:-}
+    cap_drop:
+      - ALL
+    healthcheck:
+      # busybox wget ships in node:alpine; /api/health touches no DB, so this says "Next
+      # is serving", not "the database is fine" — db has its own check.
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       db:
         condition: service_healthy
@@ -138,7 +166,10 @@ services:
       - frontend
 
   tunnel:
-    image: cloudflare/cloudflared:latest
+    # Stay >= 2026.10.7: it fixes an http2 max-concurrent-streams regression from the
+    # go1.27 build, and this tunnel runs http2. Bumping: see "Bumping a third-party
+    # image" in docs/prod-release.md.
+    image: cloudflare/cloudflared:2026.10.7
     restart: always
     read_only: true
     logging:
@@ -148,11 +179,34 @@ services:
         max-file: "3"
     tmpfs:
       - /tmp
+    # --protocol http2: QUIC (UDP 7844) is blocked on this network — see 6a6eab2.
     command: tunnel --no-autoupdate --protocol http2 run
+    healthcheck:
+      # The image is distroless — no shell, no curl — so cloudflared probes its own
+      # /ready (via TUNNEL_METRICS), which is 200 only while an edge connection is up.
+      # Docker does not restart unhealthy containers; this is for `ps` after a deploy.
+      test: ["CMD", "cloudflared", "tunnel", "ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+      # Read by both `run` and the healthcheck's `ready`. Loopback on a fixed port:
+      # unset, cloudflared binds 0.0.0.0 on the first free port in 20241-20245, which
+      # puts /metrics and /debug on the frontend network.
+      TUNNEL_METRICS: 127.0.0.1:20241
+      # 2026.4.0 changed the default from 4 to `auto` (whichever family the resolver
+      # returns first). Held at 4 so the upgrade doesn't also change how the LXC
+      # reaches the edge; drop this once IPv6 egress from the LXC is known to work.
+      TUNNEL_EDGE_IP_VERSION: "4"
+    # service_started, not service_healthy: the first web probe lands 30s after start,
+    # so waiting on it would hold the tunnel down that long on every deploy (and abort
+    # `up -d` if web were slow). cloudflared retries the origin on its own.
     depends_on:
       web:
         condition: service_started
