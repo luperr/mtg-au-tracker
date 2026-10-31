@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine3.24   # keep in step with docker-compose.prod.yml
     restart: unless-stopped
     shm_size: 256mb
     environment:

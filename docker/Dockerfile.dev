@@ -1,8 +1,9 @@
 # Playwright's official image ships with Chromium + all OS dependencies pre-installed.
 # IMPORTANT: the version here must match the "playwright" version in apps/scraper/package.json.
-FROM mcr.microsoft.com/playwright:v1.55.1-noble
+FROM mcr.microsoft.com/playwright:v1.64.1-noble
 
-# corepack is bundled with Node and manages pnpm
-RUN npm install -g pnpm@10.33.0
+# pnpm version comes from "packageManager" in the root package.json — the one place it's set.
+COPY package.json /tmp/root-package.json
+RUN npm install -g "$(node -p "require('/tmp/root-package.json').packageManager")"
 
 WORKDIR /app

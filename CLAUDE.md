@@ -586,7 +586,7 @@ Phases are gated — nothing from Phase N+1 starts until Phase N exit criteria a
 - [x] Add DB indexes on FK columns (`printing_id`, `store_id`) on `store_prices` and `price_history`
 - [ ] Add UNIQUE constraints to `price_history` and `store_prices` — deferred; delete-then-insert pattern is sufficient guard for now
 - [x] Vitest unit tests — 405 tests across card-matcher (all 6 match levels), normalizeName, Scryfall transform, eBay title parser, Shopify parser. Co-located `.test.ts` files, `pnpm test` from repo root (2026-04-02)
-- [ ] Pin `:latest` image tags in docker-compose — `promtail`, `cloudflared`, `cadvisor`
+- [x] Pin `:latest` image tags in docker-compose — `cloudflared`, `postgres`, `promtail` pinned; `deploy.sh` pulls every service. `cadvisor` isn't in this repo. Promtail is EOL — migrating to Grafana Alloy is still open
 
 ### Phase 2 — Observability & Data Quality
 *Visibility before growth.*

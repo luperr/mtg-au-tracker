@@ -24,8 +24,9 @@ main() {
   # so a git pull can never change which SQL db:migrate runs.
   git pull --ff-only
 
+  # Every service: db and tunnel are pinned in the compose file, so they move only when it does.
   echo "==> Pulling images (tag: ${IMAGE_TAG})"
-  docker compose -f "$compose_file" pull web scraper
+  docker compose -f "$compose_file" pull
 
   # Apply migrations from the freshly pulled scraper image, BEFORE restarting services.
   # The old web keeps serving during this window — against the NEW schema — so every
