@@ -5,7 +5,7 @@ import { SetSymbol } from "@/app/SetSymbol";
 import { useWantList, toWantListItem, wantListItemId } from "@/app/WantListContext";
 import { MTG_CARD_ASPECT_RATIO } from "@/lib/config";
 import { facetValueLabel, DEFAULT_TREATMENT, type SearchView } from "@/lib/search-v2/params";
-import type { SearchTile } from "@/lib/search-v2/types";
+import type { SearchTile, UnlistedCard } from "@/lib/search-v2/types";
 import { cardHref, fmtAUD, trackEvent } from "@/lib/utils";
 
 /**
@@ -126,6 +126,53 @@ export function ListingTile({ tile, view, query }: { tile: SearchTile; view: Sea
             ) : null}
           </div>
           <AddToWantListButton tile={tile} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** "2026-11-13" → "13 Nov 2026". Formatted as UTC so the day can't shift with the viewer's zone. */
+function fmtReleaseDate(date: string): string {
+  return new Date(date).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
+/** A matched card no store has in stock — same frame as ListingTile, minus price and buy link. */
+export function UnlistedTile({ card, query }: { card: UnlistedCard; query: string }) {
+  const href = cardHref(card.slug, card.card_id, query);
+
+  return (
+    <div className="flex flex-col rounded-lg overflow-hidden border border-subtle bg-surface hover:border-accent transition-colors group">
+      <a href={href} onClick={() => trackEvent("card-click", { card: card.name, source: "search-v2" })} className="block w-full overflow-hidden">
+        {card.image_uri ? (
+          <img
+            src={card.image_uri}
+            alt={card.name}
+            className="w-full object-cover opacity-70 group-hover:opacity-100 group-hover:scale-[1.02] transition duration-200"
+            style={{ aspectRatio: MTG_CARD_ASPECT_RATIO }}
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full bg-muted flex items-center justify-center text-cream-dim/30 text-xs" style={{ aspectRatio: MTG_CARD_ASPECT_RATIO }}>
+            No image
+          </div>
+        )}
+      </a>
+
+      <div className="px-2 pt-1.5 pb-2 flex flex-col gap-1 flex-1">
+        <a href={href} className="text-xs font-medium text-cream truncate hover:text-accent-light transition-colors" title={card.name}>
+          {card.name}
+        </a>
+
+        {card.set_code && card.set_name && (
+          <div className="flex items-center gap-1 text-[11px] text-cream-dim min-w-0">
+            <SetSymbol setCode={card.set_code} setName={card.set_name} rarity={card.rarity ?? undefined} size={12} />
+            <span className="truncate" title={card.set_name}>{card.set_name}</span>
+          </div>
+        )}
+
+        <div className="mt-auto pt-1 text-[11px] text-cream-dim/70">
+          {card.upcoming && card.released_at ? `Releases ${fmtReleaseDate(card.released_at)}` : "No listings"}
         </div>
       </div>
     </div>

@@ -2,7 +2,7 @@ import { sql } from "../db/client.js";
 import { logger } from "../utils.js";
 import { MAX_SEARCH_OFFSET, SEARCH_MIN_QUERY_LENGTH, SEARCH_FUZZY_MIN_SIMILARITY } from "../config.js";
 import { DEFAULT_TREATMENT, FACET_KEYS, priceFilterApplies, type FacetKey, type SearchState, type SearchView } from "./params.js";
-import { SEARCH_V2_PAGE_SIZE, type Facets, type SearchTile, type SearchV2Result } from "./types.js";
+import { SEARCH_V2_PAGE_SIZE, type Facets, type SearchTile, type SearchV2Result, type UnlistedCard } from "./types.js";
 
 /**
  * v2 search — listing-grained, with filters, facets and three view modes.
@@ -102,6 +102,7 @@ export async function searchListings(state: SearchState): Promise<SearchV2Result
   const empty: SearchV2Result = {
     tiles: [], counts: { card: 0, printing: 0, listings: 0 },
     capped: false, fuzzy: false, topCardId: null, facets: emptyFacets(),
+    unlisted: [], unlistedCount: 0,
   };
   if (state.q.length < SEARCH_MIN_QUERY_LENGTH) return empty;
 
@@ -146,6 +147,8 @@ export async function searchListings(state: SearchState): Promise<SearchV2Result
     tiles: SearchTile[] | null;
     facets: { facet: FacetKey; value: string; label: string; count: number }[] | null;
     counts: SearchV2Result["counts"];
+    unlisted: UnlistedCard[] | null;
+    unlisted_count: number;
     cand_count: number;
     fuzzy: boolean;
     top_card_id: string | null;
@@ -210,6 +213,27 @@ export async function searchListings(state: SearchState): Promise<SearchV2Result
     ),
     tiles AS (
       SELECT pg.*, ${others} FROM pg
+    ),
+    -- Matched cards with nothing in stock — mostly sets still in preview, which are in
+    -- the DB weeks before any store lists them. Filters don't apply: they describe
+    -- listings, and these have none.
+    unlisted AS MATERIALIZED (
+      SELECT c.id, c.slug, c.name, c.rnk
+      FROM cand c
+      WHERE c.rnk <= ${SEARCH_V2_CARD_CAP}
+        AND NOT EXISTS (SELECT 1 FROM listings l WHERE l.card_id = c.id)
+    ),
+    unlisted_page AS (
+      SELECT u.*, np.set_code, np.set_name, np.rarity, np.image_uri, np.released_at
+      FROM (SELECT * FROM unlisted ORDER BY rnk LIMIT ${SEARCH_V2_PAGE_SIZE}) u
+      -- Newest printing: for an upcoming card, the set it's about to release in.
+      LEFT JOIN LATERAL (
+        SELECT p.set_code, p.set_name, p.rarity, p.image_uri, p.released_at
+        FROM printings p
+        WHERE p.card_id = u.id
+        ORDER BY p.released_at DESC, p.is_foil, p.id
+        LIMIT 1
+      ) np ON TRUE
     )
     SELECT
       (SELECT json_agg(json_build_object(
@@ -230,6 +254,13 @@ export async function searchListings(state: SearchState): Promise<SearchV2Result
           'printing', count(DISTINCT printing_id) FILTER (WHERE ${priceRange(state)}),
           'listings', count(*) FILTER (WHERE ${priceRange(state)})
         ) FROM listings WHERE ${facetPredicate(state)}) AS counts,
+      (SELECT json_agg(json_build_object(
+          'card_id', id, 'slug', slug, 'name', name, 'set_code', set_code, 'set_name', set_name,
+          'rarity', rarity, 'image_uri', image_uri, 'released_at', released_at,
+          -- Sydney's date, not the server's: a set releases on the AU calendar day.
+          'upcoming', released_at > (now() AT TIME ZONE 'Australia/Sydney')::date
+        ) ORDER BY rnk) FROM unlisted_page) AS unlisted,
+      (SELECT count(*)::int FROM unlisted) AS unlisted_count,
       (SELECT count(*)::int FROM cand) AS cand_count,
       EXISTS (SELECT 1 FROM fz) AS fuzzy,
       (SELECT id FROM cand ORDER BY rnk LIMIT 1) AS top_card_id
@@ -257,5 +288,7 @@ export async function searchListings(state: SearchState): Promise<SearchV2Result
     fuzzy: row?.fuzzy ?? false,
     topCardId: row?.top_card_id ?? null,
     facets,
+    unlisted: row?.unlisted ?? [],
+    unlistedCount: row?.unlisted_count ?? 0,
   };
 }
