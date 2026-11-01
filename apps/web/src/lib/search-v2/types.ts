@@ -34,6 +34,23 @@ export type SearchTile = {
   other_min: number | null;
 };
 
+/**
+ * A matched card with no in-stock listing anywhere — typically a set still in preview.
+ * Shown by its newest printing, so an upcoming card shows the set it's coming in.
+ */
+export type UnlistedCard = {
+  card_id: string;
+  slug: string | null;
+  name: string;
+  set_code: string | null;
+  set_name: string | null;
+  rarity: string | null;
+  image_uri: string | null;
+  released_at: string | null;
+  /** released_at is after today. */
+  upcoming: boolean;
+};
+
 export type FacetCount = { value: string; label: string; count: number };
 export type Facets = Record<FacetKey, FacetCount[]>;
 
@@ -48,4 +65,8 @@ export type SearchV2Result = {
   /** Best name match, for card_searches demand logging. Null when nothing matched. */
   topCardId: string | null;
   facets: Facets;
+  /** Best-ranked matched cards with no listings, at most SEARCH_V2_PAGE_SIZE. Ignores filters. */
+  unlisted: UnlistedCard[];
+  /** All matched cards with no listings, within SEARCH_V2_CARD_CAP. */
+  unlistedCount: number;
 };

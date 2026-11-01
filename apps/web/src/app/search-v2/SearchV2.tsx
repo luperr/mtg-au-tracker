@@ -6,7 +6,7 @@ import { SEARCH_V2_PAGE_SIZE, type SearchV2Result } from "@/lib/search-v2/types"
 import { useEffect, useState } from "react";
 import { pillClass } from "@/app/Dropdown";
 import { ClearFiltersButton, FilterSidebar } from "./FilterSidebar";
-import { ListingTile } from "./ListingTile";
+import { ListingTile, UnlistedTile } from "./ListingTile";
 import { SearchNavProvider, useSearchNav } from "./SearchNav";
 import { SearchToolbar } from "./SearchToolbar";
 
@@ -69,6 +69,9 @@ function Results({ result, rendered, filtersHidden }: { result: SearchV2Result; 
   const [sidebarOpen, setSidebarOpen] = useState(!filtersHidden);
   const activeCount = activeFilterCount(state);
   const total = result.counts[rendered.view];
+  const gridClass = `grid grid-cols-2 sm:grid-cols-3 ${sidebarOpen ? "lg:grid-cols-4" : "lg:grid-cols-5"} gap-3 transition-opacity ${pending ? "opacity-50" : ""}`;
+  // Unlisted cards trail the listings, so they belong on the last page only.
+  const showUnlisted = result.unlisted.length > 0 && rendered.page >= Math.ceil(total / SEARCH_V2_PAGE_SIZE);
 
   /** Desktop only — below md the sidebar is a drawer. Remembered in a cookie. */
   function setSidebar(open: boolean) {
@@ -123,15 +126,34 @@ function Results({ result, rendered, filtersHidden }: { result: SearchV2Result; 
             <a href={`/?${toQueryString({ ...state, page: 1 })}`} className="text-accent hover:text-accent-light">Back to page 1</a>
           </p>
         ) : result.tiles.length === 0 ? (
-          <p className="text-cream-dim">No listings match &ldquo;{state.q}&rdquo; with these filters.</p>
+          // With no filters, the unlisted section below already says why nothing is listed.
+          (activeCount > 0 || !showUnlisted) && (
+            <p className="text-cream-dim">No listings match &ldquo;{state.q}&rdquo;{activeCount > 0 && " with these filters"}.</p>
+          )
         ) : (
-          <div className={`grid grid-cols-2 sm:grid-cols-3 ${sidebarOpen ? "lg:grid-cols-4" : "lg:grid-cols-5"} gap-3 transition-opacity ${pending ? "opacity-50" : ""}`}>
+          <div className={gridClass}>
             {result.tiles.map((tile) => (
               <ListingTile key={tile.key} tile={tile} view={rendered.view} query={rendered.q} />
             ))}
           </div>
         )}
         <Pagination total={total} />
+        {showUnlisted && (
+          <section className="mt-8" aria-labelledby="unlisted-heading">
+            <h2 id="unlisted-heading" className="mb-1 text-xs font-medium uppercase tracking-wide text-cream-dim/60">
+              No listings yet <span className="tabular-nums opacity-60">{result.unlistedCount.toLocaleString()}</span>
+            </h2>
+            <p className="mb-3 text-sm text-cream-dim">
+              Cards matching &ldquo;{rendered.q}&rdquo; that no store has in stock, including sets not yet released.
+              {result.unlistedCount > result.unlisted.length && ` Showing the closest ${result.unlisted.length}.`}
+            </p>
+            <div className={gridClass}>
+              {result.unlisted.map((card) => (
+                <UnlistedTile key={card.card_id} card={card} query={rendered.q} />
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );
