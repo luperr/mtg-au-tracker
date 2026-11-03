@@ -11,6 +11,8 @@ export const RATE_LIMIT_SEARCH_PER_MINUTE = 60;
 export const RATE_LIMIT_CONTACT_PER_HOUR = 3;
 export const RATE_LIMIT_BULK_LOOKUP_PER_MINUTE = 10;
 export const RATE_LIMIT_OPTIMIZE_PER_MINUTE = 5;
+/** Higher than v1's: every preference change re-runs the v2 optimiser. */
+export const RATE_LIMIT_OPTIMIZE_V2_PER_MINUTE = 20;
 export const RATE_LIMIT_READ_PER_MINUTE = 120;
 
 // ── Want List optimiser ──────────────────────────────────────────────────────
@@ -32,6 +34,13 @@ export const OPTIMIZE_DEADLINE_MS = 1500;
  * saves the entire deadline budget on broad lists.
  */
 export const OPTIMIZE_EXACT_MAX_STORES = 18;
+
+/**
+ * v2 only: a separate budget (ms) for the cheapest 1-, 2-, 3-… store plans shown
+ * beside the best one. Each is a capped search, so branch and bound usually
+ * finishes them in milliseconds even when the uncapped search can't run.
+ */
+export const OPTIMIZE_ALTERNATIVES_MS = 500;
 
 // ── Pagination ───────────────────────────────────────────────────────────────
 

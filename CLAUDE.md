@@ -377,6 +377,14 @@ Listing-grained search with a filter sidebar (store, set, condition, finish, tre
 - eBay: per-item postage column + subtotal in footer
 - Item ID: `${printingId}-${storeId}-${url ?? ""}` — unique per distinct listing
 - **Optimise feature** (`/api/optimize`): Branch-and-bound over flat-rate store subsets. Flat fees added once per store. Tie-breaking prefers lower flat-rate stores for equal card prices. Per-store shipping overrides sent in POST body and applied server-side. Review modal: lock cards to current printing, re-optimise, apply selected changes.
+- **Optimiser v2 engine** (`lib/optimiser/`, `POST /api/optimize/v2`) — not yet wired to any UI. Same
+  seeds → local search → B&B shape as v1, but all integer cents, with per-line qty, "exact"/"any"
+  printing, prefs (condition floor, finish, excluded stores, eBay on/off, max stores), stock caps,
+  free-shipping thresholds, alternatives per store count, and the user's current listings re-priced
+  server-side so "savings" is like for like (`null` when it isn't). Prefs filter in JS, not SQL,
+  because current listings at excluded stores still need pricing. Stock, Shopify variant ids and
+  thresholds read as null until the scrapers and `stores` carry them. v1's `algorithm.ts` stays
+  untouched until v1 is removed.
 
 ### `apps/web/src/app/BuyLink.tsx` + `apps/web/src/lib/affiliate.ts`
 Single component for all outbound store buy links. Owns:
