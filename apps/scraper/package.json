@@ -56,6 +56,7 @@
     "scrape:awgaming": "tsx src/stores/run-store.ts awgaming",
     "scrape:dragonsbeard": "tsx src/stores/run-store.ts dragons_beard",
     "scrape:arcanealfred": "tsx src/stores/run-store.ts arcane_alfred",
+    "scrape:dragonslair": "tsx src/stores/run-store.ts dragons_lair",
     "compute:market-stats": "tsx src/market/compute-market-stats.ts",
     "refresh:set-card-daily": "tsx src/market/refresh-set-card-daily.ts",
     "test": "vitest run"

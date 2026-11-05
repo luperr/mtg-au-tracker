@@ -238,6 +238,11 @@ export const STORE_REGISTRY: StoreConfig[] = [
   },
   { id: "mtg_singles_aus", name: "MTG Singles Australia", baseUrl: "https://www.mtgsinglesaustralia.com.au", scraperEnabled: false, logoUrl: null, flatShippingAud: null },
   { id: "dragons_beard", name: "The Dragon's Beard", baseUrl: "https://thedragonsbeard.com.au", scraperEnabled: true, logoUrl: null, flatShippingAud: 6.00, shopify: { collectionHandle: "mtg-singles" } },
+  {
+    // $3 is their "Singles - Standard" rate (shipping policy, Nov 2026).
+    id: "dragons_lair", name: "Dragon's Lair", baseUrl: "https://dragonslair.au", scraperEnabled: true, logoUrl: null,
+    flatShippingAud: 3.0, shopify: { collectionHandle: "mtg-singles-instock" },
+  },
   { id: "ebay_au", name: "eBay AU", baseUrl: "https://www.ebay.com.au", scraperEnabled: true, logoUrl: null, flatShippingAud: null },
 ];
 
