@@ -1,6 +1,6 @@
 "use client";
 
-import { Dropdown, OptionItem } from "@/app/Dropdown";
+import { Dropdown, OptionItem, pillClass } from "@/app/Dropdown";
 import type { SavedPrefs } from "@/lib/optimiser/want-list";
 import type { StoreSummary } from "@/lib/store-shipping";
 
@@ -18,21 +18,25 @@ const FINISHES: { value: SavedPrefs["finish"]; label: string }[] = [
   { value: "any", label: "Any finish" },
 ];
 
-const MAX_STORES: (number | null)[] = [null, 1, 2, 3, 4, 5];
-
 /**
  * The optimiser's preferences, as the search filter pills. Finish only steers
  * "any printing" cards; a card pinned to its printing already has one. Stores is
  * a checklist with everything ticked — eBay included — and unticking one leaves
  * it out; it's stored as the unticked ids, so a new store starts ticked.
+ *
+ * Max stores is a counter from 1 up to the ticked stores (eBay isn't counted),
+ * where the top is "Any". Stepping down from Any starts one below `planStores`,
+ * the stores the current plan uses, rather than from the whole roster.
  */
 export function PrefsBar({
   prefs,
   stores,
+  planStores,
   onChange,
 }: {
   prefs: SavedPrefs;
   stores: StoreSummary[];
+  planStores?: number;
   onChange: (patch: Partial<SavedPrefs>, pref: string) => void;
 }) {
   const condition = CONDITIONS.find((c) => c.value === prefs.minCondition)!;
@@ -41,6 +45,14 @@ export function PrefsBar({
   // eBay last: it's a marketplace, not one shop.
   const storeList = [...stores.filter((s) => s.id !== "ebay_au"), ...stores.filter((s) => s.id === "ebay_au")];
   const unticked = storeList.filter((s) => excluded.has(s.id)).length;
+  const available = storeList.filter((s) => s.id !== "ebay_au" && !excluded.has(s.id)).length;
+  const max = prefs.maxStores;
+
+  function stepMax(delta: -1 | 1) {
+    const from = max ?? Math.min(available, planStores ?? available);
+    const next = Math.max(1, from + delta);
+    onChange({ maxStores: next >= available ? null : next }, "max-stores");
+  }
 
   function toggleStore(id: string) {
     const next = new Set(excluded);
@@ -66,13 +78,31 @@ export function PrefsBar({
         ))}
       </Dropdown>
 
-      <Dropdown label={prefs.maxStores === null ? "Max stores: any" : `Max stores: ${prefs.maxStores}`} active={prefs.maxStores !== null}>
-        {MAX_STORES.map((n) => (
-          <OptionItem key={n ?? "any"} label={n === null ? "Any number" : `At most ${n}`} checked={n === prefs.maxStores}
-            onClick={() => onChange({ maxStores: n }, "max-stores")} />
-        ))}
-        <p className="px-3 pt-1 pb-2 text-xs text-cream-dim">eBay listings aren’t counted — untick eBay under Buy from to leave them out.</p>
-      </Dropdown>
+      <div
+        className={`flex items-center gap-1 !py-1 ${pillClass(max !== null, "rounded-lg")}`}
+        role="group"
+        aria-label="Maximum number of stores"
+        title="eBay listings aren’t counted — untick eBay under Buy from to leave them out."
+      >
+        <span>Max stores</span>
+        <button
+          onClick={() => stepMax(-1)}
+          disabled={max === 1 || available <= 1}
+          aria-label="Fewer stores"
+          className="flex h-6 w-6 items-center justify-center rounded text-sm hover:bg-muted disabled:opacity-30"
+        >
+          −
+        </button>
+        <span className="min-w-[3ch] text-center tabular-nums text-cream" aria-live="polite">{max ?? "Any"}</span>
+        <button
+          onClick={() => stepMax(1)}
+          disabled={max === null}
+          aria-label="More stores"
+          className="flex h-6 w-6 items-center justify-center rounded text-sm hover:bg-muted disabled:opacity-30"
+        >
+          +
+        </button>
+      </div>
 
       <Dropdown
         label={unticked === 0 ? "Buy from: all stores" : `Buy from: ${storeList.length - unticked} of ${storeList.length} stores`}
