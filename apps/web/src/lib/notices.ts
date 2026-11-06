@@ -8,18 +8,13 @@
 /** "new" pulses — keep it for a promo line or something being actively trialled, never routine news. */
 export type NoticeMarker = "new" | "star";
 
-/** Client behaviours a notice can trigger instead of navigating — see NoticeAction.tsx. */
-export type NoticeAction = "enable-search-v2";
-
-export type NoticeLink =
-  | { label: string; href: string }
-  /** `doneLabel` replaces the button once the action is already in effect. */
-  | { label: string; action: NoticeAction; doneLabel: string };
+export type NoticeLink = { label: string; href: string };
 
 export type Notice = {
   marker: NoticeMarker;
   text: string;
-  link: NoticeLink;
+  /** Omit for a line that is news on its own. */
+  link?: NoticeLink;
   /** Last Sydney date (YYYY-MM-DD) the line shows. Omit to pin indefinitely. */
   until?: string;
 };
@@ -30,7 +25,7 @@ const SUMMARY_MAX_CHARS = 48;
 
 /** Hand-written lines, in display order. The latest-changelog line is appended after them. */
 export const PINNED_NOTICES: Notice[] = [
-  { marker: "new", text: "advanced search is live", link: { label: "try it", action: "enable-search-v2", doneLabel: "on ✓" }, until: "2026-11-30" },
+  { marker: "new", text: "new search is now the default", until: "2026-12-07" },
   { marker: "star", text: "got any feedback?", link: { label: "reach out", href: "/contact" } },
 ];
 
