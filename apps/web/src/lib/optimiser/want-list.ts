@@ -170,8 +170,11 @@ export type SavedPrefs = Omit<Prefs, "postageOverrides" | "includeEbay" | "finis
 
 export const PREFS_KEY = "scrymarket_optimiser_prefs";
 
+/** NM to DMG, best first. Spelled out rather than imported: @mtg-au/shared's index pulls pino into the client bundle. */
+export const CONDITIONS = ["NM", "LP", "MP", "HP", "DMG"] as const satisfies readonly SavedPrefs["conditions"][number][];
+
 const DEFAULT_SAVED: SavedPrefs = {
-  minCondition: DEFAULT_PREFS.minCondition,
+  conditions: DEFAULT_PREFS.conditions,
   excludeStores: [],
   maxStores: DEFAULT_PREFS.maxStores,
 };
@@ -185,15 +188,22 @@ export function parseSavedPrefs(raw: string | null): SavedPrefs {
   } catch {
     // fall through to defaults
   }
-  // Spelled out rather than imported: @mtg-au/shared's index pulls pino into the client bundle.
-  const conditions: readonly unknown[] = ["NM", "LP", "MP", "HP", "DMG", "any"] satisfies SavedPrefs["minCondition"][];
+  const known: readonly unknown[] = CONDITIONS;
+  let conditions = Array.isArray(v.conditions)
+    ? CONDITIONS.filter((c) => (v.conditions as unknown[]).includes(c))
+    : [];
+  // Saved as a "worst condition" floor before conditions became a checklist.
+  if (!Array.isArray(v.conditions) && (known.includes(v.minCondition) || v.minCondition === "any")) {
+    const floor = v.minCondition === "any" ? CONDITIONS.length : CONDITIONS.indexOf(v.minCondition as typeof CONDITIONS[number]) + 1;
+    conditions = CONDITIONS.slice(0, floor);
+  }
   const excludeStores = Array.isArray(v.excludeStores)
     ? v.excludeStores.filter((s): s is string => typeof s === "string" && s !== "")
     : [];
   // Saved before eBay moved into the store list.
   if (v.includeEbay === false && !excludeStores.includes("ebay_au")) excludeStores.push("ebay_au");
   return {
-    minCondition: conditions.includes(v.minCondition) ? v.minCondition as SavedPrefs["minCondition"] : DEFAULT_SAVED.minCondition,
+    conditions: conditions.length > 0 ? conditions : [...DEFAULT_SAVED.conditions],
     excludeStores,
     maxStores: Number.isInteger(v.maxStores) && (v.maxStores as number) >= 1 ? v.maxStores as number : null,
   };

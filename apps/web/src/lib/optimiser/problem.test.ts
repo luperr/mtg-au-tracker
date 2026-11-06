@@ -41,15 +41,16 @@ describe("offerFromRow", () => {
 
 describe("meetsCondition", () => {
   it.each([
-    ["NM", "LP", true],
-    ["LP", "LP", true],
-    ["MP", "LP", false],
-    ["DMG", "HP", false],
-    ["HP", "any", true],
-    [null, "NM", true],
-    ["Signed", "NM", true],
-  ] as const)("%s against floor %s → %s", (condition, floor, ok) => {
-    expect(meetsCondition(condition, prefs({ minCondition: floor }))).toBe(ok);
+    ["NM", ["NM"], true],
+    ["LP", ["NM"], false],
+    ["LP", ["NM", "LP"], true],
+    ["MP", ["LP", "HP"], false],
+    ["HP", ["LP", "HP"], true],
+    ["DMG", ["NM", "LP", "MP", "HP"], false],
+    [null, ["NM"], true],
+    ["Signed", ["NM"], true],
+  ] as const)("%s against %j → %s", (condition, conditions, ok) => {
+    expect(meetsCondition(condition, prefs({ conditions: [...conditions] }))).toBe(ok);
   });
 });
 
@@ -63,8 +64,8 @@ describe("buildProblem eligibility", () => {
     ],
   };
 
-  it("applies the condition floor but lets unknown conditions through", () => {
-    expect(candidates([line("c1")], offers, stores, prefs({ minCondition: "LP" })))
+  it("applies the chosen conditions but lets unknown conditions through", () => {
+    expect(candidates([line("c1")], offers, stores, prefs({ conditions: ["NM", "LP"] })))
       .toEqual(["ebay_au:p1:null", "b:p2:NM", "a:p1:NM"]);
   });
 

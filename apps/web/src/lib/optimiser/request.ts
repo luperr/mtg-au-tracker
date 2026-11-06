@@ -65,11 +65,12 @@ function parsePrefs(raw: unknown): Prefs | string {
   if (!isObject(raw)) return "prefs must be an object";
   const prefs: Prefs = { ...DEFAULT_PREFS, postageOverrides: {} };
 
-  if (raw.minCondition !== undefined) {
-    if (raw.minCondition !== "any" && !(CARD_CONDITIONS as readonly unknown[]).includes(raw.minCondition)) {
-      return `minCondition must be one of ${CARD_CONDITIONS.join(", ")} or any`;
+  if (raw.conditions !== undefined) {
+    const known: readonly unknown[] = CARD_CONDITIONS;
+    if (!Array.isArray(raw.conditions) || raw.conditions.length === 0 || !raw.conditions.every((c) => known.includes(c))) {
+      return `conditions must be one or more of ${CARD_CONDITIONS.join(", ")}`;
     }
-    prefs.minCondition = raw.minCondition as Prefs["minCondition"];
+    prefs.conditions = [...new Set(raw.conditions as Prefs["conditions"])];
   }
   if (raw.finish !== undefined) {
     if (raw.finish !== "any" && !FINISHES.includes(raw.finish as Finish)) return "finish must be nonfoil, foil, etched or any";

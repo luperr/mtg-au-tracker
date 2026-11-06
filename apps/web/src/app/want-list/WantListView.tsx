@@ -142,18 +142,6 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
               <p className="mt-0.5 text-sm text-cream-dim">{plural(items.length, "card")} · {plural(copies, "copy", "copies")}</p>
             )}
           </div>
-          {items.length > 0 && (
-            <div className="flex items-center gap-4">
-              {locked > 0 && (
-                <button onClick={unlockAll} className="text-xs text-cream-dim hover:text-cream transition-colors">
-                  Unlock all ({locked})
-                </button>
-              )}
-              <button onClick={() => { clearAll(); setOptimised(null); }} className="text-xs text-cream-dim hover:text-red-400 transition-colors">
-                Clear all
-              </button>
-            </div>
-          )}
         </div>
 
         {items.length === 0 ? (
@@ -232,7 +220,16 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
 
             {/* One row on a phone, scrolled sideways, rather than three rows of pills. */}
             <div className="-mx-4 mb-4 overflow-x-auto px-4 sm:mx-0 sm:overflow-visible sm:px-0">
-              <PrefsBar prefs={prefs} stores={stores} onChange={changePrefs} />
+              <PrefsBar prefs={prefs} stores={stores} onChange={changePrefs}>
+                {locked > 0 && (
+                  <button onClick={unlockAll} className="whitespace-nowrap text-xs text-cream-dim hover:text-cream transition-colors">
+                    Unlock all ({locked})
+                  </button>
+                )}
+                <button onClick={() => { clearAll(); setOptimised(null); }} className="whitespace-nowrap text-xs text-cream-dim hover:text-red-400 transition-colors">
+                  Clear all
+                </button>
+              </PrefsBar>
             </div>
 
             {imported && (

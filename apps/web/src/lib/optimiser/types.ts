@@ -39,8 +39,8 @@ export type OptimiseLine = {
 };
 
 export type Prefs = {
-  /** Worst condition accepted. Listings with no or an unrecognised condition pass, flagged. */
-  minCondition: CardCondition | "any";
+  /** Conditions to buy, one or more. Listings with no or an unrecognised condition always pass, flagged. */
+  conditions: CardCondition[];
   /** Applies to "any" lines only — an exact printing already fixes its finish. */
   finish: Finish | "any";
   excludeStores: string[];
@@ -52,11 +52,11 @@ export type Prefs = {
 };
 
 /**
- * A heavily played copy never stands in unless the user asks for it — v1's
- * silent downgrade. Any finish will do; the plan flags a changed printing.
+ * Near mint unless the user says otherwise — v1 silently swapped in played
+ * copies. Any finish will do; the plan flags a changed printing.
  */
 export const DEFAULT_PREFS: Prefs = {
-  minCondition: "LP",
+  conditions: ["NM"],
   finish: "any",
   excludeStores: [],
   includeEbay: true,

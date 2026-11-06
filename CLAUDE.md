@@ -384,7 +384,9 @@ Listing-grained search with a filter sidebar (store, set, condition, finish, tre
   (re-priced server-side). There is no finish pref — finish comes with the printing a card is
   locked to. Import is one step (paste/upload → Import → on the list), keeps qty, and brings
   everything in unlocked even when lines name a set, since Arena/MTGO exports always do.
-- Prefs: condition (default LP or better), max stores, and "Buy from" — a
+- Prefs: conditions (a checklist, NM by default, at least one ticked; listings with no or an
+  unrecognised condition always pass and are flagged; an old saved "worst condition" floor is
+  read as every condition at or above it), max stores, and "Buy from" — a
   checklist of every store, eBay included, all ticked, saved as the *unticked* ids
   (`excludeStores`) so a store added later starts ticked. localStorage `scrymarket_optimiser_prefs`;
   per-store postage edits stay in `scrymarket_shipping_overrides`.
@@ -395,7 +397,7 @@ Listing-grained search with a filter sidebar (store, set, condition, finish, tre
   bad release by pinning the previous image (`./scripts/deploy.sh main-<sha>`).
 - **Optimiser engine** (`lib/optimiser/`, `POST /api/optimize`). Seeds → local search → B&B under
   `OPTIMIZE_DEADLINE_MS`, all integer cents, with per-line qty, "exact"/"any"
-  printing, prefs (condition floor, finish, excluded stores, eBay on/off, max stores), stock caps,
+  printing, prefs (allowed conditions, finish, excluded stores, eBay on/off, max stores), stock caps,
   free-shipping thresholds, alternatives per store count, and the user's current listings re-priced
   server-side so "savings" is like for like (`null` when it isn't). Prefs filter in JS, not SQL,
   because current listings at excluded stores still need pricing. Stock, Shopify variant ids and

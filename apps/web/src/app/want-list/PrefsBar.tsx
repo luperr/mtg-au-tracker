@@ -1,19 +1,22 @@
 "use client";
 
 import { Dropdown, OptionItem, pillClass } from "@/app/Dropdown";
-import type { SavedPrefs } from "@/lib/optimiser/want-list";
+import { CONDITIONS, type SavedPrefs } from "@/lib/optimiser/want-list";
+import type { ReactNode } from "react";
 import type { StoreSummary } from "@/lib/store-shipping";
 
-const CONDITIONS: { value: SavedPrefs["minCondition"]; label: string; short: string }[] = [
-  { value: "NM", label: "Near mint only", short: "NM" },
-  { value: "LP", label: "Lightly played or better", short: "LP+" },
-  { value: "MP", label: "Moderately played or better", short: "MP+" },
-  { value: "HP", label: "Heavily played or better", short: "HP+" },
-  { value: "any", label: "Any condition", short: "Any" },
-];
+const CONDITION_LABELS: Record<SavedPrefs["conditions"][number], string> = {
+  NM: "Near mint",
+  LP: "Lightly played",
+  MP: "Moderately played",
+  HP: "Heavily played",
+  DMG: "Damaged",
+};
 
 /**
- * The optimiser's preferences, as the search filter pills. There's no finish
+ * The optimiser's preferences, as the search filter pills. Condition is a
+ * checklist of the conditions to buy (NM by default; at least one stays
+ * ticked). There's no finish
  * pref: a finish comes with the printing a card is locked to. Stores is
  * a checklist with everything ticked — eBay included — and unticking one leaves
  * it out; it's stored as the unticked ids, so a new store starts ticked.
@@ -27,12 +30,27 @@ export function PrefsBar({
   prefs,
   stores,
   onChange,
+  children,
 }: {
   prefs: SavedPrefs;
   stores: StoreSummary[];
   onChange: (patch: Partial<SavedPrefs>, pref: string) => void;
+  /** List actions shown at the end of the row (Unlock all, Clear all). */
+  children?: ReactNode;
 }) {
-  const condition = CONDITIONS.find((c) => c.value === prefs.minCondition)!;
+  const chosen = new Set(prefs.conditions);
+  const conditionLabel = chosen.size === CONDITIONS.length
+    ? "Condition: any"
+    : `Condition: ${CONDITIONS.filter((c) => chosen.has(c)).join(", ")}`;
+
+  function toggleCondition(c: SavedPrefs["conditions"][number]) {
+    if (chosen.has(c) && chosen.size === 1) return; // at least one stays ticked
+    const next = new Set(chosen);
+    if (next.has(c)) next.delete(c);
+    else next.add(c);
+    onChange({ conditions: CONDITIONS.filter((x) => next.has(x)) }, "condition");
+  }
+
   const excluded = new Set(prefs.excludeStores);
   // eBay last: it's a marketplace, not one shop.
   const storeList = [...stores.filter((s) => s.id !== "ebay_au"), ...stores.filter((s) => s.id === "ebay_au")];
@@ -54,11 +72,17 @@ export function PrefsBar({
 
   return (
     <div className="flex flex-nowrap items-center gap-2 sm:flex-wrap" role="group" aria-label="Optimiser preferences">
-      <Dropdown label={`Condition: ${condition.short}`} active={prefs.minCondition !== "LP"}>
+      <Dropdown label={conditionLabel} active={!(chosen.size === 1 && chosen.has("NM"))}>
         {CONDITIONS.map((c) => (
-          <OptionItem key={c.value} label={c.label} checked={c.value === prefs.minCondition}
-            onClick={() => onChange({ minCondition: c.value }, "condition")} />
+          <OptionItem
+            key={c}
+            type="check"
+            label={`${CONDITION_LABELS[c]} (${c})`}
+            checked={chosen.has(c)}
+            onClick={() => toggleCondition(c)}
+          />
         ))}
+        <p className="px-3 pt-1 pb-2 text-xs text-cream-dim">Listings that don’t state a condition are included, and flagged.</p>
       </Dropdown>
 
       <div
@@ -118,6 +142,8 @@ export function PrefsBar({
           ))}
         </div>
       </Dropdown>
+
+      {children && <div className="ml-auto flex shrink-0 items-center gap-4 pl-2">{children}</div>}
     </div>
   );
 }
