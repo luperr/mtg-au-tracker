@@ -21,7 +21,8 @@ const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ?
 const UNAVAILABLE_REASON: Record<Unavailable["reason"], string> = {
   "no-listings": "not in stock anywhere",
   "no-match": "none in stock that match your preferences",
-  short: "not enough copies in stock",
+  // Also what a store cap or unticked stores produce, so it names the stores, not stock.
+  short: "not enough copies at the stores this plan can use",
 };
 
 /** The last optimise: its answer, the list before it (for Undo) and the list it produced. */
@@ -217,7 +218,7 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
 
             {/* One row on a phone, scrolled sideways, rather than three rows of pills. */}
             <div className="-mx-4 mb-4 overflow-x-auto px-4 sm:mx-0 sm:overflow-visible sm:px-0">
-              <PrefsBar prefs={prefs} stores={stores} onChange={changePrefs} />
+              <PrefsBar prefs={prefs} stores={stores} planStores={plan?.plan.totals.storeCount} onChange={changePrefs} />
             </div>
 
             {unavailable.length > 0 && (
