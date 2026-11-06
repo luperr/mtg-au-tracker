@@ -57,7 +57,8 @@ function WantListButton({
         if (inList) {
           removeItem(itemId);
         } else {
-          addItem(toWantListItem({
+          // A price row is a specific printing, so the card is locked to it.
+          addItem({ ...toWantListItem({
             printingId: row.printing.id,
             setName: row.printing.setName,
             setCode: row.printing.setCode,
@@ -73,7 +74,7 @@ function WantListButton({
             condition: row.condition,
             url: row.url,
             imageUri: row.printing.imageUri,
-          }, { cardId, cardSlug, cardName }));
+          }, { cardId, cardSlug, cardName }), printingMode: "exact" });
         }
       }}
       title={inList ? "Remove from want list" : "Add to want list"}

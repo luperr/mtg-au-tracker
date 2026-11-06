@@ -382,7 +382,9 @@ Listing-grained search with a filter sidebar (store, set, condition, finish, tre
   the dropdown locks it) say what the user wants; the listing is where it was added
   until Optimise moves it, and is the `current` the plan's savings are measured against
   (re-priced server-side). There is no finish pref — finish comes with the printing a card is
-  locked to. Import is one step (paste/upload → Import → on the list), keeps qty, and brings
+  locked to. Where a card is added from decides the lock: a card-level "+" (search results,
+  search v2's card view) adds it unlocked; a printing or listing "+" (card-page price rows,
+  search v2's printing and listings views) locks it. Import is one step (paste/upload → Import → on the list), keeps qty, and brings
   everything in unlocked even when lines name a set, since Arena/MTGO exports always do.
 - Prefs: conditions (a checklist, NM by default, at least one ticked; listings with no or an
   unrecognised condition always pass and are flagged; an old saved "worst condition" floor is
