@@ -79,6 +79,8 @@ interface WantListContextValue {
   addItem: (item: WantListItem) => void;
   removeItem: (id: string) => void;
   updateItem: (id: string, patch: Partial<Pick<WantListItem, "qty" | "printingMode">>) => void;
+  /** Swaps one item for another in place (a new printing); merges into an existing item with the same id. */
+  replaceItem: (id: string, next: WantListItem) => void;
   /** Swaps the whole list at once — applying an optimiser plan, or undoing one. */
   replaceItems: (items: WantListItem[]) => void;
   hasItem: (id: string) => boolean;
@@ -164,6 +166,16 @@ export function WantListProvider({ children }: { children: React.ReactNode }) {
 
   const replaceItems = useCallback((next: WantListItem[]) => setItems(next), []);
 
+  const replaceItem = useCallback((id: string, next: WantListItem) => {
+    setItems((prev: WantListItem[]) => {
+      const clash = next.id !== id ? prev.find((i) => i.id === next.id) : undefined;
+      if (!clash) return prev.map((i) => (i.id === id ? next : i));
+      return prev
+        .filter((i) => i.id !== id)
+        .map((i) => (i.id === next.id ? { ...i, qty: (i.qty ?? 1) + (next.qty ?? 1), printingMode: next.printingMode } : i));
+    });
+  }, []);
+
   const hasItem = useCallback((id: string) => {
     return items.some((i: WantListItem) => i.id === id);
   }, [items]);
@@ -186,7 +198,7 @@ export function WantListProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <WantListContext.Provider value={{
-      items, addItem, removeItem, updateItem, replaceItems, hasItem, clearAll,
+      items, addItem, removeItem, updateItem, replaceItem, replaceItems, hasItem, clearAll,
       totalCount: items.length, totalPrice,
       storeShippingOverrides, setStoreShipping,
     }}>
