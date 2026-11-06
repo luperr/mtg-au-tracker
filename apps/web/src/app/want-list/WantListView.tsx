@@ -1,19 +1,19 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import { useWantList, type WantListItem } from "@/app/WantListContext";
+import React, { useEffect, useState } from "react";
+import { useWantList, wantListItemId, type WantListItem } from "@/app/WantListContext";
 import { AffiliateDisclosure } from "@/app/AffiliateDisclosure";
-import { fmtAUD, trackEvent } from "@/lib/utils";
+import { cardHref, fmtAUD, trackEvent } from "@/lib/utils";
 import {
-  baselineStores, itemQty, parseSavedPrefs, requestPrefs, toLines, PREFS_KEY, type SavedPrefs,
+  applyPlan, itemQty, listStores, parseSavedPrefs, requestPrefs, toLines, PREFS_KEY, type SavedPrefs,
 } from "@/lib/optimiser/want-list";
-import type { OptimiseResponse, PlanStore, PlanUnit, Unavailable } from "@/lib/optimiser/types";
+import type { OptimiseResponse, PlanStore, Unavailable } from "@/lib/optimiser/types";
 import type { StoreSummary } from "@/lib/store-shipping";
 import { ImportCards } from "./ImportCards";
 import { PrefsBar } from "./PrefsBar";
-import { CardRow, StoreSection } from "./StoreSection";
+import { StoreSection, type RowFlags } from "./StoreSection";
 import { CardPreviewProvider } from "./CardPreview";
-import { useOptimisePlan } from "./useOptimisePlan";
+import { useOptimiser } from "./useOptimiser";
 
 const cents = (c: number) => fmtAUD(c / 100);
 const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
@@ -24,99 +24,20 @@ const UNAVAILABLE_REASON: Record<Unavailable["reason"], string> = {
   short: "not enough copies in stock",
 };
 
-function Savings({ data }: { data: OptimiseResponse }) {
-  const s = data.savingsCents;
-  if (s === null || s === 0) return null;
-  return s > 0
-    ? <span className="text-green-400">saves {cents(s)}</span>
-    : <span className="text-cream-dim">{cents(-s)} more than when added</span>;
-}
-
-/** The total, the store-count choices and the plan's status. Sticky, so it stays in reach on a phone. */
-function Summary({
-  data,
-  loading,
-  error,
-  onRetry,
-  maxStores,
-  onMaxStores,
-}: {
-  data: OptimiseResponse | null;
-  loading: boolean;
-  error: string | null;
-  onRetry: () => void;
-  maxStores: number | null;
-  onMaxStores: (n: number | null) => void;
-}) {
-  const totals = data?.plan.totals;
-  const chips = data
-    ? [
-        ...data.alternatives.map((a) => ({ n: a.storeCount, total: a.totalCents, active: false })),
-        { n: data.plan.totals.storeCount, total: data.plan.totals.totalCents, active: true },
-      ]
-    : [];
-
-  return (
-    <div className="sticky top-0 z-20 -mx-4 mb-3 border-b border-subtle bg-bg/95 px-4 py-2.5 backdrop-blur" aria-live="polite">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-        {totals ? (
-          <>
-            <span className="text-xl font-bold text-price">{cents(totals.totalCents)}</span>
-            <span className="text-sm text-cream-dim">
-              {plural(totals.storeCount, "store")}
-              {totals.parcelCount > totals.storeCount && ` + ${plural(totals.parcelCount - totals.storeCount, "eBay parcel")}`}
-              {" · "}postage {cents(totals.postageCents)}
-            </span>
-            <span className="text-sm"><Savings data={data!} /></span>
-          </>
-        ) : (
-          <span className="text-sm text-cream-dim">{error ? "" : "Finding the cheapest way to buy your list…"}</span>
-        )}
-        {loading && totals && <span className="text-xs text-cream-dim">updating…</span>}
-      </div>
-
-      {error && (
-        <div role="alert" className="mt-1 flex flex-wrap items-center gap-3 text-sm">
-          <span className="text-red-400">{error}</span>
-          <button onClick={onRetry} className="text-accent-light hover:underline">Try again</button>
-        </div>
-      )}
-
-      {(chips.length > 1 || maxStores !== null) && (
-        <div className="-mx-4 mt-2 flex gap-2 overflow-x-auto px-4 pb-0.5" role="group" aria-label="Number of stores">
-          {chips.map((c) => (
-            <button
-              key={c.n}
-              onClick={() => onMaxStores(c.n)}
-              aria-pressed={c.active}
-              className={`shrink-0 rounded-full border px-3 py-1 text-xs transition-colors ${
-                c.active ? "border-accent bg-accent/10 text-accent-light" : "border-subtle text-cream-dim hover:text-cream"
-              }`}
-            >
-              {plural(c.n, "store")} · {cents(c.total)}
-            </button>
-          ))}
-          {maxStores !== null && (
-            <button onClick={() => onMaxStores(null)} className="shrink-0 rounded-full border border-subtle px-3 py-1 text-xs text-cream-dim hover:text-cream">
-              Any number
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
+/** The last optimise: its answer, the list before it (for Undo) and the list it produced. */
+type Optimised = { data: OptimiseResponse; before: WantListItem[]; after: string; prefs: string };
 
 /**
- * The want list, laid out as the cheapest way to buy it: each card sits under the
- * store the optimiser buys it from, with its quantity and printing controls in
- * place. The plan re-runs as the list or preferences change, so there's nothing
- * to apply. Until the first plan arrives, cards sit under the store they were
- * added from.
+ * The want list, grouped by the store each card is bought from. Optimise asks the
+ * optimiser for the cheapest plan under the preferences and moves every card to
+ * its planned listing in one go, with Undo. Until then — or once the list or
+ * preferences change — totals are an estimate from each store's flat postage.
  */
-export function WantListView({ stores }: { stores: StoreSummary[] }) {
-  const { items, clearAll, storeShippingOverrides } = useWantList();
+export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates: Record<string, number | null> }) {
+  const { items, clearAll, replaceItems, storeShippingOverrides } = useWantList();
   const [prefs, setPrefs] = useState<SavedPrefs>(() => parseSavedPrefs(null));
+  const [optimised, setOptimised] = useState<Optimised | null>(null);
+  const optimiser = useOptimiser();
 
   useEffect(() => {
     try {
@@ -126,7 +47,7 @@ export function WantListView({ stores }: { stores: StoreSummary[] }) {
     }
   }, []);
 
-  function changePrefs(patch: Partial<SavedPrefs>, pref: string) {
+  function changePrefs(patch: Partial<SavedPrefs>, pref: string): SavedPrefs {
     const next = { ...prefs, ...patch };
     setPrefs(next);
     trackEvent("optimise-pref", { pref });
@@ -135,37 +56,73 @@ export function WantListView({ stores }: { stores: StoreSummary[] }) {
     } catch {
       // not persisted; still applies this visit
     }
+    return next;
   }
 
-  const body = useMemo(
-    () => items.length > 0
-      ? JSON.stringify({ lines: toLines(items), prefs: requestPrefs(prefs, storeShippingOverrides) })
-      : null,
-    [items, prefs, storeShippingOverrides],
-  );
-  const plan = useOptimisePlan(body);
-  const itemsById = new Map(items.map((i) => [i.id, i]));
+  const prefsKey = (p: SavedPrefs) => JSON.stringify(requestPrefs(p, storeShippingOverrides));
+  // The plan still describes the list only while neither the list nor the prefs have moved.
+  const fresh = optimised !== null && optimised.after === JSON.stringify(items) && optimised.prefs === prefsKey(prefs);
 
-  // A plan for an older version of the list still places its cards; cards added
-  // since then wait for the re-run that's already on its way.
-  const planned = plan.data !== null;
-  const storeList: PlanStore[] = plan.data ? plan.data.plan.stores : baselineStores(items);
-  const unavailable = (plan.data?.unavailable ?? []).filter((u) => itemsById.has(u.lineId));
-  // Cards whose copies the plan buys from more than one store.
-  const unitsPerLine = new Map<string, number>();
-  for (const u of storeList.flatMap((s) => s.units)) unitsPerLine.set(u.lineId, (unitsPerLine.get(u.lineId) ?? 0) + 1);
-  const splitLines = new Set([...unitsPerLine].filter(([, n]) => n > 1).map(([id]) => id));
-  const copies = items.reduce((n, i) => n + itemQty(i), 0);
+  async function optimise(withPrefs: SavedPrefs = prefs) {
+    const data = await optimiser.run(JSON.stringify({ lines: toLines(items), prefs: requestPrefs(withPrefs, storeShippingOverrides) }));
+    if (!data) return;
+    const after = applyPlan(items, data);
+    // Chained runs (a store-count chip, "Don't use this store") keep the original list for Undo.
+    const before = optimised && fresh ? optimised.before : items;
+    replaceItems(after);
+    setOptimised({ data, before, after: JSON.stringify(after), prefs: prefsKey(withPrefs) });
+    trackEvent("optimise-apply", {
+      version: "v2",
+      lines: items.length,
+      stores: data.plan.totals.storeCount,
+      saving: data.savingsCents === null ? null : Math.round(data.savingsCents / 100),
+    });
+  }
+
+  function undo() {
+    if (!optimised) return;
+    replaceItems(optimised.before);
+    setOptimised(null);
+    trackEvent("optimise-undo");
+  }
 
   function handleExclude(store: PlanStore) {
-    changePrefs({ excludeStores: [...prefs.excludeStores, store.storeId] }, "stores");
     trackEvent("optimise-exclude-store", { store: store.storeId });
+    optimise(changePrefs({ excludeStores: [...prefs.excludeStores, store.storeId] }, "stores"));
   }
 
   function handleMaxStores(n: number | null) {
-    changePrefs({ maxStores: n }, "max-stores");
     trackEvent("optimise-alt", { stores: n });
+    optimise(changePrefs({ maxStores: n }, "max-stores"));
   }
+
+  const itemsById = new Map(items.map((i) => [i.id, i]));
+  const flatCents = (storeId: string) => {
+    const aud = storeShippingOverrides[storeId] ?? rates[storeId];
+    return aud == null ? null : Math.round(aud * 100);
+  };
+  const plan = fresh ? optimised.data : null;
+  // Exact postage, waivers and free-postage gaps from the plan when it's current.
+  const storeList = listStores(items, flatCents).map((s) => {
+    const p = plan?.plan.stores.find((ps) => ps.storeId === s.storeId);
+    return p ? { ...s, postageCents: p.postageCents, postageWaived: p.postageWaived, freeShippingGapCents: p.freeShippingGapCents } : s;
+  });
+  const estimate = storeList.reduce((sum, s) => sum + s.subtotalCents + s.postageCents, 0);
+  const postage = storeList.reduce((sum, s) => sum + s.postageCents, 0);
+
+  // Flags describe what the plan changed, keyed by the item each planned listing became.
+  const rowFlags = new Map<string, RowFlags>();
+  if (plan && optimised) {
+    const before = new Map(optimised.before.map((i) => [i.id, i]));
+    for (const u of plan.plan.stores.flatMap((s) => s.units)) {
+      rowFlags.set(wantListItemId(u.offer.printingId, u.offer.storeId, u.offer.url), {
+        flags: u.flags, prevCondition: before.get(u.lineId)?.condition ?? null,
+      });
+    }
+  }
+  const unavailable = plan?.unavailable ?? [];
+  const copies = items.reduce((n, i) => n + itemQty(i), 0);
+  const flatStores = storeList.filter((s) => s.kind === "flat").length;
 
   return (
     <CardPreviewProvider>
@@ -178,7 +135,9 @@ export function WantListView({ stores }: { stores: StoreSummary[] }) {
             )}
           </div>
           {items.length > 0 && (
-            <button onClick={clearAll} className="text-xs text-cream-dim hover:text-red-400 transition-colors">Clear all</button>
+            <button onClick={() => { clearAll(); setOptimised(null); }} className="text-xs text-cream-dim hover:text-red-400 transition-colors">
+              Clear all
+            </button>
           )}
         </div>
 
@@ -189,47 +148,106 @@ export function WantListView({ stores }: { stores: StoreSummary[] }) {
           </div>
         ) : (
           <>
-            <Summary
-              data={plan.data}
-              loading={plan.loading}
-              error={plan.error}
-              onRetry={plan.retry}
-              maxStores={prefs.maxStores}
-              onMaxStores={handleMaxStores}
-            />
+            {/* Sticky, so the total and Optimise stay in reach while scrolling on a phone. */}
+            <div className="sticky top-0 z-20 -mx-4 mb-3 border-b border-subtle bg-bg/95 px-4 py-2.5 backdrop-blur" aria-live="polite">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-xl font-bold text-price">
+                      {plan ? cents(plan.plan.totals.totalCents) : `~${cents(estimate)}`}
+                    </span>
+                    <span className="text-sm text-cream-dim">
+                      {plural(plan ? plan.plan.totals.storeCount : flatStores, "store")} · postage {cents(plan ? plan.plan.totals.postageCents : postage)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-cream-dim">
+                    {plan ? (
+                      <>
+                        {plan.savingsCents !== null && plan.savingsCents > 0
+                          ? <span className="text-green-400">Optimised — saved {cents(plan.savingsCents)}. </span>
+                          : <span>Optimised — {plan.savingsCents === 0 ? "already the cheapest. " : "done. "}</span>}
+                        <button onClick={undo} className="text-accent-light hover:underline">Undo</button>
+                      </>
+                    ) : optimised ? (
+                      "List or preferences changed — optimise again for the cheapest plan."
+                    ) : (
+                      "Estimated. Optimise to find the cheapest stores for your preferences."
+                    )}
+                  </p>
+                </div>
+                <button
+                  onClick={() => optimise()}
+                  disabled={optimiser.loading || fresh}
+                  className="shrink-0 rounded-lg bg-cta px-4 py-2 text-sm font-semibold text-white hover:bg-price disabled:opacity-60 disabled:hover:bg-cta transition-colors"
+                >
+                  {optimiser.loading ? "Optimising…" : fresh ? "Optimised ✓" : "✦ Optimise"}
+                </button>
+              </div>
+
+              {optimiser.error && (
+                <div role="alert" className="mt-1 flex flex-wrap items-center gap-3 text-sm">
+                  <span className="text-red-400">{optimiser.error}</span>
+                  <button onClick={() => optimise()} className="text-accent-light hover:underline">Try again</button>
+                </div>
+              )}
+
+              {plan && (plan.alternatives.length > 0 || prefs.maxStores !== null) && (
+                <div className="-mx-4 mt-2 flex gap-2 overflow-x-auto px-4 pb-0.5" role="group" aria-label="Number of stores">
+                  {[...plan.alternatives.map((a) => ({ n: a.storeCount, total: a.totalCents, active: false })),
+                    { n: plan.plan.totals.storeCount, total: plan.plan.totals.totalCents, active: true }].map((c) => (
+                    <button
+                      key={c.n}
+                      onClick={() => !c.active && handleMaxStores(c.n)}
+                      aria-pressed={c.active}
+                      className={`shrink-0 rounded-full border px-3 py-1 text-xs transition-colors ${
+                        c.active ? "border-accent bg-accent/10 text-accent-light" : "border-subtle text-cream-dim hover:text-cream"
+                      }`}
+                    >
+                      {plural(c.n, "store")} · {cents(c.total)}
+                    </button>
+                  ))}
+                  {prefs.maxStores !== null && (
+                    <button onClick={() => handleMaxStores(null)} className="shrink-0 rounded-full border border-subtle px-3 py-1 text-xs text-cream-dim hover:text-cream">
+                      Any number
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* One row on a phone, scrolled sideways, rather than three rows of pills. */}
             <div className="-mx-4 mb-4 overflow-x-auto px-4 sm:mx-0 sm:overflow-visible sm:px-0">
               <PrefsBar prefs={prefs} stores={stores} onChange={changePrefs} />
             </div>
 
-            <div className={`mb-8 space-y-3 transition-opacity ${plan.loading && planned ? "opacity-70" : ""}`}>
+            {unavailable.length > 0 && (
+              <div className="mb-3 rounded-lg border border-red-500/30 bg-surface px-3 py-2.5 text-sm">
+                <p className="font-semibold text-cream">Couldn’t find a better listing for</p>
+                <ul className="text-cream-dim">
+                  {unavailable.map((u) => (
+                    <li key={u.lineId}>
+                      <a href={cardHref(itemsById.get(u.lineId)?.cardSlug, u.cardId)} className="text-cream hover:text-accent">{u.cardName}</a>
+                      {" "}— {u.reason === "short" ? `${u.missing} short, ` : ""}{UNAVAILABLE_REASON[u.reason]}; left as it was
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="mb-8 space-y-3">
               {storeList.map((store) => (
                 <React.Fragment key={store.storeId}>
                   {/* EPN / ACL: disclosure must directly precede the affiliate links */}
                   {store.storeId === "ebay_au" && <AffiliateDisclosure className="!mb-2 px-1" />}
-                  <StoreSection store={store} itemsById={itemsById} splitLines={splitLines} planned={planned} onExclude={() => handleExclude(store)} />
+                  <StoreSection
+                    store={store}
+                    itemsById={itemsById}
+                    flagsFor={(id) => rowFlags.get(id)}
+                    exact={plan !== null}
+                    onExclude={() => handleExclude(store)}
+                  />
                 </React.Fragment>
               ))}
-
-              {unavailable.length > 0 && (
-                <section className="rounded-lg border border-red-500/30 bg-surface" aria-label="Can't buy right now">
-                  <h3 className="border-b border-subtle px-3 py-2.5 font-semibold text-cream">Can’t buy right now</h3>
-                  <ul>
-                    {unavailable.map((u) => {
-                      const item = itemsById.get(u.lineId)!;
-                      return (
-                        <CardRow
-                          key={u.lineId}
-                          unit={addedListing(item, u.missing)}
-                          item={item}
-                          note={u.reason === "short" ? `${u.missing} short — ${UNAVAILABLE_REASON.short}` : UNAVAILABLE_REASON[u.reason]}
-                        />
-                      );
-                    })}
-                  </ul>
-                </section>
-              )}
             </div>
           </>
         )}
@@ -238,10 +256,4 @@ export function WantListView({ stores }: { stores: StoreSummary[] }) {
       </div>
     </CardPreviewProvider>
   );
-}
-
-/** A card the plan can't buy, shown at the listing it was added at — with no buy link, since it's gone or ruled out. */
-function addedListing(item: WantListItem, qty: number): PlanUnit {
-  const unit = baselineStores([{ ...item, qty }])[0].units[0];
-  return { ...unit, offer: { ...unit.offer, url: null } };
 }

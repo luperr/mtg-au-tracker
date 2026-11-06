@@ -42,20 +42,21 @@ const faqs: FaqItem[] = [
         </div>
 
         <div>
-          <p className="font-semibold text-cream mb-1">3. Read the plan</p>
+          <p className="font-semibold text-cream mb-1">3. Optimise</p>
           <p>
-            Your Want List is laid out as the cheapest way to buy it: each card sits under the store
-            to buy it from, with buy links, postage, and the total at the top. It updates whenever
-            you change a quantity or a preference. Buttons like &ldquo;2 stores · $48.10&rdquo; show
-            what ordering from fewer stores would cost. Anything that differs from the listing you
-            added — a different printing, a lower condition, stock the store doesn&apos;t confirm —
-            is flagged on the card.
+            Hit <strong className="text-cream">Optimise</strong>. Every card moves to the cheapest
+            listing for your preferences, grouped under the store to buy it from, with the total and
+            postage at the top — and <strong className="text-cream">Undo</strong> if you&apos;d rather
+            keep your list as it was. Buttons like &ldquo;2 stores · $48.10&rdquo; show what ordering
+            from fewer stores would cost. Anything that changed — a different printing, a lower
+            condition, stock the store doesn&apos;t confirm — is flagged on the card. Change a
+            quantity or a preference and optimise again.
           </p>
         </div>
 
         <p className="text-sm text-cream-dim">
           Only in-stock listings are considered. Cards that can&apos;t be bought — out of stock, or
-          nothing matching your preferences — are listed separately so you can change or remove them.
+          nothing matching your preferences — are left as they were and listed after optimising.
         </p>
       </div>
     ),

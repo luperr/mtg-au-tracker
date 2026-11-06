@@ -2,20 +2,20 @@
 // the optimiser's API. Pure, relative imports only, so vitest resolves it without
 // path aliases.
 //
-// An item is a card the user wants (qty, printing mode) plus the listing it was
-// added at. The page shows the optimiser's plan, not that listing; the listing
-// stays as the baseline the plan's savings are measured against.
+// An item is a card the user wants (qty, printing mode) plus the listing it's
+// bought from. Running the optimiser moves each item to its planned listing
+// (`applyPlan`); until then it's the listing it was added at.
 
 import { MAX_CARD_QTY } from "../config";
-import { DEFAULT_PREFS, type Offer, type OptimiseLine, type PlanStore, type Prefs } from "./types";
-import type { WantListItem } from "../../app/WantListContext";
+import { DEFAULT_PREFS, type Offer, type OptimiseLine, type OptimiseResponse, type PlanStore, type Prefs } from "./types";
+import { wantListItemId, type WantListItem } from "../../app/WantListContext";
 
 export function itemQty(item: Pick<WantListItem, "qty">): number {
   const q = item.qty ?? 1;
   return Number.isInteger(q) ? Math.min(Math.max(q, 1), MAX_CARD_QTY) : 1;
 }
 
-/** One engine line per want-list item, with the listing it was added at as the line's current one. */
+/** One engine line per want-list item, with its listing as the line's current one. */
 export function toLines(items: WantListItem[]): OptimiseLine[] {
   return items.map((item) => ({
     lineId: item.id,
@@ -68,11 +68,13 @@ function itemToOffer(item: WantListItem): Offer {
 }
 
 /**
- * The list grouped by the store each card was added from, in the plan's shape,
- * for the moment before the first plan arrives (or if it fails). Postage is
- * unknown here, so it is left at zero and the page doesn't show it.
+ * The list grouped by the store each item is bought from, in the plan's shape.
+ * Postage is an estimate: `flatCents` per store (the user's override, else the
+ * store's flat rate; null = unknown, counted as 0), or each listing's own
+ * postage for per-item stores (eBay). Free-shipping thresholds aren't applied —
+ * only the optimiser's answer is exact.
  */
-export function baselineStores(items: WantListItem[]): PlanStore[] {
+export function listStores(items: WantListItem[], flatCents: (storeId: string) => number | null): PlanStore[] {
   const stores = new Map<string, PlanStore>();
   for (const item of items) {
     const store = stores.get(item.storeId) ?? {
@@ -86,10 +88,76 @@ export function baselineStores(items: WantListItem[]): PlanStore[] {
       flags: { printingChanged: false, conditionChanged: false, conditionUnknown: false, stockUnconfirmed: false },
     });
     store.subtotalCents += qty * offer.priceCents;
+    if (store.kind === "per-item") store.postageCents += qty * (offer.shippingCents ?? 0);
     stores.set(item.storeId, store);
+  }
+  for (const store of stores.values()) {
+    if (store.kind === "flat") store.postageCents = flatCents(store.storeId) ?? 0;
   }
   return [...stores.values()];
 }
+
+function offerToItem(offer: Offer, from: WantListItem, qty: number): WantListItem {
+  return {
+    id: wantListItemId(offer.printingId, offer.storeId, offer.url),
+    cardId: from.cardId,
+    cardSlug: from.cardSlug,
+    cardName: from.cardName,
+    printingId: offer.printingId,
+    setName: offer.setName,
+    setCode: offer.setCode,
+    rarity: offer.rarity,
+    isFoil: offer.isFoil,
+    finish: offer.finish,
+    borderColor: offer.borderColor,
+    frameEffects: offer.frameEffects,
+    storeId: offer.storeId,
+    storeName: offer.storeName,
+    priceAud: offer.priceCents / 100,
+    shippingAud: offer.shippingCents === null ? null : offer.shippingCents / 100,
+    condition: offer.condition,
+    url: offer.url,
+    imageUri: offer.imageUri,
+    qty,
+    printingMode: from.printingMode,
+  };
+}
+
+/**
+ * The want list after buying the plan. Each item becomes the listings its copies
+ * were planned at; copies the plan couldn't fill stay on the item as it was, so
+ * the list still says how many the user wants. Items the plan doesn't cover are
+ * kept unchanged, and order is preserved.
+ */
+export function applyPlan(items: WantListItem[], res: OptimiseResponse): WantListItem[] {
+  const unitsByLine = new Map<string, { offer: Offer; qty: number }[]>();
+  for (const unit of res.plan.stores.flatMap((s) => s.units)) {
+    const units = unitsByLine.get(unit.lineId) ?? [];
+    units.push(unit);
+    unitsByLine.set(unit.lineId, units);
+  }
+
+  const out = new Map<string, WantListItem>();
+  const add = (item: WantListItem): void => {
+    const existing = out.get(item.id);
+    out.set(item.id, existing ? { ...existing, qty: itemQty(existing) + itemQty(item) } : item);
+  };
+  for (const item of items) {
+    const units = unitsByLine.get(item.id);
+    if (!units) {
+      add(item);
+      continue;
+    }
+    let bought = 0;
+    for (const u of units) {
+      add(offerToItem(u.offer, item, u.qty));
+      bought += u.qty;
+    }
+    if (bought < itemQty(item)) add({ ...item, qty: itemQty(item) - bought });
+  }
+  return [...out.values()];
+}
+
 
 /**
  * Prefs the user picks on the page. Postage overrides live with the want list

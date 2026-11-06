@@ -79,6 +79,8 @@ interface WantListContextValue {
   addItem: (item: WantListItem) => void;
   removeItem: (id: string) => void;
   updateItem: (id: string, patch: Partial<Pick<WantListItem, "qty" | "printingMode">>) => void;
+  /** Swaps the whole list at once — applying an optimiser plan, or undoing one. */
+  replaceItems: (items: WantListItem[]) => void;
   hasItem: (id: string) => boolean;
   clearAll: () => void;
   totalCount: number;
@@ -160,6 +162,8 @@ export function WantListProvider({ children }: { children: React.ReactNode }) {
     setItems((prev: WantListItem[]) => prev.map((i) => i.id === id ? { ...i, ...patch } : i));
   }, []);
 
+  const replaceItems = useCallback((next: WantListItem[]) => setItems(next), []);
+
   const hasItem = useCallback((id: string) => {
     return items.some((i: WantListItem) => i.id === id);
   }, [items]);
@@ -182,7 +186,7 @@ export function WantListProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <WantListContext.Provider value={{
-      items, addItem, removeItem, updateItem, hasItem, clearAll,
+      items, addItem, removeItem, updateItem, replaceItems, hasItem, clearAll,
       totalCount: items.length, totalPrice,
       storeShippingOverrides, setStoreShipping,
     }}>

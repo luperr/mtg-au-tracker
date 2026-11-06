@@ -7,31 +7,32 @@ import { cardHref, fmtAUD, toSmallImage, trackEvent } from "@/lib/utils";
 import { variantBadgeWithFoil } from "@/lib/variant-utils";
 import { MAX_CARD_QTY } from "@/lib/config";
 import { itemQty } from "@/lib/optimiser/want-list";
-import type { PlanStore, PlanUnit } from "@/lib/optimiser/types";
+import type { PlanStore, PlanUnit, UnitFlags } from "@/lib/optimiser/types";
 import { EditablePostageRow } from "./EditablePostageRow";
 import { useCardHover } from "./CardPreview";
 
 const cents = (c: number) => fmtAUD(c / 100);
 
-/** What changed from the listing the card was added at, as small warning chips. */
-function Flags({ unit, item }: { unit: PlanUnit; item: WantListItem }) {
+/** What the last optimise changed about a card, as small warning chips. */
+export type RowFlags = { flags: UnitFlags; prevCondition: string | null };
+
+function Flags({ unit, flags }: { unit: PlanUnit; flags: RowFlags }) {
   const chips: string[] = [];
-  if (unit.flags.printingChanged) chips.push("different printing");
-  if (unit.flags.conditionChanged && !unit.flags.conditionUnknown) chips.push(`${item.condition ?? "?"} → ${unit.offer.condition}`);
-  if (unit.flags.conditionUnknown) chips.push("condition not stated");
-  if (unit.flags.stockUnconfirmed) chips.push(`stock for ${unit.qty} not confirmed`);
+  const f = flags.flags;
+  if (f.printingChanged) chips.push("different printing");
+  if (f.conditionChanged && !f.conditionUnknown) chips.push(`${flags.prevCondition ?? "?"} → ${unit.offer.condition}`);
+  if (f.conditionUnknown) chips.push("condition not stated");
+  if (f.stockUnconfirmed) chips.push(`stock for ${unit.qty} not confirmed`);
   return chips.map((c) => (
     <span key={c} className="rounded border border-amber-500/40 px-1.5 py-px text-[11px] text-amber-300">{c}</span>
   ));
 }
 
 /**
- * One card in the list, shown at the listing the plan buys it from. The controls
- * edit what the user wants (qty, printing mode); the plan re-runs around them.
- * When the plan `split`s a card across stores, the name says how many are
- * bought here. `note` explains a card the plan can't buy.
+ * One card on the list, at the listing it's bought from. The controls edit what
+ * the user wants (qty, printing mode); Optimise then finds where to buy it.
  */
-export function CardRow({ unit, item, split = false, note }: { unit: PlanUnit; item: WantListItem; split?: boolean; note?: string }) {
+export function CardRow({ unit, item, flags }: { unit: PlanUnit; item: WantListItem; flags?: RowFlags }) {
   const { updateItem, removeItem } = useWantList();
   const hover = useCardHover()(unit.offer.imageUri ?? item.imageUri);
   const qty = itemQty(item);
@@ -50,14 +51,13 @@ export function CardRow({ unit, item, split = false, note }: { unit: PlanUnit; i
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <a href={cardHref(item.cardSlug, item.cardId)} className="font-medium text-cream hover:text-accent" {...hover}>
-              {split ? `${unit.qty}× ` : ""}{item.cardName}
+              {item.cardName}
             </a>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-cream-dim">
               <span>{unit.offer.setName}</span>
               {badge && <span className="text-accent-light">{badge}</span>}
               {unit.offer.condition && <span>{unit.offer.condition}</span>}
-              {note && <span>{note}</span>}
-              <Flags unit={unit} item={item} />
+              {flags && <Flags unit={unit} flags={flags} />}
             </div>
           </div>
           <div className="shrink-0 text-right">
@@ -127,21 +127,20 @@ export function CardRow({ unit, item, split = false, note }: { unit: PlanUnit; i
 }
 
 /**
- * A store in the plan: what to buy there, its postage, and a way to drop it.
- * `planned` is false for the fallback grouping shown before a plan arrives,
- * where postage isn't known.
+ * A store on the list: what's bought there, its postage, and a way to drop it.
+ * `exact` says the postage comes from the optimiser rather than an estimate.
  */
 export function StoreSection({
   store,
   itemsById,
-  splitLines,
-  planned,
+  flagsFor,
+  exact,
   onExclude,
 }: {
   store: PlanStore;
   itemsById: Map<string, WantListItem>;
-  splitLines: Set<string>;
-  planned: boolean;
+  flagsFor: (itemId: string) => RowFlags | undefined;
+  exact: boolean;
   onExclude: () => void;
 }) {
   const { storeShippingOverrides, setStoreShipping } = useWantList();
@@ -162,7 +161,7 @@ export function StoreSection({
         <h3 className="font-semibold text-cream">{store.storeName}</h3>
         <span className="shrink-0 text-sm text-cream-dim">
           {copies} card{copies === 1 ? "" : "s"}
-          {planned && <> · <span className="font-semibold text-price">{cents(store.subtotalCents + store.postageCents)}</span></>}
+          {" · "}<span className="font-semibold text-price">{exact ? "" : "~"}{cents(store.subtotalCents + store.postageCents)}</span>
           <span className="ml-2 text-xs opacity-60" aria-hidden>{collapsed ? "▶" : "▼"}</span>
         </span>
       </button>
@@ -175,34 +174,32 @@ export function StoreSection({
                 key={`${u.lineId}-${u.offer.url}`}
                 unit={u}
                 item={itemsById.get(u.lineId)!}
-                split={splitLines.has(u.lineId)}
+                flags={flagsFor(u.lineId)}
               />
             ))}
           </ul>
 
-          {planned && (
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-subtle bg-cream-muted/50 px-3 py-2 rounded-b-lg text-xs">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-cream-dim">
-                {store.kind === "per-item" ? (
-                  <span>Postage {cents(store.postageCents)} (each listing ships separately)</span>
-                ) : store.postageWaived ? (
-                  <span className="text-green-400">Free postage at this order size</span>
-                ) : (
-                  <EditablePostageRow
-                    amount={store.postageCents / 100}
-                    isOverride={store.storeId in storeShippingOverrides}
-                    onSave={(amt) => setStoreShipping(store.storeId, amt)}
-                  />
-                )}
-                {store.freeShippingGapCents !== null && (
-                  <span>Spend {cents(store.freeShippingGapCents)} more here for free postage</span>
-                )}
-              </div>
-              <button onClick={onExclude} className="text-cream-dim hover:text-red-400 transition-colors">
-                {store.kind === "per-item" ? "Don’t use eBay" : "Don’t use this store"}
-              </button>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-subtle bg-cream-muted/50 px-3 py-2 rounded-b-lg text-xs">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-cream-dim">
+              {store.kind === "per-item" ? (
+                <span>Postage {cents(store.postageCents)} (each listing ships separately)</span>
+              ) : store.postageWaived ? (
+                <span className="text-green-400">Free postage at this order size</span>
+              ) : (
+                <EditablePostageRow
+                  amount={store.postageCents / 100}
+                  isOverride={store.storeId in storeShippingOverrides}
+                  onSave={(amt) => setStoreShipping(store.storeId, amt)}
+                />
+              )}
+              {store.freeShippingGapCents !== null && (
+                <span>Spend {cents(store.freeShippingGapCents)} more here for free postage</span>
+              )}
             </div>
-          )}
+            <button onClick={onExclude} className="text-cream-dim hover:text-red-400 transition-colors">
+              {store.kind === "per-item" ? "Don’t use eBay" : "Don’t use this store"}
+            </button>
+          </div>
         </>
       )}
     </section>

@@ -370,23 +370,24 @@ Listing-grained search with a filter sidebar (store, set, condition, finish, tre
 
 ### Want List (`apps/web/src/app/want-list/WantListView.tsx`)
 - Route: `/want-list`, context: `src/app/WantListContext.tsx`, badge: `src/app/WantListBadge.tsx`
-- **The list is the plan.** Each card sits under the store the optimiser buys it from, with its
-  qty stepper, "Any printing / This printing" switch, buy link and remove in place; the sticky
-  summary carries the total, postage, savings and store-count chips. There is nothing to apply —
-  the plan re-runs (debounced 500ms, memoised per request) whenever the list, prefs or postage
-  change. Until the first answer arrives, cards sit under the store they were added from
-  (`baselineStores()`); the last plan is kept in localStorage `scrymarket_optimiser_last_plan` and
-  shown on a revisit while it refreshes.
-- **An item is a want plus a baseline.** `qty` (absent = 1) and `printingMode` (`"exact"` | `"any"`,
-  absent = any) say what the user wants; the listing fields are where it was added, which is what
-  the plan's savings are measured against (`current`, re-priced server-side). Import sets qty, and
-  `exact` only when the line named a set.
+- **One view.** Cards are grouped by the store they're bought from (`listStores()`), each with its
+  qty stepper, "Any / This printing" switch, buy link and remove in place. A sticky summary holds
+  the total and the **Optimise** button — the optimiser only runs when pressed (the user wants it
+  on a button, not automatic). Optimise moves every card to its planned listing at once
+  (`applyPlan()`), with **Undo** back to the list before the first run; store-count chips and
+  "Don't use this store" re-run it. Until it runs, or once the list or prefs change, totals are an
+  estimate (flat postage per store, eBay's per listing, no thresholds) marked with `~`.
+- **An item is a want plus the listing it's bought from.** `qty` (absent = 1) and `printingMode`
+  (`"exact"` | `"any"`, absent = any) say what the user wants; the listing is where it was added
+  until Optimise moves it, and is the `current` the plan's savings are measured against
+  (re-priced server-side). Import sets qty, and `exact` only when the line named a set.
 - Prefs: condition (default LP or better), finish (default any), max stores, and "Buy from" — a
   checklist of every store, eBay included, all ticked, saved as the *unticked* ids
   (`excludeStores`) so a store added later starts ticked. localStorage `scrymarket_optimiser_prefs`;
   per-store postage edits stay in `scrymarket_shipping_overrides`.
-- Umami: `optimise-run` (`version: "v2"`, kept so history separates from the old optimiser),
-  `optimise-pref`, `optimise-alt`, `optimise-exclude-store`, `optimise-line-mode`.
+- Umami: `optimise-run` / `optimise-apply` (`version: "v2"`, kept so history separates from the
+  old optimiser), `optimise-undo`, `optimise-pref`, `optimise-alt`, `optimise-exclude-store`,
+  `optimise-line-mode`.
 - There is no flag or old version to fall back to: the user base doesn't warrant one. Roll back a
   bad release by pinning the previous image (`./scripts/deploy.sh main-<sha>`).
 - **Optimiser engine** (`lib/optimiser/`, `POST /api/optimize`). Seeds → local search → B&B under
