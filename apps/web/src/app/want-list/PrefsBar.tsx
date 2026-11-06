@@ -24,19 +24,17 @@ const FINISHES: { value: SavedPrefs["finish"]; label: string }[] = [
  * a checklist with everything ticked — eBay included — and unticking one leaves
  * it out; it's stored as the unticked ids, so a new store starts ticked.
  *
- * Max stores is a counter from 1 up to the ticked stores (eBay isn't counted),
- * where the top is "Any". Stepping down from Any starts one below `planStores`,
- * the stores the current plan uses, rather than from the whole roster.
+ * Max stores is "All" (no limit) or a number from 1 up to the ticked stores
+ * (eBay isn't counted). All sits below 1: + from All gives 1, − from 1 gives
+ * All. The number can be typed too; empty or 0 means All.
  */
 export function PrefsBar({
   prefs,
   stores,
-  planStores,
   onChange,
 }: {
   prefs: SavedPrefs;
   stores: StoreSummary[];
-  planStores?: number;
   onChange: (patch: Partial<SavedPrefs>, pref: string) => void;
 }) {
   const condition = CONDITIONS.find((c) => c.value === prefs.minCondition)!;
@@ -48,10 +46,9 @@ export function PrefsBar({
   const available = storeList.filter((s) => s.id !== "ebay_au" && !excluded.has(s.id)).length;
   const max = prefs.maxStores;
 
-  function stepMax(delta: -1 | 1) {
-    const from = max ?? Math.min(available, planStores ?? available);
-    const next = Math.max(1, from + delta);
-    onChange({ maxStores: next >= available ? null : next }, "max-stores");
+  function setMax(n: number | null) {
+    const valid = n !== null && Number.isFinite(n) && n >= 1;
+    onChange({ maxStores: valid ? Math.min(Math.floor(n), Math.max(available, 1)) : null }, "max-stores");
   }
 
   function toggleStore(id: string) {
@@ -86,17 +83,27 @@ export function PrefsBar({
       >
         <span>Max stores</span>
         <button
-          onClick={() => stepMax(-1)}
-          disabled={max === 1 || available <= 1}
+          onClick={() => setMax(max === null || max <= 1 ? null : max - 1)}
+          disabled={max === null}
           aria-label="Fewer stores"
           className="flex h-6 w-6 items-center justify-center rounded text-sm hover:bg-muted disabled:opacity-30"
         >
           −
         </button>
-        <span className="min-w-[3ch] text-center tabular-nums text-cream" aria-live="polite">{max ?? "Any"}</span>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={available}
+          value={max ?? ""}
+          placeholder="All"
+          onChange={(e) => setMax(e.target.value === "" ? null : Number(e.target.value))}
+          aria-label="Max stores (empty for all)"
+          className="w-[4ch] bg-transparent text-center tabular-nums text-cream placeholder:text-cream [appearance:textfield] focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
         <button
-          onClick={() => stepMax(1)}
-          disabled={max === null}
+          onClick={() => setMax(max === null ? 1 : max + 1)}
+          disabled={max !== null && max >= available}
           aria-label="More stores"
           className="flex h-6 w-6 items-center justify-center rounded text-sm hover:bg-muted disabled:opacity-30"
         >
