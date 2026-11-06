@@ -7,6 +7,7 @@ import { useWantList, type WantListItem } from "@/app/WantListContext";
 import { cardHref, fmtAUD } from "@/lib/utils";
 import { variantBadgeWithFoil } from "@/lib/variant-utils";
 import { EditablePostageRow } from "../EditablePostageRow";
+import { useCardHover } from "./CardPreview";
 import type { OptimiseResponse, PlanStore, PlanUnit, Unavailable } from "@/lib/optimiser/types";
 
 const cents = (c: number) => fmtAUD(c / 100);
@@ -64,6 +65,7 @@ function StoreCard({
   onExclude: () => void;
 }) {
   const { storeShippingOverrides, setStoreShipping } = useWantList();
+  const hover = useCardHover();
   const copies = store.units.reduce((n, u) => n + u.qty, 0);
 
   return (
@@ -82,7 +84,8 @@ function StoreCard({
             <li key={`${u.lineId}-${u.offer.url}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-subtle/60 px-4 py-2 last:border-0">
               <span className="w-8 shrink-0 text-sm font-semibold text-cream">{u.qty}×</span>
               <div className="min-w-0 flex-1">
-                <a href={cardHref(itemsById.get(u.lineId)?.cardSlug, u.cardId)} className="font-medium text-cream hover:text-accent">
+                {/* The planned printing's art, which may differ from the one on the list. */}
+                <a href={cardHref(itemsById.get(u.lineId)?.cardSlug, u.cardId)} className="font-medium text-cream hover:text-accent" {...hover(u.offer.imageUri)}>
                   {u.cardName}
                 </a>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-cream-dim">
@@ -129,7 +132,7 @@ function StoreCard({
           )}
         </div>
         <button onClick={onExclude} className="text-cream-dim hover:text-red-400 transition-colors">
-          {store.kind === "per-item" ? "Leave out eBay" : "Don’t use this store"}
+          {store.kind === "per-item" ? "Don’t use eBay" : "Don’t use this store"}
         </button>
       </footer>
     </section>
@@ -156,6 +159,7 @@ export function PlanView({
   onApply: () => void;
 }) {
   const { totals } = data.plan;
+  const hover = useCardHover();
   const itemsById = new Map(items.map((i) => [i.id, i]));
   const unchanged = data.savingsCents === 0;
   const chips = [
@@ -223,7 +227,7 @@ export function PlanView({
           <ul className="space-y-0.5 text-cream-dim">
             {data.unavailable.map((u) => (
               <li key={u.lineId}>
-                <a href={cardHref(itemsById.get(u.lineId)?.cardSlug, u.cardId)} className="text-cream hover:text-accent">{u.cardName}</a>
+                <a href={cardHref(itemsById.get(u.lineId)?.cardSlug, u.cardId)} className="text-cream hover:text-accent" {...hover(itemsById.get(u.lineId)?.imageUri ?? null)}>{u.cardName}</a>
                 {" "}— {u.reason === "short" ? `${u.missing} short, ` : ""}{UNAVAILABLE_REASON[u.reason]}
               </li>
             ))}

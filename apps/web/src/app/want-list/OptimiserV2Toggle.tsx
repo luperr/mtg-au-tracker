@@ -21,16 +21,16 @@ export function OptimiserV2Toggle({ on }: { on: boolean }) {
     <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-accent-border bg-accent-muted/40 px-4 py-2.5 text-sm">
       <p className="text-cream-dim">
         {on ? (
-          <><span className="font-semibold text-cream">New optimiser (beta).</span> Something off? <a href="/contact" className="text-link hover:underline">Tell us</a>.</>
+          <><span className="font-semibold text-cream">New optimiser:</span> quantities, preferences and a store-by-store plan. Something off? <a href="/contact" className="text-link hover:underline">Tell us</a>.</>
         ) : (
-          <><span className="font-semibold text-cream">Try the new optimiser (beta):</span> quantities, condition and foil preferences, and a store-by-store buying plan.</>
+          <><span className="font-semibold text-cream">Try the new optimiser:</span> quantities, condition and foil preferences, and a store-by-store buying plan.</>
         )}
       </p>
       <button
         onClick={toggle}
         className="shrink-0 rounded-lg border border-accent-border px-3 py-1.5 text-xs font-semibold text-accent-light hover:bg-accent-muted transition-colors"
       >
-        {on ? "Switch back" : "Try it"}
+        {on ? "Switch back to the old one" : "Try it"}
       </button>
     </div>
   );

@@ -26,7 +26,7 @@ export interface WantListItem {
   qty?: number;
   /**
    * "exact": this printing only. "any": any printing will do — the v2 optimiser may
-   * swap it. Absent = "exact", so nothing added before v2 changes printing silently.
+   * swap it, and flags it when it does. Absent = "any".
    */
   printingMode?: "exact" | "any";
 }

@@ -21,7 +21,7 @@ export function toLines(items: WantListItem[]): OptimiseLine[] {
     cardId: item.cardId,
     cardName: item.cardName,
     qty: itemQty(item),
-    printing: item.printingMode ?? "exact",
+    printing: item.printingMode ?? "any",
     printingId: item.printingId,
     current: {
       printingId: item.printingId,
@@ -37,6 +37,8 @@ export function toLines(items: WantListItem[]): OptimiseLine[] {
 export function requestPrefs(saved: SavedPrefs, postageOverridesAud: Record<string, number>): Prefs {
   return {
     ...saved,
+    // eBay is one of the stores the user can untick, so it rides in excludeStores.
+    includeEbay: true,
     postageOverrides: Object.fromEntries(
       Object.entries(postageOverridesAud).map(([storeId, aud]) => [storeId, Math.round(aud * 100)])),
   };
@@ -103,8 +105,11 @@ export function applyPlan(items: WantListItem[], res: OptimiseResponse): WantLis
   return [...out.values()];
 }
 
-/** Prefs the user picks on the page; postage overrides live with the want list instead. */
-export type SavedPrefs = Omit<Prefs, "postageOverrides">;
+/**
+ * Prefs the user picks on the page. Postage overrides live with the want list
+ * instead, and eBay is just another store in `excludeStores`.
+ */
+export type SavedPrefs = Omit<Prefs, "postageOverrides" | "includeEbay">;
 
 export const PREFS_KEY = "scrymarket_optimiser_prefs";
 
@@ -112,7 +117,6 @@ const DEFAULT_SAVED: SavedPrefs = {
   minCondition: DEFAULT_PREFS.minCondition,
   finish: DEFAULT_PREFS.finish,
   excludeStores: [],
-  includeEbay: DEFAULT_PREFS.includeEbay,
   maxStores: DEFAULT_PREFS.maxStores,
 };
 
@@ -128,11 +132,15 @@ export function parseSavedPrefs(raw: string | null): SavedPrefs {
   // Spelled out rather than imported: @mtg-au/shared's index pulls pino into the client bundle.
   const conditions: readonly unknown[] = ["NM", "LP", "MP", "HP", "DMG", "any"] satisfies SavedPrefs["minCondition"][];
   const finishes: readonly unknown[] = ["nonfoil", "foil", "etched", "any"];
+  const excludeStores = Array.isArray(v.excludeStores)
+    ? v.excludeStores.filter((s): s is string => typeof s === "string" && s !== "")
+    : [];
+  // Saved before eBay moved into the store list.
+  if (v.includeEbay === false && !excludeStores.includes("ebay_au")) excludeStores.push("ebay_au");
   return {
     minCondition: conditions.includes(v.minCondition) ? v.minCondition as SavedPrefs["minCondition"] : DEFAULT_SAVED.minCondition,
     finish: finishes.includes(v.finish) ? v.finish as SavedPrefs["finish"] : DEFAULT_SAVED.finish,
-    excludeStores: Array.isArray(v.excludeStores) ? v.excludeStores.filter((s): s is string => typeof s === "string" && s !== "") : [],
-    includeEbay: typeof v.includeEbay === "boolean" ? v.includeEbay : DEFAULT_SAVED.includeEbay,
+    excludeStores,
     maxStores: Number.isInteger(v.maxStores) && (v.maxStores as number) >= 1 ? v.maxStores as number : null,
   };
 }

@@ -112,12 +112,13 @@ export function searchV2Default(): boolean {
 }
 
 /**
- * OPTIMISER_V2_DEFAULT=true makes the v2 want list (quantities, preferences, the
- * per-store plan) the default for anyone who hasn't chosen with its toggle. Runtime,
- * like SEARCH_V2_DEFAULT, so flipping it is a restart. **Server only.**
+ * The v2 want list (quantities, preferences, the per-store plan) is the default for
+ * anyone who hasn't chosen with its toggle. OPTIMISER_V2_DEFAULT=false is the
+ * rollback: v1 for everyone who hasn't opted in. Runtime, so flipping it is a
+ * restart, not a rebuild. **Server only.**
  */
 export function optimiserV2Default(): boolean {
-  return process.env.OPTIMISER_V2_DEFAULT?.trim() === "true";
+  return process.env.OPTIMISER_V2_DEFAULT?.trim() !== "false";
 }
 
 // ── eBay Partner Network (affiliate) ─────────────────────────────────────────

@@ -1,6 +1,6 @@
 "use client";
 
-import { Dropdown, OptionItem, pillClass } from "@/app/Dropdown";
+import { Dropdown, OptionItem } from "@/app/Dropdown";
 import type { SavedPrefs } from "@/lib/optimiser/want-list";
 import type { StoreSummary } from "@/lib/store-shipping";
 
@@ -22,7 +22,9 @@ const MAX_STORES: (number | null)[] = [null, 1, 2, 3, 4, 5];
 
 /**
  * The optimiser's preferences, as the search filter pills. Finish only steers
- * "any printing" cards; a card pinned to its printing already has one.
+ * "any printing" cards; a card pinned to its printing already has one. Stores is
+ * a checklist with everything ticked — eBay included — and unticking one leaves
+ * it out; it's stored as the unticked ids, so a new store starts ticked.
  */
 export function PrefsBar({
   prefs,
@@ -36,12 +38,15 @@ export function PrefsBar({
   const condition = CONDITIONS.find((c) => c.value === prefs.minCondition)!;
   const finish = FINISHES.find((f) => f.value === prefs.finish) ?? FINISHES[0];
   const excluded = new Set(prefs.excludeStores);
+  // eBay last: it's a marketplace, not one shop.
+  const storeList = [...stores.filter((s) => s.id !== "ebay_au"), ...stores.filter((s) => s.id === "ebay_au")];
+  const unticked = storeList.filter((s) => excluded.has(s.id)).length;
 
   function toggleStore(id: string) {
     const next = new Set(excluded);
     if (next.has(id)) next.delete(id);
     else next.add(id);
-    onChange({ excludeStores: [...next] }, "exclude-stores");
+    onChange({ excludeStores: [...next] }, "stores");
   }
 
   return (
@@ -53,7 +58,7 @@ export function PrefsBar({
         ))}
       </Dropdown>
 
-      <Dropdown label={`Finish: ${finish.label}`} active={prefs.finish !== "nonfoil"}>
+      <Dropdown label={`Finish: ${finish.label}`} active={prefs.finish !== "any"}>
         <p className="px-3 pt-2 pb-1 text-xs text-cream-dim">For cards set to “any printing”</p>
         {FINISHES.map((f) => (
           <OptionItem key={f.value} label={f.label} checked={f.value === prefs.finish}
@@ -61,29 +66,28 @@ export function PrefsBar({
         ))}
       </Dropdown>
 
-      <Dropdown label={prefs.maxStores === null ? "Stores: any number" : `Stores: at most ${prefs.maxStores}`} active={prefs.maxStores !== null}>
+      <Dropdown label={prefs.maxStores === null ? "Max stores: any" : `Max stores: ${prefs.maxStores}`} active={prefs.maxStores !== null}>
         {MAX_STORES.map((n) => (
           <OptionItem key={n ?? "any"} label={n === null ? "Any number" : `At most ${n}`} checked={n === prefs.maxStores}
             onClick={() => onChange({ maxStores: n }, "max-stores")} />
         ))}
-        <p className="px-3 pt-1 pb-2 text-xs text-cream-dim">eBay listings aren’t counted — turn eBay off to leave them out.</p>
+        <p className="px-3 pt-1 pb-2 text-xs text-cream-dim">eBay listings aren’t counted — untick eBay under Buy from to leave them out.</p>
       </Dropdown>
 
-      <Dropdown label={excluded.size ? `Skipping ${excluded.size} store${excluded.size === 1 ? "" : "s"}` : "Skip stores"} active={excluded.size > 0}>
+      <Dropdown
+        label={unticked === 0 ? "Buy from: all stores" : `Buy from: ${storeList.length - unticked} of ${storeList.length} stores`}
+        active={unticked > 0}
+      >
+        <div className="flex gap-3 border-b border-subtle px-3 py-2 text-xs">
+          <button onClick={() => onChange({ excludeStores: [] }, "stores")} className="text-accent-light hover:underline">Select all</button>
+          <button onClick={() => onChange({ excludeStores: storeList.map((s) => s.id) }, "stores")} className="text-cream-dim hover:underline">Clear</button>
+        </div>
         <div className="max-h-72 overflow-y-auto">
-          {stores.filter((s) => s.id !== "ebay_au").map((s) => (
-            <OptionItem key={s.id} type="check" label={s.name} checked={excluded.has(s.id)} onClick={() => toggleStore(s.id)} />
+          {storeList.map((s) => (
+            <OptionItem key={s.id} type="check" label={s.name} checked={!excluded.has(s.id)} onClick={() => toggleStore(s.id)} />
           ))}
         </div>
       </Dropdown>
-
-      <button
-        onClick={() => onChange({ includeEbay: !prefs.includeEbay }, "ebay")}
-        aria-pressed={prefs.includeEbay}
-        className={pillClass(prefs.includeEbay, "rounded-lg")}
-      >
-        {prefs.includeEbay ? "eBay: included" : "eBay: off"}
-      </button>
     </div>
   );
 }

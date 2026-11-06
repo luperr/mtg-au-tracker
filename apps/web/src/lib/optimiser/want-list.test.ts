@@ -44,24 +44,25 @@ describe("optimiserV2Enabled", () => {
 });
 
 describe("toLines", () => {
-  it("defaults old items to one exact copy, and sends the price seen in cents", () => {
+  it("defaults items to one copy of any printing, and sends the price seen in cents", () => {
     expect(toLines([item("1")])).toEqual([{
-      lineId: "1", cardId: "card-1", cardName: "Card 1", qty: 1, printing: "exact", printingId: "p1",
+      lineId: "1", cardId: "card-1", cardName: "Card 1", qty: 1, printing: "any", printingId: "p1",
       current: { printingId: "p1", storeId: "a", condition: "NM", url: "u-1", seenCents: 110 },
     }]);
   });
 
   it("carries qty and printing mode, clamping a hand-edited qty", () => {
-    const [a, b] = toLines([item("1", { qty: 4, printingMode: "any" }), item("2", { qty: 1000 })]);
-    expect(a).toMatchObject({ qty: 4, printing: "any" });
+    const [a, b] = toLines([item("1", { qty: 4, printingMode: "exact" }), item("2", { qty: 1000 })]);
+    expect(a).toMatchObject({ qty: 4, printing: "exact" });
     expect(b.qty).toBe(99);
     expect(itemQty({ qty: 2.5 })).toBe(1);
   });
 });
 
 describe("requestPrefs", () => {
-  it("converts postage overrides to cents", () => {
-    expect(requestPrefs(parseSavedPrefs(null), { a: 6.5, b: 0 }).postageOverrides).toEqual({ a: 650, b: 0 });
+  it("converts postage overrides to cents and leaves eBay to excludeStores", () => {
+    const p = requestPrefs({ ...parseSavedPrefs(null), excludeStores: ["ebay_au"] }, { a: 6.5, b: 0 });
+    expect(p).toMatchObject({ postageOverrides: { a: 650, b: 0 }, includeEbay: true, excludeStores: ["ebay_au"] });
   });
 });
 
@@ -97,7 +98,7 @@ describe("applyPlan", () => {
 
 describe("parseSavedPrefs", () => {
   it("defaults when nothing is saved or it's unreadable", () => {
-    const defaults = { minCondition: "LP", finish: "nonfoil", excludeStores: [], includeEbay: true, maxStores: null };
+    const defaults = { minCondition: "LP", finish: "any", excludeStores: [], maxStores: null };
     expect(parseSavedPrefs(null)).toEqual(defaults);
     expect(parseSavedPrefs("{not json")).toEqual(defaults);
     expect(parseSavedPrefs("[1]")).toEqual(defaults);
@@ -105,7 +106,11 @@ describe("parseSavedPrefs", () => {
 
   it("keeps valid fields and drops invalid ones", () => {
     expect(parseSavedPrefs(JSON.stringify({
-      minCondition: "NM", finish: "gold", excludeStores: ["a", 3, ""], includeEbay: false, maxStores: 0,
-    }))).toEqual({ minCondition: "NM", finish: "nonfoil", excludeStores: ["a"], includeEbay: false, maxStores: null });
+      minCondition: "NM", finish: "gold", excludeStores: ["a", 3, ""], maxStores: 0,
+    }))).toEqual({ minCondition: "NM", finish: "any", excludeStores: ["a"], maxStores: null });
+  });
+
+  it("moves an old eBay-off setting into the store list", () => {
+    expect(parseSavedPrefs(JSON.stringify({ includeEbay: false, excludeStores: ["a"] })).excludeStores).toEqual(["a", "ebay_au"]);
   });
 });

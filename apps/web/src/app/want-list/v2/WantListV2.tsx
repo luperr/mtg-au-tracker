@@ -14,6 +14,7 @@ import { ImportCards } from "../ImportCards";
 import { PrefsBar } from "./PrefsBar";
 import { PlanView } from "./PlanView";
 import { useOptimisePlan } from "./useOptimisePlan";
+import { CardPreviewProvider, useCardHover } from "./CardPreview";
 
 /** What the last plan said about the listing the user has now. */
 function currentStatus(item: WantListItem, data: OptimiseResponse | null): ReactNode {
@@ -28,8 +29,9 @@ function currentStatus(item: WantListItem, data: OptimiseResponse | null): React
 
 function LineRow({ item, data }: { item: WantListItem; data: OptimiseResponse | null }) {
   const { updateItem, removeItem } = useWantList();
+  const hover = useCardHover()(item.imageUri);
   const qty = itemQty(item);
-  const mode = item.printingMode ?? "exact";
+  const mode = item.printingMode ?? "any";
   const badge = variantBadgeWithFoil(item);
   const thumb = toSmallImage(item.imageUri);
 
@@ -37,11 +39,11 @@ function LineRow({ item, data }: { item: WantListItem; data: OptimiseResponse | 
     <li className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-subtle/60 px-3 py-2 last:border-0">
       {thumb ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={thumb} alt="" width={32} height={45} className="h-[45px] w-8 shrink-0 rounded-sm object-cover" loading="lazy" />
+        <img src={thumb} alt="" width={32} height={45} className="h-[45px] w-8 shrink-0 rounded-sm object-cover" loading="lazy" {...hover} />
       ) : <span className="h-[45px] w-8 shrink-0 rounded-sm bg-muted" />}
 
       <div className="min-w-0 flex-1 basis-40">
-        <a href={cardHref(item.cardSlug, item.cardId)} className="font-medium text-cream hover:text-accent">{item.cardName}</a>
+        <a href={cardHref(item.cardSlug, item.cardId)} className="font-medium text-cream hover:text-accent" {...hover}>{item.cardName}</a>
         <div className="flex flex-wrap items-center gap-x-2 text-xs text-cream-dim">
           <span>{item.setName}</span>
           {badge && <span className="text-accent-light">{badge}</span>}
@@ -152,12 +154,8 @@ export function WantListV2({ stores, toggle }: { stores: StoreSummary[]; toggle:
   }
 
   function handleExclude(store: PlanStore) {
-    if (store.kind === "per-item") {
-      changePrefs({ includeEbay: false }, "ebay");
-    } else {
-      changePrefs({ excludeStores: [...prefs.excludeStores, store.storeId] }, "exclude-stores");
-      trackEvent("optimise-exclude-store", { store: store.storeId });
-    }
+    changePrefs({ excludeStores: [...prefs.excludeStores, store.storeId] }, "stores");
+    trackEvent("optimise-exclude-store", { store: store.storeId });
   }
 
   function handleMaxStores(n: number | null) {
@@ -166,6 +164,7 @@ export function WantListV2({ stores, toggle }: { stores: StoreSummary[]; toggle:
   }
 
   return (
+    <CardPreviewProvider>
     <div className="mx-auto max-w-3xl">
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
@@ -240,6 +239,7 @@ export function WantListV2({ stores, toggle }: { stores: StoreSummary[]; toggle:
 
       <ImportCards />
     </div>
+    </CardPreviewProvider>
   );
 }
 

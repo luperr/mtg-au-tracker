@@ -377,19 +377,22 @@ Listing-grained search with a filter sidebar (store, set, condition, finish, tre
 - eBay: per-item postage column + subtotal in footer
 - Item ID: `${printingId}-${storeId}-${url ?? ""}` — unique per distinct listing
 - **Optimise feature** (`/api/optimize`): Branch-and-bound over flat-rate store subsets. Flat fees added once per store. Tie-breaking prefers lower flat-rate stores for equal card prices. Per-store shipping overrides sent in POST body and applied server-side. Review modal: lock cards to current printing, re-optimise, apply selected changes.
-- **Want list v2 — beta, opt-in** (`app/want-list/v2/`, client helpers in `lib/optimiser/want-list.ts`).
-  Same rollout as search v2: `optimiser_v2` cookie (`1`/`0`, written by the banner toggle on
-  `/want-list`), absent = `OPTIMISER_V2_DEFAULT` (`optimiserV2Default()`). `page.tsx` picks v1 or v2.
+- **Want list v2 — the default** (`app/want-list/v2/`, client helpers in `lib/optimiser/want-list.ts`).
+  `optimiser_v2` cookie (`1`/`0`, written by the banner toggle on `/want-list`, so anyone can switch
+  back to v1), absent = `optimiserV2Default()`: on unless `OPTIMISER_V2_DEFAULT=false`, which is the
+  rollback. `page.tsx` picks v1 or v2. v1 (`WantListView`, `OptimiseModal`, `/api/optimize`) stays
+  until v2 has run stably; then delete it.
   **One list, not two:** v2 reads optional `qty` and `printingMode` (`"exact"` | `"any"`, absent =
-  exact) on the same `scrymarket_buy_list` items, and v1 ignores them — no second storage key, no
-  migration, toggling loses nothing. Search "+" adds `any`; card-page and listing adds stay exact;
-  import sets qty, and `any` unless the line named a set. Prefs (condition, finish, max stores,
-  skipped stores, eBay) live in localStorage `scrymarket_optimiser_prefs`; postage overrides stay in
+  any) on the same `scrymarket_buy_list` items, and v1 ignores them — no second storage key, no
+  migration, toggling loses nothing. Import sets qty, and `exact` only when the line named a set.
+  Prefs default to LP-or-better and any finish; "Buy from" is a store checklist, eBay included, all
+  ticked, saved as the *unticked* ids (`excludeStores`) so a newly added store starts ticked. They
+  live in localStorage `scrymarket_optimiser_prefs`; postage overrides stay in
   `scrymarket_shipping_overrides`. The plan runs on demand, then re-runs (debounced, memoised per
   request) as the list or prefs change. "Use this plan" rewrites the items via `applyPlan()`.
   Umami: `optimise-run` / `optimise-apply` carry `version: "v1"|"v2"`; v2 adds `optimise-pref`,
-  `optimise-alt`, `optimise-exclude-store`, `optimise-line-mode`, `optimiser-v2-toggle`. Before
-  flipping the default, compare apply rates and check Loki `component="api-optimize"` `version=2`.
+  `optimise-alt`, `optimise-exclude-store`, `optimise-line-mode`, `optimiser-v2-toggle`. Watch Loki
+  `component="api-optimize"` `version=2` (`ms`, warn above 2s) and toggle-back rates after launch.
 - **Optimiser v2 engine** (`lib/optimiser/`, `POST /api/optimize/v2`) — backs want list v2. Same
   seeds → local search → B&B shape as v1, but all integer cents, with per-line qty, "exact"/"any"
   printing, prefs (condition floor, finish, excluded stores, eBay on/off, max stores), stock caps,
@@ -477,7 +480,7 @@ See `.env.example` for all variables. Key ones:
 | `EBAY_AFFILIATE_CAMPAIGN_ID` | EPN campaign id for outbound eBay links. Unset = no affiliate params | unset (off) |
 | `EBAY_AFFILIATE_ROTATION_ID` | EPN rotation id for the eBay AU site | `705-53470-19255-0` |
 | `SEARCH_V2_DEFAULT` | `true` = new search is the default (toggle becomes opt-out). Runtime; unset is the rollback | unset (opt-in) |
-| `OPTIMISER_V2_DEFAULT` | `true` = want list v2 is the default (toggle becomes opt-out). Runtime; unset is the rollback | unset (opt-in) |
+| `OPTIMISER_V2_DEFAULT` | `false` = v1 want list for everyone who hasn't opted in (the rollback). Runtime | unset (v2 on) |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Token for `cloudflared` tunnel service | — |
 | `IMAGE_REGISTRY` | Registry+namespace for prod images (ECR-swap lever) | `ghcr.io/luperr` |
 | `IMAGE_TAG` | Which prod image to run; `main-<sha>` to pin/rollback | `latest` |
