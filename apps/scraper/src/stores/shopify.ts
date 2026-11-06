@@ -55,6 +55,7 @@ import { parseAllInTitleFormat } from "./title-parsers/all-in-title.js";
 import { parseFlagPrefixTitle } from "./title-parsers/flag-prefix.js";
 import { parseSetSlashCollectorTitle } from "./title-parsers/set-slash-collector.js";
 import { logger } from "../lib/logger.js";
+import { ART_CARD } from "../matching/card-matcher.js";
 
 export { parseProductTitle, isSkippedVariant } from "./title-parsers/standard.js";
 export { parseSkuData } from "./sku-parser.js";
@@ -184,7 +185,8 @@ const DIALECT_PARSERS: Partial<Record<NonNullable<ShopifyStoreConfig["titleForma
 
 export function mapProduct(product: ShopifyProduct, config: ShopifyStoreConfig): ScrapedCard[] {
   const baseUrl = config.baseUrl;
-  if (isTokenOrEmblem(product)) return [];
+  // The title parsers strip "(Art Series)" off the name, so check before they run.
+  if (isTokenOrEmblem(product) || ART_CARD.test(product.title)) return [];
 
   let cardName: string;
   let collectorNumber: string | null;

@@ -54,6 +54,13 @@ describe("isTokenOrEmblem", () => {
   });
 });
 
+describe("mapProduct — art cards", () => {
+  it("skips an art card whose title the parser would strip to the real card's name", () => {
+    const config: ShopifyStoreConfig = { id: "s", baseUrl: "https://s.example", collectionHandle: null, titleFormat: "all-in-title" };
+    expect(mapProduct(arcaneProduct("Lightning Bolt (Art Series)", ["Normal"]), config)).toEqual([]);
+  });
+});
+
 // ─── mapProduct — Arcane Alfred (set-slash-collector dialect, finish from
 // the "Treatment" option) ─────────────────────────────────────────────────────
 
