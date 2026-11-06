@@ -31,6 +31,19 @@ import { logger } from "../lib/logger.js";
 
 const log = logger.child({ component: "card-matcher" });
 
+// Art Series cards are skipped at Scryfall import (layout "art_series"), so the
+// index never holds one. Once "(Art Series)" is stripped from the name, a listing
+// like "Yawgmoth, Thran Physician (Art Series) [Art Series: Modern Horizons]"
+// name-matches the real card, and a 50c art card becomes that card's cheapest
+// price. Reject them outright: there is no correct printing to find. Shopify's
+// mapProduct also tests the full title, since some title parsers strip the
+// marker before the name gets here.
+export const ART_CARD = /\bart[\s-](series|card)\b/i;
+
+function isArtCard(card: ScrapedCard): boolean {
+  return ART_CARD.test(card.rawName) || (card.setName !== null && ART_CARD.test(card.setName));
+}
+
 export interface MatchResult {
   printingId: string | null;
   matchType: "set_collector" | "exact" | "name_foil" | "name_only" | "front_face" | "fuzzy" | "unmatched";
@@ -192,6 +205,8 @@ export class CardMatcher {
    * Returns the best match found, or { printingId: null, matchType: "unmatched" }.
    */
   match(card: ScrapedCard): MatchResult {
+    if (isArtCard(card)) return { printingId: null, matchType: "unmatched", confidence: 0 };
+
     const resolvedSetCode = card.setCode
       ?? (card.setName ? (this.setNameIndex.get(normalizeSetName(card.setName)) ?? null) : null);
 

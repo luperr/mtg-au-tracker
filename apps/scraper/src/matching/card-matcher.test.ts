@@ -497,6 +497,24 @@ describe("Level 6 — unmatched", () => {
     expect(result.printingId).toBeNull();
     expect(result.confidence).toBe(0);
   });
+
+  // Art Series cards aren't imported from Scryfall, so any name match is the real card.
+  describe("art cards", () => {
+    const listing = {
+      setCode: null, collectorNumber: null, isFoil: false, price: "0.50", priceType: "sell" as const,
+      condition: "NM", inStock: true, sourceUrl: "https://example.com",
+    };
+
+    it.each([
+      ["name", { rawName: "Lightning Bolt (Art Series)", setName: null }],
+      ["set name", { rawName: "Lightning Bolt", setName: "Art Series: Magic 2010" }],
+      ["art card", { rawName: "Lightning Bolt Art Card (Gold-Stamped Signature)", setName: null }],
+    ])("rejects an art card identified by its %s", (_label, fields) => {
+      const result = matcher.match({ ...listing, ...fields });
+      expect(result.matchType).toBe("unmatched");
+      expect(result.printingId).toBeNull();
+    });
+  });
 });
 
 // ─── Treatment filtering ──────────────────────────────────────────────────────
