@@ -14,67 +14,48 @@ const faqs: FaqItem[] = [
     a: (
       <div className="space-y-4">
         <p>
-          The optimiser finds the cheapest combination of stores to cover your entire Want List,
-          factoring in flat-rate postage so you only pay shipping once per store — not once per
-          card.
+          The optimiser finds the cheapest way to buy your whole Want List across every store we
+          track, postage included — so you pay shipping once per store, not once per card.
         </p>
 
         <div>
           <p className="font-semibold text-cream mb-1">1. Build your Want List</p>
           <p>
-            Search for a card and click <strong className="text-cream">Add to Want List</strong>{" "}
-            on any result. By default it adds the cheapest available printing. You can change the
-            printing using the dropdown in the Want List itself.
+            Click <strong className="text-cream">+</strong> on a card, or paste a deck list into{" "}
+            <strong className="text-cream">Import from list</strong> — quantities like
+            &ldquo;4x Counterspell&rdquo; are kept. Each card has a quantity and is set to{" "}
+            <strong className="text-cream">Any printing</strong>, so the optimiser can pick a
+            cheaper version — switch it to <strong className="text-cream">This printing</strong> to
+            keep the one you chose.
           </p>
         </div>
 
         <div>
-          <p className="font-semibold text-cream mb-1">2. Check postage rates</p>
+          <p className="font-semibold text-cream mb-1">2. Set your preferences</p>
           <p>
-            Each store section shows its flat-rate postage cost. If the displayed rate is wrong
-            (or you have a promo code), click the postage amount to edit it inline — your override
-            is used for that session&apos;s optimisation. eBay listings show per-item postage in a
-            separate column rather than a flat rate.
+            Choose the worst condition you&apos;ll accept, foil or non-foil for &ldquo;any
+            printing&rdquo; cards, and the most stores you want to order from. Every store is
+            included to start with, eBay too — untick any under{" "}
+            <strong className="text-cream">Buy from</strong> to leave them out. If a store&apos;s postage is wrong — or you&apos;re picking
+            up in person — click its postage to change it.
           </p>
         </div>
 
         <div>
-          <p className="font-semibold text-cream mb-1">3. Run the optimiser</p>
+          <p className="font-semibold text-cream mb-1">3. Read the plan</p>
           <p>
-            Hit <strong className="text-cream">Optimise</strong> at the top of the Want List. It
-            runs a branch-and-bound search across all store combinations and returns the cheapest
-            set of stores that covers every card in your list.
+            Your Want List is laid out as the cheapest way to buy it: each card sits under the store
+            to buy it from, with buy links, postage, and the total at the top. It updates whenever
+            you change a quantity or a preference. Buttons like &ldquo;2 stores · $48.10&rdquo; show
+            what ordering from fewer stores would cost. Anything that differs from the listing you
+            added — a different printing, a lower condition, stock the store doesn&apos;t confirm —
+            is flagged on the card.
           </p>
-        </div>
-
-        <div>
-          <p className="font-semibold text-cream mb-1">4. Review results in the pop-out</p>
-          <p>
-            A review modal shows the recommended allocation — which card to buy from which store.
-            For each card you can:
-          </p>
-          <ul className="list-disc list-inside mt-1 space-y-1">
-            <li>
-              <strong className="text-cream">Lock a card to its current printing</strong> — click
-              the lock icon next to a card to pin it to the shown printing. Locked cards won&apos;t
-              change if you re-optimise.
-            </li>
-            <li>
-              <strong className="text-cream">Re-optimise</strong> — after locking one or more
-              cards, hit <strong className="text-cream">Re-optimise</strong> to re-run with those
-              cards fixed in place. Useful when you&apos;d prefer a specific printing even if it
-              costs slightly more.
-            </li>
-            <li>
-              <strong className="text-cream">Apply changes</strong> — confirm the allocation and
-              your Want List updates to reflect the chosen store and printing for each card.
-            </li>
-          </ul>
         </div>
 
         <p className="text-sm text-cream-dim">
-          The optimiser only considers in-stock listings. Out-of-stock cards are skipped and
-          flagged in the results.
+          Only in-stock listings are considered. Cards that can&apos;t be bought — out of stock, or
+          nothing matching your preferences — are listed separately so you can change or remove them.
         </p>
       </div>
     ),

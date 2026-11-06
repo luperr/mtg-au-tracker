@@ -1,6 +1,6 @@
-// The search over which flat-rate stores to buy from. Same shape as v1's
-// (app/api/optimize/algorithm.ts): seeds → local search → exact branch and bound
-// under a deadline. What changed is what one evaluation means — quantities,
+// The search over which flat-rate stores to buy from: seeds → local search →
+// exact branch and bound under a deadline, the shape the first optimiser had.
+// What changed is what one evaluation means — quantities,
 // stock caps, free-shipping thresholds, a cap on open stores — and that it is
 // all integer cents.
 //
