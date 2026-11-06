@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { BuyLink } from "@/app/BuyLink";
 import { useWantList, type WantListItem } from "@/app/WantListContext";
-import { cardHref, fmtAUD, toSmallImage, trackEvent } from "@/lib/utils";
+import { cardHref, fmtAUD, toSmallImage } from "@/lib/utils";
 import { variantBadgeWithFoil } from "@/lib/variant-utils";
 import { MAX_CARD_QTY } from "@/lib/config";
 import { itemQty } from "@/lib/optimiser/want-list";
 import type { PlanStore, PlanUnit, UnitFlags } from "@/lib/optimiser/types";
 import { EditablePostageRow } from "./EditablePostageRow";
 import { useCardHover } from "./CardPreview";
+import { PrintingPicker } from "./PrintingPicker";
 
 const cents = (c: number) => fmtAUD(c / 100);
 
@@ -36,7 +37,6 @@ export function CardRow({ unit, item, flags }: { unit: PlanUnit; item: WantListI
   const { updateItem, removeItem } = useWantList();
   const hover = useCardHover()(unit.offer.imageUri ?? item.imageUri);
   const qty = itemQty(item);
-  const mode = item.printingMode ?? "any";
   const badge = variantBadgeWithFoil(unit.offer);
   const thumb = toSmallImage(unit.offer.imageUri ?? item.imageUri);
 
@@ -67,20 +67,7 @@ export function CardRow({ unit, item, flags }: { unit: PlanUnit; item: WantListI
         </div>
 
         <div className="mt-1.5 flex flex-wrap items-center gap-2">
-          <div className="flex rounded-lg border border-subtle text-xs" role="group" aria-label={`Printing for ${item.cardName}`}>
-            {(["any", "exact"] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => { updateItem(item.id, { printingMode: m }); trackEvent("optimise-line-mode", { mode: m }); }}
-                aria-pressed={mode === m}
-                className={`px-2 py-1 first:rounded-l-lg last:rounded-r-lg transition-colors ${
-                  mode === m ? "bg-accent/20 text-cream" : "text-cream-dim hover:text-cream"
-                }`}
-              >
-                {m === "any" ? "Any" : "This"}<span className="hidden sm:inline"> printing</span>
-              </button>
-            ))}
-          </div>
+          <PrintingPicker item={item} />
 
           <div className="flex items-center rounded-lg border border-subtle text-sm" role="group" aria-label={`Quantity of ${item.cardName}`}>
             <button
