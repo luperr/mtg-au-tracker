@@ -209,7 +209,7 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
                   ))}
                   {prefs.maxStores !== null && (
                     <button onClick={() => handleMaxStores(null)} className="shrink-0 rounded-full border border-subtle px-3 py-1 text-xs text-cream-dim hover:text-cream">
-                      Any number
+                      All stores
                     </button>
                   )}
                 </div>
@@ -218,7 +218,7 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
 
             {/* One row on a phone, scrolled sideways, rather than three rows of pills. */}
             <div className="-mx-4 mb-4 overflow-x-auto px-4 sm:mx-0 sm:overflow-visible sm:px-0">
-              <PrefsBar prefs={prefs} stores={stores} planStores={plan?.plan.totals.storeCount} onChange={changePrefs} />
+              <PrefsBar prefs={prefs} stores={stores} onChange={changePrefs} />
             </div>
 
             {unavailable.length > 0 && (
