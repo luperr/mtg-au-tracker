@@ -1,5 +1,6 @@
 // Builders shared by the optimiser tests. Not a test file itself.
 
+import { CARD_CONDITIONS } from "@mtg-au/shared";
 import { buildProblem, type Problem } from "./problem";
 import { DEFAULT_PREFS, type Offer, type OptimiseLine, type Prefs, type StoreInfo } from "./types";
 
@@ -34,7 +35,7 @@ export function line(cardId: string, o: Partial<OptimiseLine> = {}): OptimiseLin
   return { lineId: cardId, cardId, cardName: cardId, qty: 1, printing: "any", printingId: "p1", ...o };
 }
 
-export const prefs = (o: Partial<Prefs> = {}): Prefs => ({ ...DEFAULT_PREFS, minCondition: "any", finish: "any", ...o });
+export const prefs = (o: Partial<Prefs> = {}): Prefs => ({ ...DEFAULT_PREFS, conditions: [...CARD_CONDITIONS], finish: "any", ...o });
 
 export function problem(
   lines: OptimiseLine[],

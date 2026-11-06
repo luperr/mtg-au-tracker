@@ -2,7 +2,7 @@
 // indexed form the search works on. Everything that decides *which* listings a
 // line may use lives here, so the search never has to know about prefs.
 
-import { CARD_CONDITIONS, isKnownCondition } from "@mtg-au/shared";
+import { isKnownCondition } from "@mtg-au/shared";
 import { mapListingRow, type StoreListingRow } from "../store-listing";
 import type { Cents, OptimiseLine, Offer, Prefs, StoreInfo, Unavailable } from "./types";
 
@@ -48,11 +48,10 @@ export type Problem = {
   unavailable: Unavailable[];
 };
 
-const conditionRank = new Map<string, number>(CARD_CONDITIONS.map((c, i) => [c, i]));
-
+/** A listing with no condition, or one outside NM–DMG ("Signed"), can't be ruled out, so it passes. */
 export function meetsCondition(condition: string | null, prefs: Prefs): boolean {
-  if (prefs.minCondition === "any" || condition === null || !isKnownCondition(condition)) return true;
-  return conditionRank.get(condition)! <= conditionRank.get(prefs.minCondition)!;
+  if (condition === null || !isKnownCondition(condition)) return true;
+  return prefs.conditions.includes(condition);
 }
 
 export function isEligible(offer: Offer, line: OptimiseLine, store: StoreInfo, prefs: Prefs): boolean {

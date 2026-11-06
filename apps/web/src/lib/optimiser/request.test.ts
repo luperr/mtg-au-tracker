@@ -16,7 +16,7 @@ describe("parseOptimiseRequest", () => {
 
   it("keeps current listings and prefs", () => {
     const prefs = {
-      minCondition: "NM", finish: "any", excludeStores: ["a"], includeEbay: false, maxStores: 3,
+      conditions: ["NM", "LP"], finish: "any", excludeStores: ["a"], includeEbay: false, maxStores: 3,
       postageOverrides: { b: 0 },
     };
     const r = parseOptimiseRequest({ lines: [{ ...ln, printing: "exact", printingId: "p1", finish: "foil", current }], prefs });
@@ -43,7 +43,9 @@ describe("parseOptimiseRequest", () => {
     ["an unknown finish", { lines: [{ ...ln, finish: "gilded" }] }],
     ["a current listing in dollars", { lines: [{ ...ln, current: { ...current, seenCents: 1.5 } }] }],
     ["duplicate line ids", { lines: [ln, ln] }],
-    ["an unknown condition floor", { lines: [ln], prefs: { minCondition: "EX" } }],
+    ["an unknown condition", { lines: [ln], prefs: { conditions: ["NM", "EX"] } }],
+    ["no conditions", { lines: [ln], prefs: { conditions: [] } }],
+    ["a condition string", { lines: [ln], prefs: { conditions: "NM" } }],
     ["a zero store cap", { lines: [ln], prefs: { maxStores: 0 } }],
     ["a string includeEbay", { lines: [ln], prefs: { includeEbay: "no" } }],
     ["a negative override", { lines: [ln], prefs: { postageOverrides: { a: -100 } } }],

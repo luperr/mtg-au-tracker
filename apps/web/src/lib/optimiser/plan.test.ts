@@ -21,7 +21,8 @@ function run(lines: OptimiseLine[], offersByCard: Record<string, Offer[]>, store
 describe("buildResponse invariants", () => {
   const cases: [string, Partial<Prefs>, Parameters<typeof randomInstance>[3]][] = [
     ["defaults", {}, { maxQty: 4, stock: true }],
-    ["NM floor, no eBay", { minCondition: "NM", includeEbay: false }, { maxQty: 3, stock: true }],
+    ["NM only, no eBay", { conditions: ["NM"], includeEbay: false }, { maxQty: 3, stock: true }],
+    ["LP and MP only", { conditions: ["LP", "MP"] }, { maxQty: 2, stock: true }],
     ["store cap", { maxStores: 2 }, { maxQty: 2, thresholds: true }],
     ["thresholds and overrides", { postageOverrides: { s1: 0 } }, { maxQty: 3, thresholds: true, stock: true }],
   ];

@@ -32,8 +32,8 @@ const faqs: FaqItem[] = [
         <div>
           <p className="font-semibold text-cream mb-1">2. Set your preferences</p>
           <p>
-            Choose the worst condition you&apos;ll accept and the most stores you want to order
-            from. Every store is
+            Tick the conditions you&apos;ll buy (near mint to start with) and set the most stores
+            you want to order from. Every store is
             included to start with, eBay too — untick any under{" "}
             <strong className="text-cream">Buy from</strong> to leave them out. If a store&apos;s postage is wrong — or you&apos;re picking
             up in person — click its postage to change it.

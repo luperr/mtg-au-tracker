@@ -100,7 +100,7 @@ describe("applyPlan", () => {
 
 describe("parseSavedPrefs", () => {
   it("defaults when nothing is saved or it's unreadable", () => {
-    const defaults = { minCondition: "LP", excludeStores: [], maxStores: null };
+    const defaults = { conditions: ["NM"], excludeStores: [], maxStores: null };
     expect(parseSavedPrefs(null)).toEqual(defaults);
     expect(parseSavedPrefs("{not json")).toEqual(defaults);
     expect(parseSavedPrefs("[1]")).toEqual(defaults);
@@ -108,8 +108,20 @@ describe("parseSavedPrefs", () => {
 
   it("keeps valid fields and drops invalid ones", () => {
     expect(parseSavedPrefs(JSON.stringify({
-      minCondition: "NM", finish: "foil", excludeStores: ["a", 3, ""], maxStores: 0,
-    }))).toEqual({ minCondition: "NM", excludeStores: ["a"], maxStores: null });
+      conditions: ["MP", "EX", "NM", 4], finish: "foil", excludeStores: ["a", 3, ""], maxStores: 0,
+    }))).toEqual({ conditions: ["NM", "MP"], excludeStores: ["a"], maxStores: null });
+  });
+
+  it("falls back to NM when no condition is left", () => {
+    expect(parseSavedPrefs(JSON.stringify({ conditions: [] })).conditions).toEqual(["NM"]);
+  });
+
+  it.each([
+    ["NM", ["NM"]],
+    ["MP", ["NM", "LP", "MP"]],
+    ["any", ["NM", "LP", "MP", "HP", "DMG"]],
+  ])("turns an old %s floor into the conditions at or above it", (floor, conditions) => {
+    expect(parseSavedPrefs(JSON.stringify({ minCondition: floor })).conditions).toEqual(conditions);
   });
 
   it("moves an old eBay-off setting into the store list", () => {
