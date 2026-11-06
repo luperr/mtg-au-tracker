@@ -54,7 +54,7 @@ export function CardRow({ unit, item, flags }: { unit: PlanUnit; item: WantListI
               {item.cardName}
             </a>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-cream-dim">
-              <span>{unit.offer.setName}</span>
+              <span className="sm:hidden">{unit.offer.setName}</span>
               {badge && <span className="text-accent-light">{badge}</span>}
               {unit.offer.condition && <span>{unit.offer.condition}</span>}
               {flags && <Flags unit={unit} flags={flags} />}

@@ -22,10 +22,22 @@ function byPrinting(rows: StorePrinting[]): { listing: StorePrinting; stores: nu
   return [...out.values()].sort((a, b) => a.listing.priceAud - b.listing.priceAud);
 }
 
+function PadlockIcon({ locked }: { locked: boolean }) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <rect x="3" y="7" width="10" height="7.5" rx="1.5" />
+      {/* Open: the shackle lifts clear of the body on its left side. */}
+      <path d={locked ? "M5.5 7V5a2.5 2.5 0 0 1 5 0v2" : "M10.5 7V3.5a2.5 2.5 0 0 0-5 0"} strokeLinecap="round" />
+    </svg>
+  );
+}
+
 /**
- * "This printing ▾ | Any": the left opens every in-stock printing of the card,
- * cheapest first, and picking one pins the card to it at its cheapest listing;
- * the right lets the optimiser choose. Printings load on first open.
+ * The card's printing, and whether it's locked. Cards start unlocked: the
+ * optimiser may buy any printing. The padlock pins the current one; the
+ * printing button opens every in-stock printing of the card, cheapest first,
+ * and picking one moves the card to it at its cheapest listing and locks it.
+ * Printings load on first open.
  */
 export function PrintingPicker({ item }: { item: WantListItem }) {
   const { updateItem, replaceItem } = useWantList();
@@ -58,27 +70,40 @@ export function PrintingPicker({ item }: { item: WantListItem }) {
     setOpen(false);
   }
 
-  const segment = (active: boolean) =>
-    `px-2 py-1 transition-colors ${active ? "bg-accent/20 text-cream" : "text-cream-dim hover:text-cream"}`;
+  const locked = mode === "exact";
+
+  function toggleLock() {
+    const next = locked ? "any" : "exact";
+    updateItem(item.id, { printingMode: next });
+    trackEvent("optimise-line-mode", { mode: next });
+  }
 
   return (
     <div ref={ref} className="relative">
-      <div className="flex rounded-lg border border-subtle text-xs" role="group" aria-label={`Printing for ${item.cardName}`}>
+      <div className="flex items-stretch rounded-lg border border-subtle text-xs" role="group" aria-label={`Printing for ${item.cardName}`}>
         <button
           onClick={() => setOpen((o) => !o)}
-          aria-pressed={mode === "exact"}
           aria-haspopup="listbox"
           aria-expanded={open}
-          className={`${segment(mode === "exact")} rounded-l-lg`}
+          title={`${item.setName} — choose a printing`}
+          aria-label={`${item.setName} — choose a printing`}
+          className="flex min-w-0 items-center gap-1.5 rounded-l-lg px-2 py-1 text-cream-dim transition-colors hover:text-cream"
         >
-          This<span className="hidden sm:inline"> printing</span> <span className="text-[9px] opacity-60">▼</span>
+          <SetSymbol setCode={item.setCode} setName={item.setName} rarity={item.rarity} />
+          {/* Phones show the set under the card name instead, so the row's controls fit on one line. */}
+          <span className="hidden max-w-[10rem] truncate sm:inline">{item.setName}</span>
+          <span className="text-[9px] opacity-60" aria-hidden>▼</span>
         </button>
         <button
-          onClick={() => { updateItem(item.id, { printingMode: "any" }); trackEvent("optimise-line-mode", { mode: "any" }); }}
-          aria-pressed={mode === "any"}
-          className={`${segment(mode === "any")} rounded-r-lg`}
+          onClick={toggleLock}
+          aria-pressed={locked}
+          aria-label={locked ? "Locked to this printing — click to allow any" : "Any printing — click to lock to this one"}
+          title={locked ? "Locked to this printing — click to allow any" : "Any printing — click to lock to this one"}
+          className={`flex items-center rounded-r-lg border-l border-subtle px-2 transition-colors ${
+            locked ? "bg-accent/20 text-cream" : "text-cream-dim hover:text-cream"
+          }`}
         >
-          Any
+          <PadlockIcon locked={locked} />
         </button>
       </div>
 
