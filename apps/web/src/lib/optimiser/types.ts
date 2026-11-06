@@ -52,12 +52,12 @@ export type Prefs = {
 };
 
 /**
- * Defaults steer away from v1's silent downgrades: a heavily played copy or a
- * foil never stands in for an "any printing" line unless the user asks for it.
+ * A heavily played copy never stands in unless the user asks for it — v1's
+ * silent downgrade. Any finish will do; the plan flags a changed printing.
  */
 export const DEFAULT_PREFS: Prefs = {
   minCondition: "LP",
-  finish: "nonfoil",
+  finish: "any",
   excludeStores: [],
   includeEbay: true,
   maxStores: null,

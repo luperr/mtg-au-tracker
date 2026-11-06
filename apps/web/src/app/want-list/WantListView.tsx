@@ -1,555 +1,247 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useWantList, toWantListItem, type WantListItem } from "@/app/WantListContext";
-import { fmtAUD, trackEvent } from "@/lib/utils";
-import { SetSymbol } from "@/app/SetSymbol";
-import { BuyLink } from "@/app/BuyLink";
+import React, { useEffect, useMemo, useState } from "react";
+import { useWantList, type WantListItem } from "@/app/WantListContext";
 import { AffiliateDisclosure } from "@/app/AffiliateDisclosure";
-import { computePopupPos, CardImagePopup } from "@/app/CardMagnifier";
+import { fmtAUD, trackEvent } from "@/lib/utils";
+import {
+  baselineStores, itemQty, parseSavedPrefs, requestPrefs, toLines, PREFS_KEY, type SavedPrefs,
+} from "@/lib/optimiser/want-list";
+import type { OptimiseResponse, PlanStore, PlanUnit, Unavailable } from "@/lib/optimiser/types";
+import type { StoreSummary } from "@/lib/store-shipping";
 import { ImportCards } from "./ImportCards";
-import type { OptimizeResult } from "@/app/api/optimize/route";
-import { cardHref } from "@/lib/utils";
-import { variantBadgeWithFoil } from "@/lib/variant-utils";
-import { PrintingSelector, type StorePrinting } from "./PrintingSelector";
-import { OptimiseModal } from "./OptimiseModal";
+import { PrefsBar } from "./PrefsBar";
+import { CardRow, StoreSection } from "./StoreSection";
+import { CardPreviewProvider } from "./CardPreview";
+import { useOptimisePlan } from "./useOptimisePlan";
 
-// ── Editable postage row ──────────────────────────────────────────────────────
+const cents = (c: number) => fmtAUD(c / 100);
+const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 
-function EditablePostageRow({
-  amount,
-  isOverride,
-  onSave,
+const UNAVAILABLE_REASON: Record<Unavailable["reason"], string> = {
+  "no-listings": "not in stock anywhere",
+  "no-match": "none in stock that match your preferences",
+  short: "not enough copies in stock",
+};
+
+function Savings({ data }: { data: OptimiseResponse }) {
+  const s = data.savingsCents;
+  if (s === null || s === 0) return null;
+  return s > 0
+    ? <span className="text-green-400">saves {cents(s)}</span>
+    : <span className="text-cream-dim">{cents(-s)} more than when added</span>;
+}
+
+/** The total, the store-count choices and the plan's status. Sticky, so it stays in reach on a phone. */
+function Summary({
+  data,
+  loading,
+  error,
+  onRetry,
+  maxStores,
+  onMaxStores,
 }: {
-  amount: number | null;
-  isOverride: boolean;
-  onSave: (amount: number | null) => void;
+  data: OptimiseResponse | null;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+  maxStores: number | null;
+  onMaxStores: (n: number | null) => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
+  const totals = data?.plan.totals;
+  const chips = data
+    ? [
+        ...data.alternatives.map((a) => ({ n: a.storeCount, total: a.totalCents, active: false })),
+        { n: data.plan.totals.storeCount, total: data.plan.totals.totalCents, active: true },
+      ]
+    : [];
 
-  function startEdit() {
-    setDraft(amount !== null ? String(amount) : "");
-    setEditing(true);
-  }
-
-  function commit() {
-    const n = parseFloat(draft);
-    if (!isNaN(n) && n >= 0) onSave(n);
-    setEditing(false);
-  }
-
-  if (editing) {
-    return (
-      <div className="flex items-center gap-1.5 text-xs text-cream-dim/50">
-        <span>Postage: $</span>
-        <input
-          autoFocus
-          type="number"
-          min="0"
-          step="0.50"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
-          className="w-14 bg-muted border border-accent-border rounded px-1 py-0.5 text-cream text-xs text-right [appearance:textfield]"
-        />
-        <button
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => { onSave(0); setEditing(false); }}
-          className="text-[10px] text-cream-dim/40 hover:text-green-400 transition-colors whitespace-nowrap"
-        >
-          In-store
-        </button>
-        {isOverride && (
-          <button
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => { onSave(null); setEditing(false); }}
-            className="text-[10px] text-cream-dim/30 hover:text-cream-dim/60 transition-colors"
-          >
-            Reset
-          </button>
+  return (
+    <div className="sticky top-0 z-20 -mx-4 mb-3 border-b border-subtle bg-bg/95 px-4 py-2.5 backdrop-blur" aria-live="polite">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+        {totals ? (
+          <>
+            <span className="text-xl font-bold text-price">{cents(totals.totalCents)}</span>
+            <span className="text-sm text-cream-dim">
+              {plural(totals.storeCount, "store")}
+              {totals.parcelCount > totals.storeCount && ` + ${plural(totals.parcelCount - totals.storeCount, "eBay parcel")}`}
+              {" · "}postage {cents(totals.postageCents)}
+            </span>
+            <span className="text-sm"><Savings data={data!} /></span>
+          </>
+        ) : (
+          <span className="text-sm text-cream-dim">{error ? "" : "Finding the cheapest way to buy your list…"}</span>
         )}
+        {loading && totals && <span className="text-xs text-cream-dim">updating…</span>}
       </div>
-    );
-  }
 
-  return (
-    <div className="flex items-center gap-1 text-xs text-cream-dim/50">
-      <button
-        onClick={startEdit}
-        title="Click to edit postage"
-        className="flex items-center gap-1 bg-muted border border-accent-border rounded px-1.5 py-0.5 hover:border-accent-light/50 hover:text-cream-dim transition-colors cursor-pointer"
-      >
-        {amount === null
-          ? "Postage: unknown"
-          : amount === 0
-          ? "Postage: free (in-store)"
-          : `Postage: ${fmtAUD(amount)}`}
-        {isOverride && <span className="ml-1 text-[9px] text-accent-light/60">·edited</span>}
-      </button>
-      {!isOverride && amount !== null && (
-        <span
-          className="cursor-help text-[10px] text-cream-dim/30"
-          title="Estimated. Postage is charged once per order and the actual amount may vary at checkout."
-        >
-          ⓘ
-        </span>
+      {error && (
+        <div role="alert" className="mt-1 flex flex-wrap items-center gap-3 text-sm">
+          <span className="text-red-400">{error}</span>
+          <button onClick={onRetry} className="text-accent-light hover:underline">Try again</button>
+        </div>
       )}
-    </div>
-  );
-}
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/** Keyed by storeId — names aren't unique keys, ids are. */
-function groupByStore(items: WantListItem[]): Map<string, WantListItem[]> {
-  const map = new Map<string, WantListItem[]>();
-  for (const item of items) {
-    const group = map.get(item.storeId) ?? [];
-    group.push(item);
-    map.set(item.storeId, group);
-  }
-  return map;
-}
-
-/** Returns the shipping charge for a store group.
- *  eBay items are per-seller so each row has its own shippingAud → sum them.
- *  Other stores charge flat rate per order — user overrides take precedence,
- *  then DB value, then the store's registered flat rate. */
-function getStoreShipping(
-  items: WantListItem[],
-  overrides: Record<string, number>,
-  storeShippingAud: Record<string, number | null>
-): { isPerItem: boolean; flatAmount: number | null } {
-  const storeId = items[0]?.storeId ?? "";
-  if (storeId === "ebay_au") {
-    return { isPerItem: true, flatAmount: null };
-  }
-  if (storeId in overrides) {
-    return { isPerItem: false, flatAmount: overrides[storeId] };
-  }
-  const fromDb = items.find((i) => i.shippingAud !== null)?.shippingAud;
-  const flatAmount = fromDb !== undefined ? fromDb : (storeShippingAud[storeId] ?? null);
-  return { isPerItem: false, flatAmount };
-}
-
-// ── Main component ────────────────────────────────────────────────────────────
-
-export function WantListView({ storeShippingAud }: { storeShippingAud: Record<string, number | null> }) {
-  const { items, removeItem, addItem, clearAll, totalCount, storeShippingOverrides, setStoreShipping } = useWantList();
-  const byStore = groupByStore(items);
-  const [optimiseOpen, setOptimiseOpen] = useState(false);
-  const [cardPreview, setCardPreview] = useState<{ uri: string; top: number; left: number } | null>(null);
-
-  function showCardPreview(uri: string, e: React.MouseEvent<HTMLElement>) {
-    const { top, left } = computePopupPos(e.currentTarget.getBoundingClientRect(), 244, 340);
-    setCardPreview({ uri, top, left });
-  }
-  const [optimiseLoading, setOptimiseLoading] = useState(false);
-  const [optimiseResult, setOptimiseResult] = useState<OptimizeResult | null>(null);
-  const [optimiseError, setOptimiseError] = useState<string | null>(null);
-  const [lockedPrintingIds, setLockedPrintingIds] = useState<Set<string>>(new Set());
-  const [checkedCardIds, setCheckedCardIds] = useState<Set<string>>(new Set());
-  const [unchangedExpanded, setUnchangedExpanded] = useState(false);
-  const [collapsedStores, setCollapsedStores] = useState<Set<string>>(new Set());
-
-  function toggleStore(storeId: string) {
-    setCollapsedStores((prev) => {
-      const next = new Set(prev);
-      if (next.has(storeId)) next.delete(storeId);
-      else next.add(storeId);
-      return next;
-    });
-  }
-
-  async function runOptimise(locked: Set<string>, rerun: boolean) {
-    setOptimiseLoading(true);
-    setOptimiseError(null);
-    try {
-      const res = await fetch("/api/optimize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((i) => ({ cardId: i.cardId, cardName: i.cardName, printingId: i.printingId })),
-          lockedPrintingIds: [...locked],
-          shippingOverrides: storeShippingOverrides,
-        }),
-      });
-      if (!res.ok) {
-        throw new Error(
-          res.status === 429 ? "Too many optimiser runs — wait a minute and try again."
-          : res.status === 400 ? ((await res.json().catch(() => null))?.error ?? "Your want list couldn't be read.")
-          : "The optimiser failed. Try again in a moment.",
-        );
-      }
-      const data = await res.json() as OptimizeResult;
-      setOptimiseResult(data);
-      // Default: check all changed cards
-      const currentByCardId = new Map(items.map((i) => [i.cardId, i]));
-      const changed = data.assignments
-        .filter((a) => {
-          const cur = currentByCardId.get(a.cardId);
-          return cur && (a.printingId !== cur.printingId || a.storeId !== cur.storeId);
-        })
-        .map((a) => a.cardId);
-      setCheckedCardIds(new Set(changed));
-      // Whole dollars: enough to tell "saved nothing" from "saved $40" without logging the basket.
-      trackEvent("optimise-run", {
-        items: items.length,
-        changed: changed.length,
-        stores: data.storeBreakdown.length,
-        unavailable: data.unavailable.length,
-        saving: Math.round(grandTotal - data.totalCost),
-        rerun,
-      });
-    } catch (err) {
-      trackEvent("optimise-run", { items: items.length, error: true });
-      // Keep the modal open on its error state, which offers a retry.
-      setOptimiseError(err instanceof Error && err.message ? err.message : "The optimiser failed. Try again in a moment.");
-    } finally {
-      setOptimiseLoading(false);
-    }
-  }
-
-  function handleOptimise() {
-    setOptimiseOpen(true);
-    setOptimiseResult(null);
-    setLockedPrintingIds(new Set());
-    setCheckedCardIds(new Set());
-    setUnchangedExpanded(false);
-    runOptimise(new Set(), false);
-  }
-
-  function handleReoptimise() {
-    runOptimise(lockedPrintingIds, true);
-  }
-
-  function handleToggleLock(cardId: string) {
-    const cur = items.find((i) => i.cardId === cardId);
-    if (!cur) return;
-    setLockedPrintingIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(cur.printingId)) next.delete(cur.printingId);
-      else next.add(cur.printingId);
-      return next;
-    });
-  }
-
-  function handleToggleChecked(cardId: string) {
-    setCheckedCardIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(cardId)) next.delete(cardId);
-      else next.add(cardId);
-      return next;
-    });
-  }
-
-  function handleToggleAll(cardIds: string[]) {
-    const allChecked = cardIds.every((id) => checkedCardIds.has(id));
-    if (allChecked) {
-      setCheckedCardIds((prev) => {
-        const next = new Set(prev);
-        cardIds.forEach((id) => next.delete(id));
-        return next;
-      });
-    } else {
-      setCheckedCardIds((prev) => new Set([...prev, ...cardIds]));
-    }
-  }
-
-  function applyOptimisedPlan() {
-    if (!optimiseResult) return;
-    let applied = 0;
-    for (const a of optimiseResult.assignments) {
-      if (!checkedCardIds.has(a.cardId)) continue;
-      const current = items.find((i) => i.cardId === a.cardId);
-      if (!current) continue;
-      if (current.storeId === a.storeId && current.printingId === a.printingId) continue;
-      removeItem(current.id);
-      addItem(toWantListItem(a, current));
-      applied++;
-    }
-    trackEvent("optimise-apply", { items: items.length, applied });
-    setOptimiseOpen(false);
-    setOptimiseResult(null);
-    setLockedPrintingIds(new Set());
-  }
-
-  // Compute totals
-  let grandCards = 0;
-  let grandPostage = 0;
-  for (const storeItems of byStore.values()) {
-    grandCards += storeItems.reduce((s, i) => s + i.priceAud, 0);
-    const { isPerItem, flatAmount } = getStoreShipping(storeItems, storeShippingOverrides, storeShippingAud);
-    if (isPerItem) {
-      grandPostage += storeItems.reduce((s, i) => s + (i.shippingAud ?? 0), 0);
-    } else {
-      grandPostage += flatAmount ?? 0;
-    }
-  }
-  const grandTotal = grandCards + grandPostage;
-  const hasUnknownPostage = Array.from(byStore.values()).some((storeItems) => {
-    const shipping = getStoreShipping(storeItems, storeShippingOverrides, storeShippingAud);
-    return !shipping.isPerItem && shipping.flatAmount === null;
-  });
-
-  function handlePrintingChange(item: WantListItem, p: StorePrinting) {
-    removeItem(item.id);
-    addItem(toWantListItem(p, item));
-  }
-
-  return (
-    <div className="max-w-3xl mx-auto">
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-cream">Want List</h1>
-          {totalCount > 0 && (
-            <p className="text-sm text-cream-dim/60 mt-0.5">
-              {totalCount} item{totalCount !== 1 ? "s" : ""} ·{" "}
-              <span className="text-price font-semibold">{fmtAUD(grandCards)}</span>
-              {grandPostage > 0 && (
-                <span className="text-cream-dim/40"> + ~{fmtAUD(grandPostage)} postage</span>
-              )}
-            </p>
+      {(chips.length > 1 || maxStores !== null) && (
+        <div className="-mx-4 mt-2 flex gap-2 overflow-x-auto px-4 pb-0.5" role="group" aria-label="Number of stores">
+          {chips.map((c) => (
+            <button
+              key={c.n}
+              onClick={() => onMaxStores(c.n)}
+              aria-pressed={c.active}
+              className={`shrink-0 rounded-full border px-3 py-1 text-xs transition-colors ${
+                c.active ? "border-accent bg-accent/10 text-accent-light" : "border-subtle text-cream-dim hover:text-cream"
+              }`}
+            >
+              {plural(c.n, "store")} · {cents(c.total)}
+            </button>
+          ))}
+          {maxStores !== null && (
+            <button onClick={() => onMaxStores(null)} className="shrink-0 rounded-full border border-subtle px-3 py-1 text-xs text-cream-dim hover:text-cream">
+              Any number
+            </button>
           )}
         </div>
-        {totalCount > 0 && (
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1">
-              <button
-                onClick={handleOptimise}
-                title="Finds the cheapest available printing of each card across all stores. Lock cards in the review screen to keep their current printing."
-                className="rounded-lg border border-accent-border bg-accent-muted/40 px-3 py-1.5 text-xs font-semibold text-accent-light hover:bg-accent-muted transition-colors"
-              >
-                ✦ Optimise
-              </button>
-              <a
-                href="/faq#how-do-i-use-the-want-list-optimiser"
-                target="_blank"
-                rel="noopener noreferrer"
-                title="How does the optimiser work?"
-                className="w-4 h-4 rounded-full border border-accent-border text-cream-dim hover:text-cream hover:border-accent transition-colors flex items-center justify-center text-[10px] leading-none"
-              >
-                ?
-              </a>
-            </div>
-            <button
-              onClick={clearAll}
-              className="text-xs text-cream-dim/40 hover:text-red-400 transition-colors"
-            >
-              Clear all
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Empty state */}
-      {totalCount === 0 ? (
-        <div className="rounded-lg border border-subtle bg-surface px-6 py-12 text-center mb-8">
-          <p className="text-cream-dim/50 mb-2">Your want list is empty.</p>
-          <p className="text-xs text-cream-dim/30">
-            Browse cards and click <span className="text-price">+</span> on any price row to add it here.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-6 mb-8">
-          {Array.from(byStore.entries()).map(([storeId, storeItems]) => {
-            const storeName = storeItems[0].storeName;
-            const { isPerItem, flatAmount } = getStoreShipping(storeItems, storeShippingOverrides, storeShippingAud);
-            const itemsTotal = storeItems.reduce((s, i) => s + i.priceAud, 0);
-            const perItemPostage = isPerItem
-              ? storeItems.reduce((s, i) => s + (i.shippingAud ?? 0), 0)
-              : 0;
-            const storeTotal = itemsTotal + (isPerItem ? perItemPostage : (flatAmount ?? 0));
-
-            const collapsed = collapsedStores.has(storeId);
-            return (
-              <React.Fragment key={storeId}>
-              {/* EPN / ACL: disclosure must directly precede the affiliate links */}
-              {storeId === "ebay_au" && (
-                <AffiliateDisclosure className="!mb-2 px-1" />
-              )}
-              <div className="rounded-lg border border-subtle bg-surface">
-                {/* Store header */}
-                <button
-                  onClick={() => toggleStore(storeId)}
-                  aria-expanded={!collapsed}
-                  className="w-full flex items-center justify-between px-4 py-2.5 bg-cream-muted border-b border-subtle hover:bg-muted transition-colors rounded-t-lg"
-                >
-                  <span className="font-semibold text-cream text-sm">{storeName}</span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-cream-dim/50 text-xs">
-                      {storeItems.length} item{storeItems.length !== 1 ? "s" : ""}
-                      {collapsed && <span className="ml-2 text-price font-semibold">{fmtAUD(storeTotal)}</span>}
-                    </span>
-                    <span className="text-cream-dim/30 text-xs">{collapsed ? "▶" : "▼"}</span>
-                  </div>
-                </button>
-
-                {!collapsed && <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-xs border-b border-subtle">
-                      <th className="px-3 py-1.5 text-left font-medium text-cream-dim">Card</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-cream-dim">Printing</th>
-                      {isPerItem && (
-                        <th className="px-2 py-1.5 text-right font-medium text-cream-dim">Postage</th>
-                      )}
-                      <th className="px-2 py-1.5 text-right font-medium text-cream-dim">Price</th>
-                      <th className="px-2 py-1.5" />
-                      <th className="px-2 py-1.5" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {storeItems.map((item) => (
-                      <tr
-                        key={item.id}
-                        className="border-b border-subtle/60 last:border-0 hover:bg-muted transition-colors"
-                      >
-                        {/* Card name */}
-                        <td className="px-3 py-1.5">
-                          <a
-                            href={cardHref(item.cardSlug, item.cardId)}
-                            className="font-medium text-cream hover:text-accent transition-colors"
-                            onMouseEnter={item.imageUri ? (e) => showCardPreview(item.imageUri!, e) : undefined}
-                            onMouseLeave={() => setCardPreview(null)}
-                          >
-                            {item.cardName}
-                          </a>
-                        </td>
-
-                        {/* Printing selector */}
-                        <td className="px-2 py-1.5">
-                          <PrintingSelector
-                            item={item}
-                            onSelect={(p) => handlePrintingChange(item, p)}
-                          />
-                        </td>
-
-                        {/* Per-item postage (eBay only) */}
-                        {isPerItem && (
-                          <td className="px-2 py-1.5 text-right text-xs text-cream-dim/50 whitespace-nowrap">
-                            {item.shippingAud === null
-                              ? "—"
-                              : item.shippingAud === 0
-                              ? "free"
-                              : fmtAUD(item.shippingAud)}
-                          </td>
-                        )}
-
-                        {/* Price */}
-                        <td className="px-2 py-1.5 text-right text-price font-semibold whitespace-nowrap">
-                          {fmtAUD(item.priceAud)}
-                        </td>
-
-                        {/* Buy link */}
-                        <td className="px-2 py-1.5 text-right">
-                          {item.url && (
-                            <BuyLink
-                              href={item.url}
-                              storeId={item.storeId}
-                              card={item.cardName}
-                              price={item.priceAud}
-                              source="want-list"
-                              printingId={item.printingId}
-                              className="text-xs text-price hover:text-cream transition-colors"
-                            />
-                          )}
-                        </td>
-
-                        {/* Remove */}
-                        <td className="pr-2 py-1.5 text-right">
-                          <button
-                            onClick={() => removeItem(item.id)}
-                            title="Remove"
-                            className="w-5 h-5 rounded flex items-center justify-center text-cream-dim/30 hover:text-red-400 hover:bg-red-900/20 transition-colors ml-auto"
-                          >
-                            ×
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>}
-
-                {!collapsed && <div className="flex justify-end px-3 py-2 pr-[72px] border-t border-subtle bg-cream-muted/50 rounded-b-lg">
-                  <div className="flex flex-col items-end gap-0.5">
-                    {!isPerItem && (
-                      <EditablePostageRow
-                        amount={flatAmount}
-                        isOverride={storeId in storeShippingOverrides}
-                        onSave={(amt) => setStoreShipping(storeId, amt)}
-                      />
-                    )}
-                    {isPerItem && perItemPostage > 0 && (
-                      <span className="text-xs text-cream-dim/50">Postage: {fmtAUD(perItemPostage)}</span>
-                    )}
-                    <div className="text-sm">
-                      <span className="text-cream-dim/50 mr-2 text-xs">Store total</span>
-                      <span className="text-price font-bold">{fmtAUD(storeTotal)}</span>
-                      {!isPerItem && flatAmount === null && (
-                        <span className="text-[10px] text-cream-dim/30 ml-1">+ postage</span>
-                      )}
-                    </div>
-                  </div>
-                </div>}
-              </div>
-              </React.Fragment>
-            );
-          })}
-
-          {/* Grand total */}
-          <div className="flex justify-end">
-            <div className="rounded-lg border border-subtle bg-surface px-5 py-3 text-sm min-w-[200px]">
-              <div className="flex items-center justify-between gap-6">
-                <span className="text-cream-dim/60">Grand total</span>
-                <span className="text-price font-bold text-base">{fmtAUD(grandTotal)} AUD</span>
-              </div>
-              {grandPostage > 0 && (
-                <div className="text-right mt-0.5 text-[10px] text-cream-dim/40">
-                  incl. ~{fmtAUD(grandPostage)} estimated postage
-                </div>
-              )}
-              {hasUnknownPostage && (
-                <div className="text-right mt-0.5 text-[10px] text-cream-dim/30">
-                  + postage for some stores
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
       )}
-
-      {/* Card image preview on name hover */}
-      {cardPreview && (
-        <CardImagePopup uri={cardPreview.uri} top={cardPreview.top} left={cardPreview.left} width={244} />
-      )}
-
-      {/* Optimise modal */}
-      {optimiseOpen && (
-        <OptimiseModal
-          result={optimiseResult}
-          loading={optimiseLoading}
-          error={optimiseError}
-          currentItems={items}
-          currentPostage={grandPostage}
-          lockedPrintingIds={lockedPrintingIds}
-          checkedCardIds={checkedCardIds}
-          unchangedExpanded={unchangedExpanded}
-          onToggleLock={handleToggleLock}
-          onToggleChecked={handleToggleChecked}
-          onToggleAll={handleToggleAll}
-          onReoptimise={handleReoptimise}
-          onRetry={() => runOptimise(lockedPrintingIds, true)}
-          onApply={applyOptimisedPlan}
-          onDismiss={() => setOptimiseOpen(false)}
-          onToggleUnchanged={() => setUnchangedExpanded((v) => !v)}
-        />
-      )}
-
-      {/* Import section */}
-      <ImportCards />
     </div>
   );
+}
+
+/**
+ * The want list, laid out as the cheapest way to buy it: each card sits under the
+ * store the optimiser buys it from, with its quantity and printing controls in
+ * place. The plan re-runs as the list or preferences change, so there's nothing
+ * to apply. Until the first plan arrives, cards sit under the store they were
+ * added from.
+ */
+export function WantListView({ stores }: { stores: StoreSummary[] }) {
+  const { items, clearAll, storeShippingOverrides } = useWantList();
+  const [prefs, setPrefs] = useState<SavedPrefs>(() => parseSavedPrefs(null));
+
+  useEffect(() => {
+    try {
+      setPrefs(parseSavedPrefs(localStorage.getItem(PREFS_KEY)));
+    } catch {
+      // storage blocked: defaults stand
+    }
+  }, []);
+
+  function changePrefs(patch: Partial<SavedPrefs>, pref: string) {
+    const next = { ...prefs, ...patch };
+    setPrefs(next);
+    trackEvent("optimise-pref", { pref });
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify(next));
+    } catch {
+      // not persisted; still applies this visit
+    }
+  }
+
+  const body = useMemo(
+    () => items.length > 0
+      ? JSON.stringify({ lines: toLines(items), prefs: requestPrefs(prefs, storeShippingOverrides) })
+      : null,
+    [items, prefs, storeShippingOverrides],
+  );
+  const plan = useOptimisePlan(body);
+  const itemsById = new Map(items.map((i) => [i.id, i]));
+
+  // A plan for an older version of the list still places its cards; cards added
+  // since then wait for the re-run that's already on its way.
+  const planned = plan.data !== null;
+  const storeList: PlanStore[] = plan.data ? plan.data.plan.stores : baselineStores(items);
+  const unavailable = (plan.data?.unavailable ?? []).filter((u) => itemsById.has(u.lineId));
+  // Cards whose copies the plan buys from more than one store.
+  const unitsPerLine = new Map<string, number>();
+  for (const u of storeList.flatMap((s) => s.units)) unitsPerLine.set(u.lineId, (unitsPerLine.get(u.lineId) ?? 0) + 1);
+  const splitLines = new Set([...unitsPerLine].filter(([, n]) => n > 1).map(([id]) => id));
+  const copies = items.reduce((n, i) => n + itemQty(i), 0);
+
+  function handleExclude(store: PlanStore) {
+    changePrefs({ excludeStores: [...prefs.excludeStores, store.storeId] }, "stores");
+    trackEvent("optimise-exclude-store", { store: store.storeId });
+  }
+
+  function handleMaxStores(n: number | null) {
+    changePrefs({ maxStores: n }, "max-stores");
+    trackEvent("optimise-alt", { stores: n });
+  }
+
+  return (
+    <CardPreviewProvider>
+      <div className="mx-auto max-w-3xl">
+        <div className="mb-3 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-cream">Want List</h1>
+            {items.length > 0 && (
+              <p className="mt-0.5 text-sm text-cream-dim">{plural(items.length, "card")} · {plural(copies, "copy", "copies")}</p>
+            )}
+          </div>
+          {items.length > 0 && (
+            <button onClick={clearAll} className="text-xs text-cream-dim hover:text-red-400 transition-colors">Clear all</button>
+          )}
+        </div>
+
+        {items.length === 0 ? (
+          <div className="mb-6 rounded-lg border border-subtle bg-surface px-6 py-10 text-center">
+            <p className="mb-1 text-cream">Your want list is empty.</p>
+            <p className="text-sm text-cream-dim">Paste a deck list below, or click <span className="text-price">+</span> on any card.</p>
+          </div>
+        ) : (
+          <>
+            <Summary
+              data={plan.data}
+              loading={plan.loading}
+              error={plan.error}
+              onRetry={plan.retry}
+              maxStores={prefs.maxStores}
+              onMaxStores={handleMaxStores}
+            />
+
+            {/* One row on a phone, scrolled sideways, rather than three rows of pills. */}
+            <div className="-mx-4 mb-4 overflow-x-auto px-4 sm:mx-0 sm:overflow-visible sm:px-0">
+              <PrefsBar prefs={prefs} stores={stores} onChange={changePrefs} />
+            </div>
+
+            <div className={`mb-8 space-y-3 transition-opacity ${plan.loading && planned ? "opacity-70" : ""}`}>
+              {storeList.map((store) => (
+                <React.Fragment key={store.storeId}>
+                  {/* EPN / ACL: disclosure must directly precede the affiliate links */}
+                  {store.storeId === "ebay_au" && <AffiliateDisclosure className="!mb-2 px-1" />}
+                  <StoreSection store={store} itemsById={itemsById} splitLines={splitLines} planned={planned} onExclude={() => handleExclude(store)} />
+                </React.Fragment>
+              ))}
+
+              {unavailable.length > 0 && (
+                <section className="rounded-lg border border-red-500/30 bg-surface" aria-label="Can't buy right now">
+                  <h3 className="border-b border-subtle px-3 py-2.5 font-semibold text-cream">Can’t buy right now</h3>
+                  <ul>
+                    {unavailable.map((u) => {
+                      const item = itemsById.get(u.lineId)!;
+                      return (
+                        <CardRow
+                          key={u.lineId}
+                          unit={addedListing(item, u.missing)}
+                          item={item}
+                          note={u.reason === "short" ? `${u.missing} short — ${UNAVAILABLE_REASON.short}` : UNAVAILABLE_REASON[u.reason]}
+                        />
+                      );
+                    })}
+                  </ul>
+                </section>
+              )}
+            </div>
+          </>
+        )}
+
+        <ImportCards />
+      </div>
+    </CardPreviewProvider>
+  );
+}
+
+/** A card the plan can't buy, shown at the listing it was added at — with no buy link, since it's gone or ruled out. */
+function addedListing(item: WantListItem, qty: number): PlanUnit {
+  const unit = baselineStores([{ ...item, qty }])[0].units[0];
+  return { ...unit, offer: { ...unit.offer, url: null } };
 }

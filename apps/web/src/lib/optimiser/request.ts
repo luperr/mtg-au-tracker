@@ -1,4 +1,4 @@
-// Request-body validation for /api/optimize/v2. The body is built from
+// Request-body validation for /api/optimize. The body is built from
 // localStorage, so any of it can be stale or hand-edited.
 
 import { CARD_CONDITIONS } from "@mtg-au/shared";

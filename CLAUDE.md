@@ -370,21 +370,33 @@ Listing-grained search with a filter sidebar (store, set, condition, finish, tre
 
 ### Want List (`apps/web/src/app/want-list/WantListView.tsx`)
 - Route: `/want-list`, context: `src/app/WantListContext.tsx`, badge: `src/app/WantListBadge.tsx`
-- localStorage keys: `scrymarket_buy_list` (items), `scrymarket_shipping_overrides` (per-store postage)
-- Per-store collapsible sections with store total shown in header when collapsed
-- Printing selector shows all in-stock printings across ALL stores, sorted cheapest first
-- Flat-rate stores: postage shown once in store footer, click-to-edit inline
-- eBay: per-item postage column + subtotal in footer
-- Item ID: `${printingId}-${storeId}-${url ?? ""}` — unique per distinct listing
-- **Optimise feature** (`/api/optimize`): Branch-and-bound over flat-rate store subsets. Flat fees added once per store. Tie-breaking prefers lower flat-rate stores for equal card prices. Per-store shipping overrides sent in POST body and applied server-side. Review modal: lock cards to current printing, re-optimise, apply selected changes.
-- **Optimiser v2 engine** (`lib/optimiser/`, `POST /api/optimize/v2`) — not yet wired to any UI. Same
-  seeds → local search → B&B shape as v1, but all integer cents, with per-line qty, "exact"/"any"
+- **The list is the plan.** Each card sits under the store the optimiser buys it from, with its
+  qty stepper, "Any printing / This printing" switch, buy link and remove in place; the sticky
+  summary carries the total, postage, savings and store-count chips. There is nothing to apply —
+  the plan re-runs (debounced 500ms, memoised per request) whenever the list, prefs or postage
+  change. Until the first answer arrives, cards sit under the store they were added from
+  (`baselineStores()`); the last plan is kept in localStorage `scrymarket_optimiser_last_plan` and
+  shown on a revisit while it refreshes.
+- **An item is a want plus a baseline.** `qty` (absent = 1) and `printingMode` (`"exact"` | `"any"`,
+  absent = any) say what the user wants; the listing fields are where it was added, which is what
+  the plan's savings are measured against (`current`, re-priced server-side). Import sets qty, and
+  `exact` only when the line named a set.
+- Prefs: condition (default LP or better), finish (default any), max stores, and "Buy from" — a
+  checklist of every store, eBay included, all ticked, saved as the *unticked* ids
+  (`excludeStores`) so a store added later starts ticked. localStorage `scrymarket_optimiser_prefs`;
+  per-store postage edits stay in `scrymarket_shipping_overrides`.
+- Umami: `optimise-run` (`version: "v2"`, kept so history separates from the old optimiser),
+  `optimise-pref`, `optimise-alt`, `optimise-exclude-store`, `optimise-line-mode`.
+- There is no flag or old version to fall back to: the user base doesn't warrant one. Roll back a
+  bad release by pinning the previous image (`./scripts/deploy.sh main-<sha>`).
+- **Optimiser engine** (`lib/optimiser/`, `POST /api/optimize`). Seeds → local search → B&B under
+  `OPTIMIZE_DEADLINE_MS`, all integer cents, with per-line qty, "exact"/"any"
   printing, prefs (condition floor, finish, excluded stores, eBay on/off, max stores), stock caps,
   free-shipping thresholds, alternatives per store count, and the user's current listings re-priced
   server-side so "savings" is like for like (`null` when it isn't). Prefs filter in JS, not SQL,
   because current listings at excluded stores still need pricing. Stock, Shopify variant ids and
-  thresholds read as null until the scrapers and `stores` carry them. v1's `algorithm.ts` stays
-  untouched until v1 is removed.
+  thresholds read as null until the scrapers and `stores` carry them. Loki
+  `component="api-optimize"` logs `ms` per run (warn above 2s).
 
 ### `apps/web/src/app/BuyLink.tsx` + `apps/web/src/lib/affiliate.ts`
 Single component for all outbound store buy links. Owns:
