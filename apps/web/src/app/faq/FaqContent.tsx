@@ -23,10 +23,9 @@ const faqs: FaqItem[] = [
           <p>
             Click <strong className="text-cream">+</strong> on a card, or paste a deck list into{" "}
             <strong className="text-cream">Import from list</strong> — quantities like
-            &ldquo;4x Counterspell&rdquo; are kept. Each card has a quantity and is set to{" "}
-            <strong className="text-cream">Any printing</strong>, so the optimiser can pick a
-            cheaper version — switch it to <strong className="text-cream">This printing</strong> to
-            keep the one you chose.
+            &ldquo;4x Counterspell&rdquo; are kept. Each card has a quantity, and starts on any
+            printing so the optimiser can pick a cheaper version. To keep a particular one, choose
+            it from the card&apos;s printing menu or press the padlock next to it.
           </p>
         </div>
 
