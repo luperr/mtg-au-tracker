@@ -381,8 +381,10 @@ Listing-grained search with a filter sidebar (store, set, condition, finish, tre
   (`"exact"` | `"any"`, absent = any — the padlock, unlocked by default; picking a printing from
   the dropdown locks it) say what the user wants; the listing is where it was added
   until Optimise moves it, and is the `current` the plan's savings are measured against
-  (re-priced server-side). Import sets qty, and `exact` only when the line named a set.
-- Prefs: condition (default LP or better), finish (default any), max stores, and "Buy from" — a
+  (re-priced server-side). There is no finish pref — finish comes with the printing a card is
+  locked to. Import is one step (paste/upload → Import → on the list), keeps qty, and brings
+  everything in unlocked even when lines name a set, since Arena/MTGO exports always do.
+- Prefs: condition (default LP or better), max stores, and "Buy from" — a
   checklist of every store, eBay included, all ticked, saved as the *unticked* ids
   (`excludeStores`) so a store added later starts ticked. localStorage `scrymarket_optimiser_prefs`;
   per-store postage edits stay in `scrymarket_shipping_overrides`.

@@ -22,7 +22,7 @@ const faqs: FaqItem[] = [
           <p className="font-semibold text-cream mb-1">1. Build your Want List</p>
           <p>
             Click <strong className="text-cream">+</strong> on a card, or paste a deck list into{" "}
-            <strong className="text-cream">Import from list</strong> — quantities like
+            <strong className="text-cream">Import a list</strong> — quantities like
             &ldquo;4x Counterspell&rdquo; are kept. Each card has a quantity, and starts on any
             printing so the optimiser can pick a cheaper version. To keep a particular one, choose
             it from the card&apos;s printing menu or press the padlock next to it.
@@ -32,8 +32,8 @@ const faqs: FaqItem[] = [
         <div>
           <p className="font-semibold text-cream mb-1">2. Set your preferences</p>
           <p>
-            Choose the worst condition you&apos;ll accept, foil or non-foil for &ldquo;any
-            printing&rdquo; cards, and the most stores you want to order from. Every store is
+            Choose the worst condition you&apos;ll accept and the most stores you want to order
+            from. Every store is
             included to start with, eBay too — untick any under{" "}
             <strong className="text-cream">Buy from</strong> to leave them out. If a store&apos;s postage is wrong — or you&apos;re picking
             up in person — click its postage to change it.

@@ -12,15 +12,9 @@ const CONDITIONS: { value: SavedPrefs["minCondition"]; label: string; short: str
   { value: "any", label: "Any condition", short: "Any" },
 ];
 
-const FINISHES: { value: SavedPrefs["finish"]; label: string }[] = [
-  { value: "nonfoil", label: "Non-foil" },
-  { value: "foil", label: "Foil" },
-  { value: "any", label: "Any finish" },
-];
-
 /**
- * The optimiser's preferences, as the search filter pills. Finish only steers
- * "any printing" cards; a card pinned to its printing already has one. Stores is
+ * The optimiser's preferences, as the search filter pills. There's no finish
+ * pref: a finish comes with the printing a card is locked to. Stores is
  * a checklist with everything ticked — eBay included — and unticking one leaves
  * it out; it's stored as the unticked ids, so a new store starts ticked.
  *
@@ -38,7 +32,6 @@ export function PrefsBar({
   onChange: (patch: Partial<SavedPrefs>, pref: string) => void;
 }) {
   const condition = CONDITIONS.find((c) => c.value === prefs.minCondition)!;
-  const finish = FINISHES.find((f) => f.value === prefs.finish) ?? FINISHES[0];
   const excluded = new Set(prefs.excludeStores);
   // eBay last: it's a marketplace, not one shop.
   const storeList = [...stores.filter((s) => s.id !== "ebay_au"), ...stores.filter((s) => s.id === "ebay_au")];
@@ -64,14 +57,6 @@ export function PrefsBar({
         {CONDITIONS.map((c) => (
           <OptionItem key={c.value} label={c.label} checked={c.value === prefs.minCondition}
             onClick={() => onChange({ minCondition: c.value }, "condition")} />
-        ))}
-      </Dropdown>
-
-      <Dropdown label={`Finish: ${finish.label}`} active={prefs.finish !== "any"}>
-        <p className="px-3 pt-2 pb-1 text-xs text-cream-dim">For cards set to “any printing”</p>
-        {FINISHES.map((f) => (
-          <OptionItem key={f.value} label={f.label} checked={f.value === prefs.finish}
-            onClick={() => onChange({ finish: f.value }, "finish")} />
         ))}
       </Dropdown>
 
