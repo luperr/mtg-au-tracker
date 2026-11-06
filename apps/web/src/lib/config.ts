@@ -111,6 +111,15 @@ export function searchV2Default(): boolean {
   return process.env.SEARCH_V2_DEFAULT?.trim() === "true";
 }
 
+/**
+ * OPTIMISER_V2_DEFAULT=true makes the v2 want list (quantities, preferences, the
+ * per-store plan) the default for anyone who hasn't chosen with its toggle. Runtime,
+ * like SEARCH_V2_DEFAULT, so flipping it is a restart. **Server only.**
+ */
+export function optimiserV2Default(): boolean {
+  return process.env.OPTIMISER_V2_DEFAULT?.trim() === "true";
+}
+
 // ── eBay Partner Network (affiliate) ─────────────────────────────────────────
 //
 // The campaign id itself is runtime config (EBAY_AFFILIATE_CAMPAIGN_ID) and has no

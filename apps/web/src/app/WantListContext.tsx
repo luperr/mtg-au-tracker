@@ -22,6 +22,13 @@ export interface WantListItem {
   condition: string | null;
   url: string | null;
   imageUri: string | null;
+  /** Copies wanted. Absent = 1. Read by the v2 optimiser only; v1 shows one row per item. */
+  qty?: number;
+  /**
+   * "exact": this printing only. "any": any printing will do — the v2 optimiser may
+   * swap it. Absent = "exact", so nothing added before v2 changes printing silently.
+   */
+  printingMode?: "exact" | "any";
 }
 
 /** The fields of a WantListItem that come from a specific store listing, as opposed to the card. */
@@ -71,6 +78,9 @@ interface WantListContextValue {
   items: WantListItem[];
   addItem: (item: WantListItem) => void;
   removeItem: (id: string) => void;
+  updateItem: (id: string, patch: Partial<Pick<WantListItem, "qty" | "printingMode">>) => void;
+  /** Swaps the whole list at once — applying an optimiser plan. */
+  replaceItems: (items: WantListItem[]) => void;
   hasItem: (id: string) => boolean;
   clearAll: () => void;
   totalCount: number;
@@ -148,6 +158,12 @@ export function WantListProvider({ children }: { children: React.ReactNode }) {
     setItems((prev: WantListItem[]) => prev.filter((i: WantListItem) => i.id !== id));
   }, []);
 
+  const updateItem = useCallback((id: string, patch: Partial<Pick<WantListItem, "qty" | "printingMode">>) => {
+    setItems((prev: WantListItem[]) => prev.map((i) => i.id === id ? { ...i, ...patch } : i));
+  }, []);
+
+  const replaceItems = useCallback((next: WantListItem[]) => setItems(next), []);
+
   const hasItem = useCallback((id: string) => {
     return items.some((i: WantListItem) => i.id === id);
   }, [items]);
@@ -170,7 +186,7 @@ export function WantListProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <WantListContext.Provider value={{
-      items, addItem, removeItem, hasItem, clearAll,
+      items, addItem, removeItem, updateItem, replaceItems, hasItem, clearAll,
       totalCount: items.length, totalPrice,
       storeShippingOverrides, setStoreShipping,
     }}>

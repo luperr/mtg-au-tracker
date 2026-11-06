@@ -124,28 +124,45 @@ export function ImportCards() {
     }
   }
 
+  // The lookup answers in input order, so results[i] is parsed[i] — the only reliable
+  // way back to a line's set and collector number when two lines share a card name.
+  const inputByResult = new Map(results?.map((r, i) => [r, parsed[i]]) ?? []);
+
+  /**
+   * The line's qty and whether it named a printing go onto the item for the v2
+   * optimiser: "4x Counterspell" wants four of any printing, a line with a set
+   * code wants that printing. v1 ignores both.
+   */
+  function itemFor(r: BulkLookupResult, cheapest: NonNullable<BulkLookupResult["cheapest"]>, cardId: string, cardName: string) {
+    return {
+      ...toWantListItem({
+        printingId: cheapest.printingId,
+        setName: cheapest.setName,
+        setCode: cheapest.setCode,
+        rarity: cheapest.rarity,
+        isFoil: cheapest.isFoil,
+        storeId: cheapest.storeId ?? "",
+        storeName: cheapest.storeName,
+        priceAud: cheapest.priceAud,
+        shippingAud: cheapest.shippingAud ?? null,
+        condition: cheapest.condition,
+        url: cheapest.url,
+        imageUri: r.imageUri,
+      }, { cardId, cardSlug: r.cardSlug, cardName }),
+      qty: r.qty,
+      printingMode: inputByResult.get(r)?.setCode ? "exact" as const : "any" as const,
+    };
+  }
+
   function handleAddAll() {
     if (!results) return;
     const newAdded = new Set(added);
     for (const r of results) {
       if (!r.cheapest || !r.cardId || !r.cardName) continue;
-      const itemId = wantListItemId(r.cheapest.printingId, r.cheapest.storeId ?? "", r.cheapest.url);
-      if (newAdded.has(itemId)) continue;
-      addItem(toWantListItem({
-        printingId: r.cheapest.printingId,
-        setName: r.cheapest.setName,
-        setCode: r.cheapest.setCode,
-        rarity: r.cheapest.rarity,
-        isFoil: r.cheapest.isFoil,
-        storeId: r.cheapest.storeId ?? "",
-        storeName: r.cheapest.storeName,
-        priceAud: r.cheapest.priceAud,
-        shippingAud: r.cheapest.shippingAud ?? null,
-        condition: r.cheapest.condition,
-        url: r.cheapest.url,
-        imageUri: r.imageUri,
-      }, { cardId: r.cardId, cardSlug: r.cardSlug, cardName: r.cardName }));
-      newAdded.add(itemId);
+      const item = itemFor(r, r.cheapest, r.cardId, r.cardName);
+      if (newAdded.has(item.id)) continue;
+      addItem(item);
+      newAdded.add(item.id);
     }
     trackEvent("bulk-add", { mode: "all", added: newAdded.size - added.size });
     setAdded(newAdded);
@@ -153,23 +170,10 @@ export function ImportCards() {
 
   function handleAddOne(r: BulkLookupResult) {
     if (!r.cheapest || !r.cardId || !r.cardName) return;
-    const itemId = wantListItemId(r.cheapest.printingId, r.cheapest.storeId ?? "", r.cheapest.url);
-    addItem(toWantListItem({
-      printingId: r.cheapest.printingId,
-      setName: r.cheapest.setName,
-      setCode: r.cheapest.setCode,
-      rarity: r.cheapest.rarity,
-      isFoil: r.cheapest.isFoil,
-      storeId: r.cheapest.storeId ?? "",
-      storeName: r.cheapest.storeName,
-      priceAud: r.cheapest.priceAud,
-      shippingAud: r.cheapest.shippingAud ?? null,
-      condition: r.cheapest.condition,
-      url: r.cheapest.url,
-      imageUri: r.imageUri,
-    }, { cardId: r.cardId, cardSlug: r.cardSlug, cardName: r.cardName }));
+    const item = itemFor(r, r.cheapest, r.cardId, r.cardName);
+    addItem(item);
     trackEvent("bulk-add", { mode: "one", added: 1 });
-    setAdded((prev) => new Set([...prev, itemId]));
+    setAdded((prev) => new Set([...prev, item.id]));
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -188,9 +192,6 @@ export function ImportCards() {
     e.target.value = "";
   }
 
-  // The lookup answers in input order, so results[i] is parsed[i] — the only reliable
-  // way back to a line's collector number when two lines share a card name.
-  const collectorByResult = new Map(results?.map((r, i) => [r, parsed[i]?.collectorNumber]) ?? []);
   const resultItemId = (r: BulkLookupResult) =>
     r.cheapest ? wantListItemId(r.cheapest.printingId, r.cheapest.storeId ?? "", r.cheapest.url) : "";
   const found = results?.filter((r) => r.cheapest) ?? [];
@@ -323,7 +324,7 @@ export function ImportCards() {
                         )}
                         {r.cheapest && (
                           <div className="text-xs text-cream-dim/50 mt-0.5">
-                            {r.cheapest.setName.toUpperCase()}{collectorByResult.get(r) ? ` #${collectorByResult.get(r)}` : ""}{r.cheapest.isFoil ? " ✦" : ""}
+                            {r.cheapest.setName.toUpperCase()}{inputByResult.get(r)?.collectorNumber ? ` #${inputByResult.get(r)?.collectorNumber}` : ""}{r.cheapest.isFoil ? " ✦" : ""}
                           </div>
                         )}
                       </td>

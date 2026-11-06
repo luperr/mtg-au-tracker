@@ -33,7 +33,8 @@ function AddToWantListButton({ card }: { card: CardSearchResult }) {
       const printings: StoreListing[] = await res.json();
       if (!printings?.length) return;
       const printing = [...printings].sort((a, b) => a.priceAud - b.priceAud)[0];
-      addItem(toWantListItem(printing, { cardId: card.id, cardSlug: card.slug, cardName: card.name }));
+      // Added from a card, not a listing: any printing will do.
+      addItem({ ...toWantListItem(printing, { cardId: card.id, cardSlug: card.slug, cardName: card.name }), printingMode: "any" });
     } finally {
       setAdding(false);
     }
