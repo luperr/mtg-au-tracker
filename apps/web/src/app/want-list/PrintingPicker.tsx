@@ -4,16 +4,40 @@ import { useEffect, useRef, useState } from "react";
 import { useWantList, toWantListItem, type WantListItem } from "@/app/WantListContext";
 import { SetSymbol } from "@/app/SetSymbol";
 import { useClickOutside } from "@/lib/hooks/useClickOutside";
-import { fmtAUD, trackEvent } from "@/lib/utils";
+import { fmtAUD, plural, trackEvent } from "@/lib/utils";
 import { variantBadgeWithFoil } from "@/lib/variant-utils";
 import type { StoreListing } from "@/lib/store-listing";
 import { useCardHover, useHideCardPreview } from "./CardPreview";
 
 type StorePrinting = StoreListing & { collectorNumber: string };
 
+type PrintingOption = { listing: StorePrinting; stores: number };
+
+/**
+ * A card's printings, fetched once per card per page: every picker for the card
+ * shares it, and it survives a row remounting under a new id after Optimise or a
+ * pick. A failed fetch isn't kept, so the next open retries.
+ */
+const printingsByCard = new Map<string, Promise<PrintingOption[]>>();
+
+function printingsOf(cardId: string): Promise<PrintingOption[]> {
+  let p = printingsByCard.get(cardId);
+  if (!p) {
+    p = fetch(`/api/cards/store-printings?cardId=${encodeURIComponent(cardId)}`)
+      .then((r) => r.json())
+      .then((rows: StorePrinting[]) => byPrinting(rows))
+      .catch(() => {
+        printingsByCard.delete(cardId);
+        return [];
+      });
+    printingsByCard.set(cardId, p);
+  }
+  return p;
+}
+
 /** One option per printing: its cheapest listing, and how many stores have it. */
-function byPrinting(rows: StorePrinting[]): { listing: StorePrinting; stores: number }[] {
-  const out = new Map<string, { listing: StorePrinting; stores: number }>();
+function byPrinting(rows: StorePrinting[]): PrintingOption[] {
+  const out = new Map<string, PrintingOption>();
   for (const r of rows) {
     const p = out.get(r.printingId);
     if (!p) out.set(r.printingId, { listing: r, stores: 1 });
@@ -44,33 +68,30 @@ export function PrintingPicker({ item }: { item: WantListItem }) {
   const hover = useCardHover();
   const hidePreview = useHideCardPreview();
   const [open, setOpen] = useState(false);
-  const [options, setOptions] = useState<{ listing: StorePrinting; stores: number }[] | null>(null);
+  const [options, setOptions] = useState<PrintingOption[] | null>(null);
   const ref = useRef<HTMLDivElement>(null);
-  const mode = item.printingMode ?? "any";
   useClickOutside(ref, open, () => setOpen(false));
   useEffect(() => { if (!open) hidePreview(); }, [open, hidePreview]);
 
   useEffect(() => {
     if (!open || options) return;
-    fetch(`/api/cards/store-printings?cardId=${item.cardId}`)
-      .then((r) => r.json())
-      .then((rows: StorePrinting[]) => setOptions(byPrinting(rows)))
-      .catch(() => setOptions([]));
+    let live = true;
+    printingsOf(item.cardId).then((o) => { if (live) setOptions(o); });
+    return () => { live = false; };
   }, [open, options, item.cardId]);
 
   function pick(listing: StorePrinting) {
     const same = listing.printingId === item.printingId;
     // Keep the listing the card already has when its printing is picked; otherwise its cheapest one.
-    replaceItem(item.id, same ? { ...item, printingMode: "exact" } : {
-      ...toWantListItem(listing, { cardId: item.cardId, cardSlug: item.cardSlug, cardName: item.cardName }),
-      qty: item.qty,
-      printingMode: "exact",
-    });
+    replaceItem(item.id, same
+      ? { ...item, printingMode: "exact" }
+      : toWantListItem(listing, item, { printingMode: "exact", qty: item.qty }));
     trackEvent("optimise-line-mode", { mode: "exact", changed: !same });
     setOpen(false);
   }
 
-  const locked = mode === "exact";
+  const locked = item.printingMode === "exact";
+  const lockLabel = locked ? "Locked to this printing — click to allow any" : "Any printing — click to lock to this one";
 
   function toggleLock() {
     const next = locked ? "any" : "exact";
@@ -97,8 +118,8 @@ export function PrintingPicker({ item }: { item: WantListItem }) {
         <button
           onClick={toggleLock}
           aria-pressed={locked}
-          aria-label={locked ? "Locked to this printing — click to allow any" : "Any printing — click to lock to this one"}
-          title={locked ? "Locked to this printing — click to allow any" : "Any printing — click to lock to this one"}
+          aria-label={lockLabel}
+          title={lockLabel}
           className={`flex items-center rounded-r-lg border-l border-subtle px-2 transition-colors ${
             locked ? "bg-accent/20 text-cream" : "text-cream-dim hover:text-cream"
           }`}
@@ -138,7 +159,7 @@ export function PrintingPicker({ item }: { item: WantListItem }) {
                       <span className="block truncate">{p.setName} #{p.collectorNumber}</span>
                       <span className="block text-[11px] opacity-70">
                         {badge && <span className="text-accent-light">{badge} · </span>}
-                        {stores} store{stores === 1 ? "" : "s"}
+                        {plural(stores, "store")}
                       </span>
                     </span>
                     <span className="shrink-0 whitespace-nowrap font-semibold text-price">from {fmtAUD(p.priceAud)}</span>

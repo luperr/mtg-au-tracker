@@ -7,8 +7,11 @@
 // (`applyPlan`); until then it's the listing it was added at.
 
 import { MAX_CARD_QTY } from "../config";
-import { DEFAULT_PREFS, type Offer, type OptimiseLine, type OptimiseResponse, type PlanStore, type Prefs } from "./types";
-import { wantListItemId, type WantListItem } from "../../app/WantListContext";
+import {
+  DEFAULT_PREFS, toCents, type Cents, type Offer, type OptimiseLine, type OptimiseResponse, type PlanUnit, type Prefs,
+  type UnitFlags,
+} from "./types";
+import { toWantListItem, type WantListItem } from "../../app/WantListContext";
 
 export function itemQty(item: Pick<WantListItem, "qty">): number {
   const q = item.qty ?? 1;
@@ -29,110 +32,84 @@ export function toLines(items: WantListItem[]): OptimiseLine[] {
       storeId: item.storeId,
       condition: item.condition,
       url: item.url,
-      seenCents: Math.round(item.priceAud * 100),
+      seenCents: toCents(item.priceAud),
     },
   }));
 }
+
+/** Prefs the user picks on the page; postage overrides live with the want list instead. */
+export type SavedPrefs = Omit<Prefs, "postageOverrides">;
 
 /** The engine's prefs from the user's saved ones plus their per-store postage edits (AUD). */
 export function requestPrefs(saved: SavedPrefs, postageOverridesAud: Record<string, number>): Prefs {
   return {
     ...saved,
-    // eBay is one of the stores the user can untick, so it rides in excludeStores.
-    includeEbay: true,
-    // Finish is part of choosing a printing (the card's printing menu), not a global pref.
-    finish: "any",
     postageOverrides: Object.fromEntries(
-      Object.entries(postageOverridesAud).map(([storeId, aud]) => [storeId, Math.round(aud * 100)])),
+      Object.entries(postageOverridesAud).map(([storeId, aud]) => [storeId, toCents(aud)])),
   };
 }
 
-function itemToOffer(item: WantListItem): Offer {
-  return {
-    printingId: item.printingId,
-    setName: item.setName,
-    setCode: item.setCode,
-    rarity: item.rarity,
-    isFoil: item.isFoil,
-    finish: item.finish ?? (item.isFoil ? "foil" : "nonfoil"),
-    borderColor: item.borderColor ?? null,
-    frameEffects: item.frameEffects ?? [],
-    imageUri: item.imageUri,
-    condition: item.condition,
-    url: item.url,
-    storeId: item.storeId,
-    storeName: item.storeName,
-    priceCents: Math.round(item.priceAud * 100),
-    shippingCents: item.shippingAud === null ? null : Math.round(item.shippingAud * 100),
-    stockQty: null,
-    variantId: null,
-  };
-}
+/** The items bought from one store, as the page shows them. */
+export type StoreGroup = {
+  storeId: string;
+  storeName: string;
+  /** "per-item": each listing ships separately (eBay). */
+  kind: "flat" | "per-item";
+  items: WantListItem[];
+  subtotalCents: Cents;
+  postageCents: Cents;
+  postageWaived: boolean;
+  freeShippingGapCents: Cents | null;
+};
 
 /**
- * The list grouped by the store each item is bought from, in the plan's shape.
- * Postage is an estimate: `flatCents` per store (the user's override, else the
- * store's flat rate; null = unknown, counted as 0), or each listing's own
- * postage for per-item stores (eBay). Free-shipping thresholds aren't applied —
- * only the optimiser's answer is exact.
+ * The list grouped by the store each item is bought from. `flatCents` is a
+ * store's flat postage (the user's override, else its rate); null means postage
+ * is per item, the same rule the optimiser uses. Until Optimise runs this is an
+ * estimate — no free-shipping thresholds — and the page swaps in the plan's
+ * exact postage when it has one.
  */
-export function listStores(items: WantListItem[], flatCents: (storeId: string) => number | null): PlanStore[] {
-  const stores = new Map<string, PlanStore>();
+export function listStores(items: WantListItem[], flatCents: (storeId: string) => Cents | null): StoreGroup[] {
+  const stores = new Map<string, StoreGroup>();
   for (const item of items) {
-    const store = stores.get(item.storeId) ?? {
-      storeId: item.storeId, storeName: item.storeName, kind: item.storeId === "ebay_au" ? "per-item" : "flat",
-      units: [], subtotalCents: 0, postageCents: 0, postageWaived: false, freeShippingGapCents: null,
-    };
+    let store = stores.get(item.storeId);
+    if (!store) {
+      const flat = flatCents(item.storeId);
+      store = {
+        storeId: item.storeId, storeName: item.storeName, kind: flat === null ? "per-item" : "flat", items: [],
+        subtotalCents: 0, postageCents: flat ?? 0, postageWaived: false, freeShippingGapCents: null,
+      };
+      stores.set(item.storeId, store);
+    }
     const qty = itemQty(item);
-    const offer = itemToOffer(item);
-    store.units.push({
-      lineId: item.id, cardId: item.cardId, cardName: item.cardName, qty, offer,
-      flags: { printingChanged: false, conditionChanged: false, conditionUnknown: false, stockUnconfirmed: false },
-    });
-    store.subtotalCents += qty * offer.priceCents;
-    if (store.kind === "per-item") store.postageCents += qty * (offer.shippingCents ?? 0);
-    stores.set(item.storeId, store);
-  }
-  for (const store of stores.values()) {
-    if (store.kind === "flat") store.postageCents = flatCents(store.storeId) ?? 0;
+    store.items.push(item);
+    store.subtotalCents += qty * toCents(item.priceAud);
+    if (store.kind === "per-item") store.postageCents += qty * toCents(item.shippingAud ?? 0);
   }
   return [...stores.values()];
 }
 
+/** What the last optimise changed about an item, keyed by the item it produced. */
+export type PlannedFlags = { flags: UnitFlags; prevCondition: string | null };
+
 function offerToItem(offer: Offer, from: WantListItem, qty: number): WantListItem {
-  return {
-    id: wantListItemId(offer.printingId, offer.storeId, offer.url),
-    cardId: from.cardId,
-    cardSlug: from.cardSlug,
-    cardName: from.cardName,
-    printingId: offer.printingId,
-    setName: offer.setName,
-    setCode: offer.setCode,
-    rarity: offer.rarity,
-    isFoil: offer.isFoil,
-    finish: offer.finish,
-    borderColor: offer.borderColor,
-    frameEffects: offer.frameEffects,
-    storeId: offer.storeId,
-    storeName: offer.storeName,
-    priceAud: offer.priceCents / 100,
-    shippingAud: offer.shippingCents === null ? null : offer.shippingCents / 100,
-    condition: offer.condition,
-    url: offer.url,
-    imageUri: offer.imageUri,
-    qty,
-    printingMode: from.printingMode,
-  };
+  const { priceCents, shippingCents, stockQty, variantId, ...listing } = offer;
+  return toWantListItem(
+    { ...listing, priceAud: priceCents / 100, shippingAud: shippingCents === null ? null : shippingCents / 100 },
+    from,
+    { printingMode: from.printingMode ?? "any", qty },
+  );
 }
 
 /**
  * The want list after buying the plan. Each item becomes the listings its copies
  * were planned at; copies the plan couldn't fill stay on the item as it was, so
  * the list still says how many the user wants. Items the plan doesn't cover are
- * kept unchanged, and order is preserved.
+ * kept unchanged, and order is preserved. `flags` says what changed for each
+ * item the plan produced; where two lines land on one listing, theirs combine.
  */
-export function applyPlan(items: WantListItem[], res: OptimiseResponse): WantListItem[] {
-  const unitsByLine = new Map<string, { offer: Offer; qty: number }[]>();
+export function applyPlan(items: WantListItem[], res: OptimiseResponse): { items: WantListItem[]; flags: Map<string, PlannedFlags> } {
+  const unitsByLine = new Map<string, PlanUnit[]>();
   for (const unit of res.plan.stores.flatMap((s) => s.units)) {
     const units = unitsByLine.get(unit.lineId) ?? [];
     units.push(unit);
@@ -140,9 +117,21 @@ export function applyPlan(items: WantListItem[], res: OptimiseResponse): WantLis
   }
 
   const out = new Map<string, WantListItem>();
-  const add = (item: WantListItem): void => {
+  const flags = new Map<string, PlannedFlags>();
+  const add = (item: WantListItem, planned?: PlannedFlags): void => {
     const existing = out.get(item.id);
     out.set(item.id, existing ? { ...existing, qty: itemQty(existing) + itemQty(item) } : item);
+    if (!planned) return;
+    const had = flags.get(item.id);
+    flags.set(item.id, had ? {
+      flags: {
+        printingChanged: had.flags.printingChanged || planned.flags.printingChanged,
+        conditionChanged: had.flags.conditionChanged || planned.flags.conditionChanged,
+        conditionUnknown: had.flags.conditionUnknown || planned.flags.conditionUnknown,
+        stockUnconfirmed: had.flags.stockUnconfirmed || planned.flags.stockUnconfirmed,
+      },
+      prevCondition: had.prevCondition,
+    } : planned);
   };
   for (const item of items) {
     const units = unitsByLine.get(item.id);
@@ -152,32 +141,21 @@ export function applyPlan(items: WantListItem[], res: OptimiseResponse): WantLis
     }
     let bought = 0;
     for (const u of units) {
-      add(offerToItem(u.offer, item, u.qty));
+      add(offerToItem(u.offer, item, u.qty), { flags: u.flags, prevCondition: item.condition });
       bought += u.qty;
     }
     if (bought < itemQty(item)) add({ ...item, qty: itemQty(item) - bought });
   }
-  return [...out.values()];
+  return { items: [...out.values()], flags };
 }
-
-
-/**
- * Prefs the user picks on the page. Postage overrides live with the want list
- * instead, eBay is just another store in `excludeStores`, and finish comes from
- * the printing each card is locked to.
- */
-export type SavedPrefs = Omit<Prefs, "postageOverrides" | "includeEbay" | "finish">;
 
 export const PREFS_KEY = "scrymarket_optimiser_prefs";
 
-/** NM to DMG, best first. Spelled out rather than imported: @mtg-au/shared's index pulls pino into the client bundle. */
+/**
+ * NM to DMG, best first. Spelled out so this module adds no runtime import of
+ * @mtg-au/shared, whose index carries the pino logger.
+ */
 export const CONDITIONS = ["NM", "LP", "MP", "HP", "DMG"] as const satisfies readonly SavedPrefs["conditions"][number][];
-
-const DEFAULT_SAVED: SavedPrefs = {
-  conditions: DEFAULT_PREFS.conditions,
-  excludeStores: [],
-  maxStores: DEFAULT_PREFS.maxStores,
-};
 
 /** Reads saved prefs leniently: anything unrecognised falls back to its default. */
 export function parseSavedPrefs(raw: string | null): SavedPrefs {
@@ -188,23 +166,14 @@ export function parseSavedPrefs(raw: string | null): SavedPrefs {
   } catch {
     // fall through to defaults
   }
-  const known: readonly unknown[] = CONDITIONS;
-  let conditions = Array.isArray(v.conditions)
+  const conditions = Array.isArray(v.conditions)
     ? CONDITIONS.filter((c) => (v.conditions as unknown[]).includes(c))
     : [];
-  // Saved as a "worst condition" floor before conditions became a checklist.
-  if (!Array.isArray(v.conditions) && (known.includes(v.minCondition) || v.minCondition === "any")) {
-    const floor = v.minCondition === "any" ? CONDITIONS.length : CONDITIONS.indexOf(v.minCondition as typeof CONDITIONS[number]) + 1;
-    conditions = CONDITIONS.slice(0, floor);
-  }
-  const excludeStores = Array.isArray(v.excludeStores)
-    ? v.excludeStores.filter((s): s is string => typeof s === "string" && s !== "")
-    : [];
-  // Saved before eBay moved into the store list.
-  if (v.includeEbay === false && !excludeStores.includes("ebay_au")) excludeStores.push("ebay_au");
   return {
-    conditions: conditions.length > 0 ? conditions : [...DEFAULT_SAVED.conditions],
-    excludeStores,
+    conditions: conditions.length > 0 ? conditions : [...DEFAULT_PREFS.conditions],
+    excludeStores: Array.isArray(v.excludeStores)
+      ? v.excludeStores.filter((s): s is string => typeof s === "string" && s !== "")
+      : [],
     maxStores: Number.isInteger(v.maxStores) && (v.maxStores as number) >= 1 ? v.maxStores as number : null,
   };
 }

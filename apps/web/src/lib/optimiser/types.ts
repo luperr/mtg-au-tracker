@@ -1,15 +1,20 @@
-// Optimiser v2 types. Pure — no Next.js or DB imports, and relative imports only,
+// Optimiser types. Pure — no Next.js or DB imports, and relative imports only,
 // so vitest resolves everything here without path aliases.
 //
-// All money is integer cents. v1 summed floats, which is how a plan came back as
-// $168.66000000000003 and why exact-equality tie-breaks were unreliable.
+// All money is integer cents. The first optimiser summed floats, which is how a
+// plan came back as $168.66000000000003 and why exact-equality tie-breaks were
+// unreliable.
 
 import type { CardCondition } from "@mtg-au/shared";
 import type { StoreListing } from "../store-listing";
 
 export type Cents = number;
 
-export type Finish = StoreListing["finish"];
+/**
+ * AUD (a decimal string from `store_prices`, or a number from the want list) to
+ * cents. The one place a price becomes cents, server and client alike.
+ */
+export const toCents = (aud: string | number): Cents => Math.round(Number(aud) * 100);
 
 /**
  * Identifies one listing across scrapes. `store_prices.id` is rewritten by every
@@ -32,8 +37,6 @@ export type OptimiseLine = {
   printing: "exact" | "any";
   /** Required for "exact". For "any" it only marks which printing counts as unchanged. */
   printingId: string | null;
-  /** For "any" lines, a finish that overrides `Prefs.finish` (a deck list's `*F*` marker). */
-  finish?: Finish | null;
   /** The listing the user has now, with the price they last saw — re-priced server-side. */
   current?: (ListingKey & { seenCents: Cents }) | null;
 };
@@ -41,25 +44,18 @@ export type OptimiseLine = {
 export type Prefs = {
   /** Conditions to buy, one or more. Listings with no or an unrecognised condition always pass, flagged. */
   conditions: CardCondition[];
-  /** Applies to "any" lines only — an exact printing already fixes its finish. */
-  finish: Finish | "any";
+  /** Stores to leave out, eBay included. */
   excludeStores: string[];
-  includeEbay: boolean;
-  /** Most flat-postage stores in the plan. eBay is governed by `includeEbay`, not this. */
+  /** Most flat-postage stores in the plan. Per-item stores (eBay) aren't counted. */
   maxStores: number | null;
   /** Per-store postage the user set, e.g. 0 for a store they collect from. */
   postageOverrides: Record<string, Cents>;
 };
 
-/**
- * Near mint unless the user says otherwise — v1 silently swapped in played
- * copies. Any finish will do; the plan flags a changed printing.
- */
+/** Near mint unless the user says otherwise — the first optimiser silently swapped in played copies. */
 export const DEFAULT_PREFS: Prefs = {
   conditions: ["NM"],
-  finish: "any",
   excludeStores: [],
-  includeEbay: true,
   maxStores: null,
   postageOverrides: {},
 };
@@ -136,7 +132,7 @@ export type Unavailable = {
   cardName: string;
   /**
    * "no-listings": nothing in stock anywhere. "no-match": in stock, but not in a
-   * printing, condition, finish or store the prefs allow. "short": not enough
+   * printing, condition or store the prefs allow. "short": not enough
    * copies — `missing` of them couldn't be filled.
    */
   reason: "no-listings" | "no-match" | "short";

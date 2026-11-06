@@ -392,14 +392,14 @@ Listing-grained search with a filter sidebar (store, set, condition, finish, tre
   checklist of every store, eBay included, all ticked, saved as the *unticked* ids
   (`excludeStores`) so a store added later starts ticked. localStorage `scrymarket_optimiser_prefs`;
   per-store postage edits stay in `scrymarket_shipping_overrides`.
-- Umami: `optimise-run` / `optimise-apply` (`version: "v2"`, kept so history separates from the
+- Umami: `optimise-run` (one per run, since every run is applied; `version: "v2"`, kept so history separates from the
   old optimiser), `optimise-undo`, `optimise-pref`, `optimise-alt`, `optimise-exclude-store`,
   `optimise-line-mode`, `optimise-unlock-all`.
 - There is no flag or old version to fall back to: the user base doesn't warrant one. Roll back a
   bad release by pinning the previous image (`./scripts/deploy.sh main-<sha>`).
 - **Optimiser engine** (`lib/optimiser/`, `POST /api/optimize`). Seeds → local search → B&B under
   `OPTIMIZE_DEADLINE_MS`, all integer cents, with per-line qty, "exact"/"any"
-  printing, prefs (allowed conditions, finish, excluded stores, eBay on/off, max stores), stock caps,
+  printing, prefs (allowed conditions, excluded stores — eBay included — and max stores), stock caps,
   free-shipping thresholds, alternatives per store count, and the user's current listings re-priced
   server-side so "savings" is like for like (`null` when it isn't). Prefs filter in JS, not SQL,
   because current listings at excluded stores still need pricing. Stock, Shopify variant ids and

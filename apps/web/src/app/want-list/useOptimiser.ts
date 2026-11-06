@@ -2,7 +2,10 @@
 
 import { useCallback, useRef, useState } from "react";
 import { trackEvent } from "@/lib/utils";
-import type { OptimiseResponse } from "@/lib/optimiser/types";
+import type { OptimiseLine, OptimiseResponse, Prefs } from "@/lib/optimiser/types";
+
+/** Answers kept for re-presses (Undo then Optimise, a chip then "All stores"); older ones are dropped. */
+const CACHE_SIZE = 8;
 
 function errorMessage(status: number, body: { error?: string } | null): string {
   if (status === 429) return "Too many optimiser runs — wait a minute and try again.";
@@ -13,16 +16,17 @@ function errorMessage(status: number, body: { error?: string } | null): string {
 /**
  * Runs /api/optimize when asked — the want list's Optimise button and its
  * store-count chips. `run` resolves to the answer, or null if it failed (the
- * message is in `error`). Answers are memoised per request, so re-pressing with
- * nothing changed costs no server run.
+ * message is in `error`). Recent answers are memoised per request, so
+ * re-pressing with nothing changed costs no server run.
  */
 export function useOptimiser() {
   const cache = useRef(new Map<string, OptimiseResponse>());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const run = useCallback(async (body: string): Promise<OptimiseResponse | null> => {
+  const run = useCallback(async (request: { lines: OptimiseLine[]; prefs: Prefs }): Promise<OptimiseResponse | null> => {
     setError(null);
+    const body = JSON.stringify(request);
     const hit = cache.current.get(body);
     if (hit) return hit;
     setLoading(true);
@@ -31,10 +35,12 @@ export function useOptimiser() {
       if (!res.ok) throw new Error(errorMessage(res.status, await res.json().catch(() => null)));
       const data = await res.json() as OptimiseResponse;
       cache.current.set(body, data);
+      if (cache.current.size > CACHE_SIZE) cache.current.delete(cache.current.keys().next().value!);
+      // Every run is applied to the list, so this one event covers what used to be run + apply.
       // Whole dollars: enough to tell "saved nothing" from "saved $40" without logging the basket.
       trackEvent("optimise-run", {
         version: "v2",
-        lines: (JSON.parse(body) as { lines: unknown[] }).lines.length,
+        lines: request.lines.length,
         units: data.plan.totals.unitsWanted,
         stores: data.plan.totals.storeCount,
         unavailable: data.unavailable.length,

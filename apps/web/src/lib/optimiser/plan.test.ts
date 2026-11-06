@@ -21,7 +21,7 @@ function run(lines: OptimiseLine[], offersByCard: Record<string, Offer[]>, store
 describe("buildResponse invariants", () => {
   const cases: [string, Partial<Prefs>, Parameters<typeof randomInstance>[3]][] = [
     ["defaults", {}, { maxQty: 4, stock: true }],
-    ["NM only, no eBay", { conditions: ["NM"], includeEbay: false }, { maxQty: 3, stock: true }],
+    ["NM only, no eBay", { conditions: ["NM"], excludeStores: ["ebay_au"] }, { maxQty: 3, stock: true }],
     ["LP and MP only", { conditions: ["LP", "MP"] }, { maxQty: 2, stock: true }],
     ["store cap", { maxStores: 2 }, { maxQty: 2, thresholds: true }],
     ["thresholds and overrides", { postageOverrides: { s1: 0 } }, { maxQty: 3, thresholds: true, stock: true }],
@@ -45,10 +45,9 @@ describe("buildResponse invariants", () => {
       expect(plan.totals.totalCents).toBe(result.best.cents);
 
       // Every copy is one the prefs allow.
-      const storeById = new Map(inst.stores.map((s) => [s.storeId, s]));
       const lineById = new Map(inst.lines.map((l) => [l.lineId, l]));
       for (const u of units) {
-        expect(isEligible(u.offer, lineById.get(u.lineId)!, storeById.get(u.offer.storeId)!, p)).toBe(true);
+        expect(isEligible(u.offer, lineById.get(u.lineId)!, p)).toBe(true);
       }
 
       // Each line gets its qty, less what's reported unavailable.

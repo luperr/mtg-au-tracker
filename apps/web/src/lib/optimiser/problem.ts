@@ -4,10 +4,9 @@
 
 import { isKnownCondition } from "@mtg-au/shared";
 import { mapListingRow, type StoreListingRow } from "../store-listing";
-import type { Cents, OptimiseLine, Offer, Prefs, StoreInfo, Unavailable } from "./types";
+import { toCents, type Cents, type OptimiseLine, type Offer, type Prefs, type StoreInfo, type Unavailable } from "./types";
 
-/** `store_prices` keeps prices as decimal text; this is the one place they become numbers. */
-export const toCents = (aud: string | number): Cents => Math.round(Number(aud) * 100);
+export { toCents };
 
 export type OfferRow = StoreListingRow & { card_id: string; stock_qty: number | null; variant_id: string | null };
 
@@ -54,13 +53,10 @@ export function meetsCondition(condition: string | null, prefs: Prefs): boolean 
   return prefs.conditions.includes(condition);
 }
 
-export function isEligible(offer: Offer, line: OptimiseLine, store: StoreInfo, prefs: Prefs): boolean {
+export function isEligible(offer: Offer, line: OptimiseLine, prefs: Prefs): boolean {
   if (prefs.excludeStores.includes(offer.storeId)) return false;
-  if (store.flatCents === null && !prefs.includeEbay) return false;
   if (!meetsCondition(offer.condition, prefs)) return false;
-  if (line.printing === "exact") return offer.printingId === line.printingId;
-  const finish = line.finish ?? prefs.finish;
-  return finish === "any" || offer.finish === finish;
+  return line.printing === "any" || offer.printingId === line.printingId;
 }
 
 export function sameListing(offer: Offer, key: NonNullable<OptimiseLine["current"]>): boolean {
@@ -122,7 +118,7 @@ export function buildProblem(
   const unavailable: Unavailable[] = [];
   for (const line of lines) {
     const all = (offersByCard.get(line.cardId) ?? []).filter((o) => storeIndex.has(o.storeId));
-    const eligible = all.filter((o) => isEligible(o, line, stores[storeIndex.get(o.storeId)!], prefs));
+    const eligible = all.filter((o) => isEligible(o, line, prefs));
     if (eligible.length === 0) {
       const reason = all.length === 0 ? "no-listings" : "no-match";
       unavailable.push({ lineId: line.lineId, cardId: line.cardId, cardName: line.cardName, reason, missing: line.qty });

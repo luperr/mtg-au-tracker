@@ -16,13 +16,12 @@ const CONDITION_LABELS: Record<SavedPrefs["conditions"][number], string> = {
 /**
  * The optimiser's preferences, as the search filter pills. Condition is a
  * checklist of the conditions to buy (NM by default; at least one stays
- * ticked). There's no finish
- * pref: a finish comes with the printing a card is locked to. Stores is
- * a checklist with everything ticked — eBay included — and unticking one leaves
- * it out; it's stored as the unticked ids, so a new store starts ticked.
+ * ticked). Stores is a checklist with everything ticked — eBay included — and
+ * unticking one leaves it out; it's stored as the unticked ids, so a new store
+ * starts ticked.
  *
  * Max stores is "All" (no limit) or a number from 1 up to the ticked stores
- * (eBay isn't counted). All sits below 1: + from All gives 1, − from 1 gives
+ * (per-item stores like eBay aren't counted, as the optimiser doesn't). All sits below 1: + from All gives 1, − from 1 gives
  * All. The number can be typed too; empty or 0 means All, and clicking the
  * label resets it to All.
  */
@@ -52,10 +51,10 @@ export function PrefsBar({
   }
 
   const excluded = new Set(prefs.excludeStores);
-  // eBay last: it's a marketplace, not one shop.
-  const storeList = [...stores.filter((s) => s.id !== "ebay_au"), ...stores.filter((s) => s.id === "ebay_au")];
+  // Per-item stores (eBay) last: a marketplace, not one shop.
+  const storeList = [...stores.filter((s) => !s.perItem), ...stores.filter((s) => s.perItem)];
   const unticked = storeList.filter((s) => excluded.has(s.id)).length;
-  const available = storeList.filter((s) => s.id !== "ebay_au" && !excluded.has(s.id)).length;
+  const available = storeList.filter((s) => !s.perItem && !excluded.has(s.id)).length;
   const max = prefs.maxStores;
 
   function setMax(n: number | null) {
