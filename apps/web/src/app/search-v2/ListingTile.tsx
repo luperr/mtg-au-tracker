@@ -20,7 +20,7 @@ function AddToWantListButton({ tile, view }: { tile: SearchTile; view: SearchVie
 
   function handleClick() {
     if (added) return;
-    addItem({ ...toWantListItem(
+    addItem(toWantListItem(
       {
         printingId: tile.printing_id,
         setName: tile.set_name,
@@ -39,7 +39,8 @@ function AddToWantListButton({ tile, view }: { tile: SearchTile; view: SearchVie
         storeName: tile.store_name,
       },
       { cardId: tile.card_id, cardSlug: tile.slug, cardName: tile.name },
-    ), ...(view === "card" ? {} : { printingMode: "exact" as const }) });
+      { printingMode: view === "card" ? "any" : "exact" },
+    ));
     trackEvent("want-list-add", { card: tile.name, source: "search-v2" });
   }
 

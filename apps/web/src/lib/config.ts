@@ -10,7 +10,7 @@
 export const RATE_LIMIT_SEARCH_PER_MINUTE = 60;
 export const RATE_LIMIT_CONTACT_PER_HOUR = 3;
 export const RATE_LIMIT_BULK_LOOKUP_PER_MINUTE = 10;
-/** The want list re-runs the optimiser after every edit (debounced, memoised per request). */
+/** Each Optimise press, store-count chip and "Don't use this store" is a run. */
 export const RATE_LIMIT_OPTIMIZE_PER_MINUTE = 30;
 export const RATE_LIMIT_READ_PER_MINUTE = 120;
 

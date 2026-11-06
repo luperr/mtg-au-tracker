@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useWantList, toWantListItem } from "@/app/WantListContext";
 import type { BulkLookupResult, BulkLookupInput } from "@/app/api/cards/bulk-lookup/route";
 import { trackEvent } from "@/lib/utils";
@@ -91,7 +91,6 @@ export function ImportCards({ onImported }: { onImported: (summary: ImportSummar
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   async function importList(raw: string, source: "file" | "paste") {
     const cards = parseCardList(raw);
@@ -118,23 +117,11 @@ export function ImportCards({ onImported }: { onImported: (summary: ImportSummar
           summary.notFound.push(r.inputName);
           return;
         }
-        const item = {
-          ...toWantListItem({
-            printingId: r.cheapest.printingId,
-            setName: r.cheapest.setName,
-            setCode: r.cheapest.setCode,
-            rarity: r.cheapest.rarity,
-            isFoil: r.cheapest.isFoil,
-            storeId: r.cheapest.storeId ?? "",
-            storeName: r.cheapest.storeName,
-            priceAud: r.cheapest.priceAud,
-            shippingAud: r.cheapest.shippingAud ?? null,
-            condition: r.cheapest.condition,
-            url: r.cheapest.url,
-            imageUri: r.imageUri,
-          }, { cardId: r.cardId, cardSlug: r.cardSlug, cardName: r.cardName }),
-          qty: r.qty,
-        };
+        const item = toWantListItem(
+          { ...r.cheapest, imageUri: r.imageUri },
+          { cardId: r.cardId, cardSlug: r.cardSlug, cardName: r.cardName },
+          { printingMode: "any", qty: r.qty },
+        );
         if (listed.has(item.id)) {
           summary.alreadyListed++;
           return;
@@ -181,7 +168,7 @@ export function ImportCards({ onImported }: { onImported: (summary: ImportSummar
         <div className="flex items-center gap-2 shrink-0 mt-0.5">
           <label className="rounded-lg border border-subtle bg-muted px-3 py-1.5 text-xs text-cream-dim hover:text-cream hover:border-accent-border transition-colors cursor-pointer whitespace-nowrap">
             {loading && !expanded ? "Importing…" : "Upload .txt"}
-            <input ref={fileRef} type="file" accept=".txt,.csv,text/plain" className="hidden" onChange={handleFileChange} />
+            <input type="file" accept=".txt,.csv,text/plain" className="hidden" onChange={handleFileChange} />
           </label>
           <button
             onClick={() => setExpanded(!expanded)}

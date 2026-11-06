@@ -35,7 +35,7 @@ export function line(cardId: string, o: Partial<OptimiseLine> = {}): OptimiseLin
   return { lineId: cardId, cardId, cardName: cardId, qty: 1, printing: "any", printingId: "p1", ...o };
 }
 
-export const prefs = (o: Partial<Prefs> = {}): Prefs => ({ ...DEFAULT_PREFS, conditions: [...CARD_CONDITIONS], finish: "any", ...o });
+export const prefs = (o: Partial<Prefs> = {}): Prefs => ({ ...DEFAULT_PREFS, conditions: [...CARD_CONDITIONS], ...o });
 
 export function problem(
   lines: OptimiseLine[],
@@ -46,7 +46,7 @@ export function problem(
   return buildProblem(lines, new Map(Object.entries(offersByCard)), stores, p);
 }
 
-/** Deterministic LCG, as v1's tests use. */
+/** Deterministic LCG, so random instances repeat. */
 export function makeRng(seed: number): () => number {
   let s = seed >>> 0;
   return () => {

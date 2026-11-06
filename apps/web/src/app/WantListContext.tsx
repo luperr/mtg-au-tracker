@@ -63,14 +63,24 @@ export function wantListItemId(printingId: string, storeId: string, url: string 
 }
 
 /**
- * Builds a WantListItem from a listing + card pair, owning the id recipe
- * in exactly one place.
+ * Builds a WantListItem from a listing + card pair, owning the id recipe in
+ * exactly one place. Every caller says whether the card is locked to this
+ * printing: a card-level add (search results) leaves it "any", a printing-level
+ * one (a price row, a printing tile) locks it "exact".
  */
-export function toWantListItem(listing: WantListListing, card: WantListCard): WantListItem {
+export function toWantListItem(
+  listing: WantListListing,
+  card: WantListCard,
+  want: { printingMode: "exact" | "any"; qty?: number },
+): WantListItem {
   return {
-    ...card,
+    cardId: card.cardId,
+    cardSlug: card.cardSlug,
+    cardName: card.cardName,
     ...listing,
     id: wantListItemId(listing.printingId, listing.storeId, listing.url),
+    printingMode: want.printingMode,
+    ...(want.qty !== undefined ? { qty: want.qty } : {}),
   };
 }
 
