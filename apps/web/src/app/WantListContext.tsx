@@ -22,6 +22,13 @@ export interface WantListItem {
   condition: string | null;
   url: string | null;
   imageUri: string | null;
+  /** Copies wanted. Absent = 1. */
+  qty?: number;
+  /**
+   * "exact": this printing only. "any": any printing will do — the optimiser may
+   * swap it, and flags it when it does. Absent = "any".
+   */
+  printingMode?: "exact" | "any";
 }
 
 /** The fields of a WantListItem that come from a specific store listing, as opposed to the card. */
@@ -56,14 +63,24 @@ export function wantListItemId(printingId: string, storeId: string, url: string 
 }
 
 /**
- * Builds a WantListItem from a listing + card pair, owning the id recipe
- * in exactly one place.
+ * Builds a WantListItem from a listing + card pair, owning the id recipe in
+ * exactly one place. Every caller says whether the card is locked to this
+ * printing: a card-level add (search results) leaves it "any", a printing-level
+ * one (a price row, a printing tile) locks it "exact".
  */
-export function toWantListItem(listing: WantListListing, card: WantListCard): WantListItem {
+export function toWantListItem(
+  listing: WantListListing,
+  card: WantListCard,
+  want: { printingMode: "exact" | "any"; qty?: number },
+): WantListItem {
   return {
-    ...card,
+    cardId: card.cardId,
+    cardSlug: card.cardSlug,
+    cardName: card.cardName,
     ...listing,
     id: wantListItemId(listing.printingId, listing.storeId, listing.url),
+    printingMode: want.printingMode,
+    ...(want.qty !== undefined ? { qty: want.qty } : {}),
   };
 }
 
@@ -71,6 +88,11 @@ interface WantListContextValue {
   items: WantListItem[];
   addItem: (item: WantListItem) => void;
   removeItem: (id: string) => void;
+  updateItem: (id: string, patch: Partial<Pick<WantListItem, "qty" | "printingMode">>) => void;
+  /** Swaps one item for another in place (a new printing); merges into an existing item with the same id. */
+  replaceItem: (id: string, next: WantListItem) => void;
+  /** Swaps the whole list at once — applying an optimiser plan, or undoing one. */
+  replaceItems: (items: WantListItem[]) => void;
   hasItem: (id: string) => boolean;
   clearAll: () => void;
   totalCount: number;
@@ -148,6 +170,22 @@ export function WantListProvider({ children }: { children: React.ReactNode }) {
     setItems((prev: WantListItem[]) => prev.filter((i: WantListItem) => i.id !== id));
   }, []);
 
+  const updateItem = useCallback((id: string, patch: Partial<Pick<WantListItem, "qty" | "printingMode">>) => {
+    setItems((prev: WantListItem[]) => prev.map((i) => i.id === id ? { ...i, ...patch } : i));
+  }, []);
+
+  const replaceItems = useCallback((next: WantListItem[]) => setItems(next), []);
+
+  const replaceItem = useCallback((id: string, next: WantListItem) => {
+    setItems((prev: WantListItem[]) => {
+      const clash = next.id !== id ? prev.find((i) => i.id === next.id) : undefined;
+      if (!clash) return prev.map((i) => (i.id === id ? next : i));
+      return prev
+        .filter((i) => i.id !== id)
+        .map((i) => (i.id === next.id ? { ...i, qty: (i.qty ?? 1) + (next.qty ?? 1), printingMode: next.printingMode } : i));
+    });
+  }, []);
+
   const hasItem = useCallback((id: string) => {
     return items.some((i: WantListItem) => i.id === id);
   }, [items]);
@@ -170,7 +208,7 @@ export function WantListProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <WantListContext.Provider value={{
-      items, addItem, removeItem, hasItem, clearAll,
+      items, addItem, removeItem, updateItem, replaceItem, replaceItems, hasItem, clearAll,
       totalCount: items.length, totalPrice,
       storeShippingOverrides, setStoreShipping,
     }}>

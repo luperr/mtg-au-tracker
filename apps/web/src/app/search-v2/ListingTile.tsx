@@ -11,9 +11,10 @@ import { cardHref, fmtAUD, trackEvent } from "@/lib/utils";
 /**
  * Adds the tile's own listing — the cheapest one in its group — straight from the
  * row, with no follow-up fetch: the query already returned everything a want-list
- * item needs.
+ * item needs. A card-view tile stands for the card, so it's added unlocked (any
+ * printing); printing and listing tiles name a printing, so they lock to it.
  */
-function AddToWantListButton({ tile }: { tile: SearchTile }) {
+function AddToWantListButton({ tile, view }: { tile: SearchTile; view: SearchView }) {
   const { addItem, hasItem } = useWantList();
   const added = hasItem(wantListItemId(tile.printing_id, tile.store_id, tile.url));
 
@@ -38,6 +39,7 @@ function AddToWantListButton({ tile }: { tile: SearchTile }) {
         storeName: tile.store_name,
       },
       { cardId: tile.card_id, cardSlug: tile.slug, cardName: tile.name },
+      { printingMode: view === "card" ? "any" : "exact" },
     ));
     trackEvent("want-list-add", { card: tile.name, source: "search-v2" });
   }
@@ -125,7 +127,7 @@ export function ListingTile({ tile, view, query }: { tile: SearchTile; view: Sea
               </div>
             ) : null}
           </div>
-          <AddToWantListButton tile={tile} />
+          <AddToWantListButton tile={tile} view={view} />
         </div>
       </div>
     </div>

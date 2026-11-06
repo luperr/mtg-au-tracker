@@ -41,15 +41,16 @@ describe("offerFromRow", () => {
 
 describe("meetsCondition", () => {
   it.each([
-    ["NM", "LP", true],
-    ["LP", "LP", true],
-    ["MP", "LP", false],
-    ["DMG", "HP", false],
-    ["HP", "any", true],
-    [null, "NM", true],
-    ["Signed", "NM", true],
-  ] as const)("%s against floor %s → %s", (condition, floor, ok) => {
-    expect(meetsCondition(condition, prefs({ minCondition: floor }))).toBe(ok);
+    ["NM", ["NM"], true],
+    ["LP", ["NM"], false],
+    ["LP", ["NM", "LP"], true],
+    ["MP", ["LP", "HP"], false],
+    ["HP", ["LP", "HP"], true],
+    ["DMG", ["NM", "LP", "MP", "HP"], false],
+    [null, ["NM"], true],
+    ["Signed", ["NM"], true],
+  ] as const)("%s against %j → %s", (condition, conditions, ok) => {
+    expect(meetsCondition(condition, prefs({ conditions: [...conditions] }))).toBe(ok);
   });
 });
 
@@ -63,8 +64,8 @@ describe("buildProblem eligibility", () => {
     ],
   };
 
-  it("applies the condition floor but lets unknown conditions through", () => {
-    expect(candidates([line("c1")], offers, stores, prefs({ minCondition: "LP" })))
+  it("applies the chosen conditions but lets unknown conditions through", () => {
+    expect(candidates([line("c1")], offers, stores, prefs({ conditions: ["NM", "LP"] })))
       .toEqual(["ebay_au:p1:null", "b:p2:NM", "a:p1:NM"]);
   });
 
@@ -73,20 +74,17 @@ describe("buildProblem eligibility", () => {
       .toEqual(["ebay_au:p1:null", "a:p1:HP"]);
   });
 
-  it("the finish pref applies to any-printing lines, and a line's own finish overrides it", () => {
-    expect(candidates([line("c1")], offers, stores, prefs({ finish: "nonfoil" })))
-      .not.toContain("b:p2:NM");
-    expect(candidates([line("c1", { finish: "foil" })], offers, stores, prefs({ finish: "nonfoil" })))
-      .toEqual(["b:p2:NM"]);
+  it("an any-printing line takes every printing, whatever its finish", () => {
+    expect(candidates([line("c1")], offers, stores)).toContain("b:p2:NM");
   });
 
-  it("drops excluded stores and, when asked, eBay", () => {
-    expect(candidates([line("c1")], offers, stores, prefs({ excludeStores: ["a"], includeEbay: false })))
+  it("drops excluded stores, eBay included", () => {
+    expect(candidates([line("c1")], offers, stores, prefs({ excludeStores: ["a", "ebay_au"] })))
       .toEqual(["b:p2:NM"]);
   });
 
   it("reports why a line has nothing to buy", () => {
-    const p = problem([line("c1", { finish: "etched" }), line("c2")], offers, stores);
+    const p = problem([line("c1"), line("c2")], offers, stores, prefs({ conditions: ["DMG"], excludeStores: ["ebay_au"] }));
     expect(p.unavailable).toEqual([
       { lineId: "c1", cardId: "c1", cardName: "c1", reason: "no-match", missing: 1 },
       { lineId: "c2", cardId: "c2", cardName: "c2", reason: "no-listings", missing: 1 },

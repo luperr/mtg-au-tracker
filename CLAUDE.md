@@ -370,21 +370,41 @@ Listing-grained search with a filter sidebar (store, set, condition, finish, tre
 
 ### Want List (`apps/web/src/app/want-list/WantListView.tsx`)
 - Route: `/want-list`, context: `src/app/WantListContext.tsx`, badge: `src/app/WantListBadge.tsx`
-- localStorage keys: `scrymarket_buy_list` (items), `scrymarket_shipping_overrides` (per-store postage)
-- Per-store collapsible sections with store total shown in header when collapsed
-- Printing selector shows all in-stock printings across ALL stores, sorted cheapest first
-- Flat-rate stores: postage shown once in store footer, click-to-edit inline
-- eBay: per-item postage column + subtotal in footer
-- Item ID: `${printingId}-${storeId}-${url ?? ""}` — unique per distinct listing
-- **Optimise feature** (`/api/optimize`): Branch-and-bound over flat-rate store subsets. Flat fees added once per store. Tie-breaking prefers lower flat-rate stores for equal card prices. Per-store shipping overrides sent in POST body and applied server-side. Review modal: lock cards to current printing, re-optimise, apply selected changes.
-- **Optimiser v2 engine** (`lib/optimiser/`, `POST /api/optimize/v2`) — not yet wired to any UI. Same
-  seeds → local search → B&B shape as v1, but all integer cents, with per-line qty, "exact"/"any"
-  printing, prefs (condition floor, finish, excluded stores, eBay on/off, max stores), stock caps,
+- **One view.** Cards are grouped by the store they're bought from (`listStores()`), each with its
+  qty stepper, printing button + padlock (`PrintingPicker`), buy link and remove in place. A sticky summary holds
+  the total and the **Optimise** button — the optimiser only runs when pressed (the user wants it
+  on a button, not automatic). Optimise moves every card to its planned listing at once
+  (`applyPlan()`), with **Undo** back to the list before the first run; store-count chips and
+  "Don't use this store" re-run it. Until it runs, or once the list or prefs change, totals are an
+  estimate (flat postage per store, eBay's per listing, no thresholds) marked with `~`.
+- **An item is a want plus the listing it's bought from.** `qty` (absent = 1) and `printingMode`
+  (`"exact"` | `"any"`, absent = any — the padlock, unlocked by default; picking a printing from
+  the dropdown locks it) say what the user wants; the listing is where it was added
+  until Optimise moves it, and is the `current` the plan's savings are measured against
+  (re-priced server-side). There is no finish pref — finish comes with the printing a card is
+  locked to. Where a card is added from decides the lock: a card-level "+" (search results,
+  search v2's card view) adds it unlocked; a printing or listing "+" (card-page price rows,
+  search v2's printing and listings views) locks it. Import is one step (paste/upload → Import → on the list), keeps qty, and brings
+  everything in unlocked even when lines name a set, since Arena/MTGO exports always do.
+- Prefs: conditions (a checklist, NM by default, at least one ticked; listings with no or an
+  unrecognised condition always pass and are flagged; an old saved "worst condition" floor is
+  read as every condition at or above it), max stores, and "Buy from" — a
+  checklist of every store, eBay included, all ticked, saved as the *unticked* ids
+  (`excludeStores`) so a store added later starts ticked. localStorage `scrymarket_optimiser_prefs`;
+  per-store postage edits stay in `scrymarket_shipping_overrides`.
+- Umami: `optimise-run` (one per run, since every run is applied; `version: "v2"`, kept so history separates from the
+  old optimiser), `optimise-undo`, `optimise-pref`, `optimise-alt`, `optimise-exclude-store`,
+  `optimise-line-mode`, `optimise-unlock-all`.
+- There is no flag or old version to fall back to: the user base doesn't warrant one. Roll back a
+  bad release by pinning the previous image (`./scripts/deploy.sh main-<sha>`).
+- **Optimiser engine** (`lib/optimiser/`, `POST /api/optimize`). Seeds → local search → B&B under
+  `OPTIMIZE_DEADLINE_MS`, all integer cents, with per-line qty, "exact"/"any"
+  printing, prefs (allowed conditions, excluded stores — eBay included — and max stores), stock caps,
   free-shipping thresholds, alternatives per store count, and the user's current listings re-priced
   server-side so "savings" is like for like (`null` when it isn't). Prefs filter in JS, not SQL,
   because current listings at excluded stores still need pricing. Stock, Shopify variant ids and
-  thresholds read as null until the scrapers and `stores` carry them. v1's `algorithm.ts` stays
-  untouched until v1 is removed.
+  thresholds read as null until the scrapers and `stores` carry them. Loki
+  `component="api-optimize"` logs `ms` per run (warn above 2s).
 
 ### `apps/web/src/app/BuyLink.tsx` + `apps/web/src/lib/affiliate.ts`
 Single component for all outbound store buy links. Owns:

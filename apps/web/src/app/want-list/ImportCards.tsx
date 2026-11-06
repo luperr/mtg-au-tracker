@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { useWantList, toWantListItem, wantListItemId } from "@/app/WantListContext";
+import { useState } from "react";
+import { useWantList, toWantListItem } from "@/app/WantListContext";
 import type { BulkLookupResult, BulkLookupInput } from "@/app/api/cards/bulk-lookup/route";
-import { cardHref, trackEvent } from "@/lib/utils";
+import { trackEvent } from "@/lib/utils";
 
 /**
  * Parse a card list in any of these formats:
@@ -76,32 +76,31 @@ function parseCardList(text: string): BulkLookupInput[] {
   return results.filter((c) => c.name.length > 0);
 }
 
-export function ImportCards() {
-  const { addItem } = useWantList();
+export type ImportSummary = { added: number; copies: number; alreadyListed: number; notFound: string[] };
+
+/**
+ * Paste or upload a card list and press Import: every card found goes straight
+ * onto the want list at its cheapest listing, with the line's quantity. Cards
+ * come in unlocked, even when the line names a set — Arena and MTGO exports name
+ * one on every line, so honouring it would lock the whole deck. Uploading a file
+ * imports it at once. `onImported` hands the parent the outcome to show.
+ */
+export function ImportCards({ onImported }: { onImported: (summary: ImportSummary) => void }) {
+  const { items, addItem } = useWantList();
   const [expanded, setExpanded] = useState(false);
   const [text, setText] = useState("");
-  const [parsed, setParsed] = useState<BulkLookupInput[]>([]);
-  const [results, setResults] = useState<BulkLookupResult[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [added, setAdded] = useState<Set<string>>(new Set());
-  // Whether the text came from "Upload .txt" rather than being pasted; typing resets it.
-  const [fromFile, setFromFile] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
 
-  async function handleImport() {
-    const cards = parseCardList(text);
+  async function importList(raw: string, source: "file" | "paste") {
+    const cards = parseCardList(raw);
     if (cards.length === 0) {
+      setExpanded(true);
       setError("No card names found. Enter one card name per line.");
       return;
     }
-    const source = fromFile ? "file" : "paste";
-    setParsed(cards);
     setLoading(true);
     setError(null);
-    setResults(null);
-    setAdded(new Set());
-
     try {
       const res = await fetch("/api/cards/bulk-lookup", {
         method: "POST",
@@ -109,120 +108,71 @@ export function ImportCards() {
         body: JSON.stringify({ cards }),
       });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
-      const data = await res.json() as { results: BulkLookupResult[] };
-      setResults(data.results);
-      trackEvent("bulk-import", {
-        source,
-        cards: cards.length,
-        found: data.results.filter((r) => r.cheapest).length,
+      const { results } = await res.json() as { results: BulkLookupResult[] };
+
+      const listed = new Set(items.map((i) => i.id));
+      const summary: ImportSummary = { added: 0, copies: 0, alreadyListed: 0, notFound: [] };
+      results.forEach((r) => {
+        if (!r.cheapest || !r.cardId || !r.cardName) {
+          summary.notFound.push(r.inputName);
+          return;
+        }
+        const item = toWantListItem(
+          { ...r.cheapest, imageUri: r.imageUri },
+          { cardId: r.cardId, cardSlug: r.cardSlug, cardName: r.cardName },
+          { printingMode: "any", qty: r.qty },
+        );
+        if (listed.has(item.id)) {
+          summary.alreadyListed++;
+          return;
+        }
+        listed.add(item.id);
+        addItem(item);
+        summary.added++;
+        summary.copies += r.qty;
       });
+
+      trackEvent("bulk-import", { source, cards: cards.length, found: summary.added + summary.alreadyListed });
+      setText("");
+      setExpanded(false);
+      onImported(summary);
     } catch (err) {
       trackEvent("bulk-import", { source, cards: cards.length, error: true });
+      setExpanded(true);
       setError(err instanceof Error ? err.message : "Lookup failed");
     } finally {
       setLoading(false);
     }
   }
 
-  function handleAddAll() {
-    if (!results) return;
-    const newAdded = new Set(added);
-    for (const r of results) {
-      if (!r.cheapest || !r.cardId || !r.cardName) continue;
-      const itemId = wantListItemId(r.cheapest.printingId, r.cheapest.storeId ?? "", r.cheapest.url);
-      if (newAdded.has(itemId)) continue;
-      addItem(toWantListItem({
-        printingId: r.cheapest.printingId,
-        setName: r.cheapest.setName,
-        setCode: r.cheapest.setCode,
-        rarity: r.cheapest.rarity,
-        isFoil: r.cheapest.isFoil,
-        storeId: r.cheapest.storeId ?? "",
-        storeName: r.cheapest.storeName,
-        priceAud: r.cheapest.priceAud,
-        shippingAud: r.cheapest.shippingAud ?? null,
-        condition: r.cheapest.condition,
-        url: r.cheapest.url,
-        imageUri: r.imageUri,
-      }, { cardId: r.cardId, cardSlug: r.cardSlug, cardName: r.cardName }));
-      newAdded.add(itemId);
-    }
-    trackEvent("bulk-add", { mode: "all", added: newAdded.size - added.size });
-    setAdded(newAdded);
-  }
-
-  function handleAddOne(r: BulkLookupResult) {
-    if (!r.cheapest || !r.cardId || !r.cardName) return;
-    const itemId = wantListItemId(r.cheapest.printingId, r.cheapest.storeId ?? "", r.cheapest.url);
-    addItem(toWantListItem({
-      printingId: r.cheapest.printingId,
-      setName: r.cheapest.setName,
-      setCode: r.cheapest.setCode,
-      rarity: r.cheapest.rarity,
-      isFoil: r.cheapest.isFoil,
-      storeId: r.cheapest.storeId ?? "",
-      storeName: r.cheapest.storeName,
-      priceAud: r.cheapest.priceAud,
-      shippingAud: r.cheapest.shippingAud ?? null,
-      condition: r.cheapest.condition,
-      url: r.cheapest.url,
-      imageUri: r.imageUri,
-    }, { cardId: r.cardId, cardSlug: r.cardSlug, cardName: r.cardName }));
-    trackEvent("bulk-add", { mode: "one", added: 1 });
-    setAdded((prev) => new Set([...prev, itemId]));
-  }
-
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      setText(ev.target?.result as string ?? "");
-      setFromFile(true);
-      setExpanded(true);   // auto-expand so the user sees the loaded content
-      setResults(null);
-      setError(null);
-    };
+    reader.onload = (ev) => importList((ev.target?.result as string) ?? "", "file");
     reader.readAsText(file);
     // Reset input so the same file can be re-selected
     e.target.value = "";
   }
 
-  // The lookup answers in input order, so results[i] is parsed[i] — the only reliable
-  // way back to a line's collector number when two lines share a card name.
-  const collectorByResult = new Map(results?.map((r, i) => [r, parsed[i]?.collectorNumber]) ?? []);
-  const resultItemId = (r: BulkLookupResult) =>
-    r.cheapest ? wantListItemId(r.cheapest.printingId, r.cheapest.storeId ?? "", r.cheapest.url) : "";
-  const found = results?.filter((r) => r.cheapest) ?? [];
-  const notFound = results?.filter((r) => !r.cheapest) ?? [];
-  const allAdded = found.length > 0 && found.every((r) => added.has(resultItemId(r)));
-
   return (
     <div className="rounded-lg border border-subtle bg-surface overflow-hidden">
-      {/* Header — always visible */}
-      <div className="px-4 py-3 border-b border-subtle bg-cream-muted flex items-start justify-between gap-3">
+      <div className="px-4 py-3 bg-cream-muted flex items-start justify-between gap-3">
         <div>
-          <h2 className="font-semibold text-cream text-sm">Import from list</h2>
-          <p className="text-xs text-cream-dim/50 mt-0.5">
-            Paste a card list or upload a .txt file. Supports MTGO/Arena export format (set code + collector number = exact match). Arena tags like #!Land are ignored.
+          <h2 className="font-semibold text-cream text-sm">Import a list</h2>
+          <p className="text-xs text-cream-dim mt-0.5">
+            Paste a deck or card list, or upload a .txt file. MTGO and Arena exports work.
           </p>
         </div>
 
-        {/* Controls always visible */}
         <div className="flex items-center gap-2 shrink-0 mt-0.5">
           <label className="rounded-lg border border-subtle bg-muted px-3 py-1.5 text-xs text-cream-dim hover:text-cream hover:border-accent-border transition-colors cursor-pointer whitespace-nowrap">
-            Upload .txt
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".txt,.csv,text/plain"
-              className="hidden"
-              onChange={handleFileChange}
-            />
+            {loading && !expanded ? "Importing…" : "Upload .txt"}
+            <input type="file" accept=".txt,.csv,text/plain" className="hidden" onChange={handleFileChange} />
           </label>
-
           <button
             onClick={() => setExpanded(!expanded)}
+            aria-expanded={expanded}
             className="rounded-lg border border-subtle bg-muted px-3 py-1.5 text-xs text-cream-dim hover:text-cream hover:border-accent-border transition-colors whitespace-nowrap"
           >
             {expanded ? "Collapse ▲" : "Paste list ▼"}
@@ -230,140 +180,31 @@ export function ImportCards() {
         </div>
       </div>
 
-      {/* Collapsible paste area */}
       {expanded && (
-        <div className="p-4 space-y-3 border-b border-subtle">
+        <div className="p-4 space-y-3 border-t border-subtle">
           <textarea
             value={text}
-            onChange={(e) => { setText(e.target.value); setFromFile(false); }}
+            onChange={(e) => setText(e.target.value)}
             placeholder={"1 Lightning Bolt (M11) 146\n4x Counterspell\n9 Forest (EOE) 275 #!Land"}
             rows={6}
-            className="w-full rounded-lg border border-subtle bg-bg text-cream text-sm px-3 py-2 resize-y placeholder:text-cream-dim/25 focus:outline-none focus:border-accent-border"
+            aria-label="Card list"
+            className="w-full rounded-lg border border-subtle bg-bg text-cream text-sm px-3 py-2 resize-y placeholder:text-cream-dim/50 focus:outline-none focus:border-accent-border"
           />
-
           <div className="flex items-center gap-3">
             <button
-              onClick={handleImport}
+              onClick={() => importList(text, "paste")}
               disabled={loading || !text.trim()}
-              className="rounded-lg bg-price text-bg px-4 py-2 text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
+              className="rounded-lg bg-cta px-4 py-2 text-sm font-semibold text-white hover:bg-price transition-colors disabled:opacity-40"
             >
-              {loading ? "Looking up…" : "Look up prices"}
+              {loading ? "Importing…" : "Import"}
             </button>
-
             {text && (
-              <button
-                onClick={() => { setText(""); setResults(null); setError(null); }}
-                className="text-xs text-cream-dim/30 hover:text-cream-dim transition-colors"
-              >
+              <button onClick={() => { setText(""); setError(null); }} className="text-xs text-cream-dim hover:text-cream transition-colors">
                 Clear
               </button>
             )}
           </div>
-
-          {error && (
-            <p className="text-sm text-red-400">{error}</p>
-          )}
-        </div>
-      )}
-
-      {/* Results — always visible once loaded */}
-      {results && (
-        <div>
-          {/* Summary bar */}
-          <div className="flex items-center justify-between px-4 py-2.5 bg-cream-muted border-b border-subtle/50">
-            <span className="text-xs text-cream-dim/60">
-              {found.length} found · {notFound.length} not found
-              {found.length > 0 && (
-                <> · Total: <span className="text-price font-semibold">
-                  {found.reduce((s: number, r: BulkLookupResult) => s + (r.cheapest?.priceAud ?? 0), 0).toFixed(2) === "0.00"
-                    ? "—"
-                    : `$${found.reduce((s: number, r: BulkLookupResult) => s + (r.cheapest?.priceAud ?? 0), 0).toFixed(2)}`
-                  } AUD
-                </span></>
-              )}
-            </span>
-            {found.length > 0 && (
-              <button
-                onClick={handleAddAll}
-                disabled={allAdded}
-                className="text-xs font-medium text-price hover:text-cream transition-colors disabled:opacity-40 disabled:cursor-default"
-              >
-                {allAdded ? "All added ✓" : "Add all cheapest"}
-              </button>
-            )}
-          </div>
-
-          {/* Results table */}
-          {found.length > 0 && (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs bg-cream-muted border-b border-subtle/50">
-                  <th className="px-4 py-2 text-left font-medium text-cream-dim">Card</th>
-                  <th className="px-3 py-2 text-left font-medium text-cream-dim">Cheapest store</th>
-                  <th className="px-3 py-2 text-right font-medium text-cream-dim">Price AUD</th>
-                  <th className="px-3 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {found.map((r: BulkLookupResult, i) => {
-                  const isAdded = added.has(resultItemId(r));
-                  return (
-                    <tr key={`${r.inputName}-${i}`} className="border-b border-subtle/40 last:border-0 hover:bg-muted transition-colors">
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-baseline gap-1.5">
-                          {r.qty > 1 && (
-                            <span className="text-xs text-cream-dim/50 font-medium shrink-0">{r.qty}×</span>
-                          )}
-                          <a href={cardHref(r.cardSlug, r.cardId!)} className="font-medium text-cream hover:text-accent transition-colors">
-                            {r.cardName}
-                          </a>
-                        </div>
-                        {r.cardName !== r.inputName && (
-                          <div className="text-[10px] text-cream-dim/40 mt-0.5">searched: {r.inputName}</div>
-                        )}
-                        {r.cheapest && (
-                          <div className="text-xs text-cream-dim/50 mt-0.5">
-                            {r.cheapest.setName.toUpperCase()}{collectorByResult.get(r) ? ` #${collectorByResult.get(r)}` : ""}{r.cheapest.isFoil ? " ✦" : ""}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5 text-cream-dim">{r.cheapest?.storeName}</td>
-                      <td className="px-3 py-2.5 text-right text-price font-semibold">
-                        ${r.cheapest?.priceAud.toFixed(2)}
-                      </td>
-                      <td className="px-3 py-2.5 text-right">
-                        <button
-                          onClick={() => isAdded ? undefined : handleAddOne(r)}
-                          disabled={isAdded}
-                          className={`w-6 h-6 rounded flex items-center justify-center text-sm transition-colors ml-auto ${
-                            isAdded
-                              ? "bg-price/20 text-price cursor-default"
-                              : "bg-muted text-cream-dim/40 hover:bg-price/20 hover:text-price"
-                          }`}
-                        >
-                          {isAdded ? "✓" : "+"}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-
-          {/* Not found */}
-          {notFound.length > 0 && (
-            <div className="px-4 py-3 border-t border-subtle/40">
-              <p className="text-xs text-cream-dim/40 mb-1.5">Not found in database:</p>
-              <div className="flex flex-wrap gap-1.5">
-                {notFound.map((r, i) => (
-                  <span key={`${r.inputName}-${i}`} className="rounded bg-muted px-2 py-0.5 text-xs text-cream-dim/40">
-                    {r.inputName}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
+          {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
         </div>
       )}
     </div>

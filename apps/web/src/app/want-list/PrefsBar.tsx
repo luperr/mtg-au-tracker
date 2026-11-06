@@ -1,0 +1,148 @@
+"use client";
+
+import { Dropdown, OptionItem, pillClass } from "@/app/Dropdown";
+import { CONDITIONS, type SavedPrefs } from "@/lib/optimiser/want-list";
+import type { ReactNode } from "react";
+import type { StoreSummary } from "@/lib/store-shipping";
+
+const CONDITION_LABELS: Record<SavedPrefs["conditions"][number], string> = {
+  NM: "Near mint",
+  LP: "Lightly played",
+  MP: "Moderately played",
+  HP: "Heavily played",
+  DMG: "Damaged",
+};
+
+/**
+ * The optimiser's preferences, as the search filter pills. Condition is a
+ * checklist of the conditions to buy (NM by default; at least one stays
+ * ticked). Stores is a checklist with everything ticked — eBay included — and
+ * unticking one leaves it out; it's stored as the unticked ids, so a new store
+ * starts ticked.
+ *
+ * Max stores is "All" (no limit) or a number from 1 up to the ticked stores
+ * (per-item stores like eBay aren't counted, as the optimiser doesn't). All sits below 1: + from All gives 1, − from 1 gives
+ * All. The number can be typed too; empty or 0 means All, and clicking the
+ * label resets it to All.
+ */
+export function PrefsBar({
+  prefs,
+  stores,
+  onChange,
+  children,
+}: {
+  prefs: SavedPrefs;
+  stores: StoreSummary[];
+  onChange: (patch: Partial<SavedPrefs>, pref: string) => void;
+  /** List actions shown at the end of the row (Unlock all, Clear all). */
+  children?: ReactNode;
+}) {
+  const chosen = new Set(prefs.conditions);
+  const conditionLabel = chosen.size === CONDITIONS.length
+    ? "Condition: any"
+    : `Condition: ${CONDITIONS.filter((c) => chosen.has(c)).join(", ")}`;
+
+  function toggleCondition(c: SavedPrefs["conditions"][number]) {
+    if (chosen.has(c) && chosen.size === 1) return; // at least one stays ticked
+    const next = new Set(chosen);
+    if (next.has(c)) next.delete(c);
+    else next.add(c);
+    onChange({ conditions: CONDITIONS.filter((x) => next.has(x)) }, "condition");
+  }
+
+  const excluded = new Set(prefs.excludeStores);
+  // Per-item stores (eBay) last: a marketplace, not one shop.
+  const storeList = [...stores.filter((s) => !s.perItem), ...stores.filter((s) => s.perItem)];
+  const unticked = storeList.filter((s) => excluded.has(s.id)).length;
+  const available = storeList.filter((s) => !s.perItem && !excluded.has(s.id)).length;
+  const max = prefs.maxStores;
+
+  function setMax(n: number | null) {
+    const valid = n !== null && Number.isFinite(n) && n >= 1;
+    onChange({ maxStores: valid ? Math.min(Math.floor(n), Math.max(available, 1)) : null }, "max-stores");
+  }
+
+  function toggleStore(id: string) {
+    const next = new Set(excluded);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onChange({ excludeStores: [...next] }, "stores");
+  }
+
+  return (
+    <div className="flex flex-nowrap items-center gap-2 sm:flex-wrap" role="group" aria-label="Optimiser preferences">
+      <Dropdown label={conditionLabel} active={!(chosen.size === 1 && chosen.has("NM"))}>
+        {CONDITIONS.map((c) => (
+          <OptionItem
+            key={c}
+            type="check"
+            label={`${CONDITION_LABELS[c]} (${c})`}
+            checked={chosen.has(c)}
+            onClick={() => toggleCondition(c)}
+          />
+        ))}
+        <p className="px-3 pt-1 pb-2 text-xs text-cream-dim">Listings that don’t state a condition are included, and flagged.</p>
+      </Dropdown>
+
+      <div
+        className={`flex items-center gap-1 !py-1 ${pillClass(max !== null, "rounded-lg")}`}
+        role="group"
+        aria-label="Maximum number of stores"
+        title="eBay listings aren’t counted — untick eBay under Buy from to leave them out."
+      >
+        <button
+          onClick={() => setMax(null)}
+          title="Reset to All"
+          aria-label="Max stores — reset to All"
+          className="hover:underline"
+        >
+          Max stores
+        </button>
+        <button
+          onClick={() => setMax(max === null || max <= 1 ? null : max - 1)}
+          disabled={max === null}
+          aria-label="Fewer stores"
+          className="flex h-6 w-6 items-center justify-center rounded text-sm hover:bg-muted disabled:opacity-30"
+        >
+          −
+        </button>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={available}
+          value={max ?? ""}
+          placeholder="All"
+          onChange={(e) => setMax(e.target.value === "" ? null : Number(e.target.value))}
+          aria-label="Max stores (empty for all)"
+          className="w-[4ch] bg-transparent text-center tabular-nums text-cream placeholder:text-cream [appearance:textfield] focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+        <button
+          onClick={() => setMax(max === null ? 1 : max + 1)}
+          disabled={max !== null && max >= available}
+          aria-label="More stores"
+          className="flex h-6 w-6 items-center justify-center rounded text-sm hover:bg-muted disabled:opacity-30"
+        >
+          +
+        </button>
+      </div>
+
+      <Dropdown
+        label={unticked === 0 ? "Buy from: all stores" : `Buy from: ${storeList.length - unticked} of ${storeList.length} stores`}
+        active={unticked > 0}
+      >
+        <div className="flex gap-3 border-b border-subtle px-3 py-2 text-xs">
+          <button onClick={() => onChange({ excludeStores: [] }, "stores")} className="text-accent-light hover:underline">Select all</button>
+          <button onClick={() => onChange({ excludeStores: storeList.map((s) => s.id) }, "stores")} className="text-cream-dim hover:underline">Clear</button>
+        </div>
+        <div className="max-h-72 overflow-y-auto">
+          {storeList.map((s) => (
+            <OptionItem key={s.id} type="check" label={s.name} checked={!excluded.has(s.id)} onClick={() => toggleStore(s.id)} />
+          ))}
+        </div>
+      </Dropdown>
+
+      {children && <div className="ml-auto flex shrink-0 items-center gap-4 pl-2">{children}</div>}
+    </div>
+  );
+}

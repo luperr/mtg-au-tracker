@@ -1,13 +1,12 @@
-// Request-body validation for /api/optimize/v2. The body is built from
+// Request-body validation for /api/optimize. The body is built from
 // localStorage, so any of it can be stale or hand-edited.
 
 import { CARD_CONDITIONS } from "@mtg-au/shared";
 import { MAX_BULK_CARDS, MAX_CARD_QTY } from "../config";
-import { DEFAULT_PREFS, type Finish, type OptimiseLine, type Prefs } from "./types";
+import { DEFAULT_PREFS, type OptimiseLine, type Prefs } from "./types";
 
 export type OptimiseRequest = { lines: OptimiseLine[]; prefs: Prefs };
 
-const FINISHES: readonly Finish[] = ["nonfoil", "foil", "etched"];
 /** More stores than this is no constraint at all — the roster is ~40. */
 const MAX_STORES_CAP = 20;
 
@@ -21,7 +20,7 @@ const isIntIn = (v: unknown, min: number, max: number): v is number =>
 
 function parseLine(raw: unknown): OptimiseLine | string {
   if (!isObject(raw)) return "Each line must be an object";
-  const { lineId, cardId, cardName, qty, printing, printingId, finish, current } = raw;
+  const { lineId, cardId, cardName, qty, printing, printingId, current } = raw;
   if (!isNonEmptyString(lineId) || !isNonEmptyString(cardId) || typeof cardName !== "string") {
     return "Each line needs a lineId, cardId and cardName";
   }
@@ -31,9 +30,6 @@ function parseLine(raw: unknown): OptimiseLine | string {
     return "printingId must be a string or null";
   }
   if (printing === "exact" && !printingId) return "An exact line needs a printingId";
-  if (!(finish === undefined || finish === null || FINISHES.includes(finish as Finish))) {
-    return "finish must be nonfoil, foil or etched";
-  }
 
   let parsedCurrent: OptimiseLine["current"] = null;
   if (current !== undefined && current !== null) {
@@ -55,7 +51,6 @@ function parseLine(raw: unknown): OptimiseLine | string {
   return {
     lineId, cardId, cardName, qty, printing,
     printingId: printingId ?? null,
-    finish: (finish as Finish | null | undefined) ?? null,
     current: parsedCurrent,
   };
 }
@@ -65,25 +60,18 @@ function parsePrefs(raw: unknown): Prefs | string {
   if (!isObject(raw)) return "prefs must be an object";
   const prefs: Prefs = { ...DEFAULT_PREFS, postageOverrides: {} };
 
-  if (raw.minCondition !== undefined) {
-    if (raw.minCondition !== "any" && !(CARD_CONDITIONS as readonly unknown[]).includes(raw.minCondition)) {
-      return `minCondition must be one of ${CARD_CONDITIONS.join(", ")} or any`;
+  if (raw.conditions !== undefined) {
+    const known: readonly unknown[] = CARD_CONDITIONS;
+    if (!Array.isArray(raw.conditions) || raw.conditions.length === 0 || !raw.conditions.every((c) => known.includes(c))) {
+      return `conditions must be one or more of ${CARD_CONDITIONS.join(", ")}`;
     }
-    prefs.minCondition = raw.minCondition as Prefs["minCondition"];
-  }
-  if (raw.finish !== undefined) {
-    if (raw.finish !== "any" && !FINISHES.includes(raw.finish as Finish)) return "finish must be nonfoil, foil, etched or any";
-    prefs.finish = raw.finish as Prefs["finish"];
+    prefs.conditions = [...new Set(raw.conditions as Prefs["conditions"])];
   }
   if (raw.excludeStores !== undefined) {
     if (!Array.isArray(raw.excludeStores) || !raw.excludeStores.every(isNonEmptyString)) {
       return "excludeStores must be an array of store ids";
     }
     prefs.excludeStores = raw.excludeStores;
-  }
-  if (raw.includeEbay !== undefined) {
-    if (typeof raw.includeEbay !== "boolean") return "includeEbay must be true or false";
-    prefs.includeEbay = raw.includeEbay;
   }
   if (raw.maxStores !== undefined && raw.maxStores !== null) {
     if (!isIntIn(raw.maxStores, 1, MAX_STORES_CAP)) return `maxStores must be from 1 to ${MAX_STORES_CAP}`;
