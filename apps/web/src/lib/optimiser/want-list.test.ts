@@ -49,7 +49,7 @@ describe("toLines", () => {
 describe("requestPrefs", () => {
   it("converts postage overrides to cents and leaves eBay to excludeStores", () => {
     const p = requestPrefs({ ...parseSavedPrefs(null), excludeStores: ["ebay_au"] }, { a: 6.5, b: 0 });
-    expect(p).toMatchObject({ postageOverrides: { a: 650, b: 0 }, includeEbay: true, excludeStores: ["ebay_au"] });
+    expect(p).toMatchObject({ postageOverrides: { a: 650, b: 0 }, includeEbay: true, finish: "any", excludeStores: ["ebay_au"] });
   });
 });
 
@@ -100,7 +100,7 @@ describe("applyPlan", () => {
 
 describe("parseSavedPrefs", () => {
   it("defaults when nothing is saved or it's unreadable", () => {
-    const defaults = { minCondition: "LP", finish: "any", excludeStores: [], maxStores: null };
+    const defaults = { minCondition: "LP", excludeStores: [], maxStores: null };
     expect(parseSavedPrefs(null)).toEqual(defaults);
     expect(parseSavedPrefs("{not json")).toEqual(defaults);
     expect(parseSavedPrefs("[1]")).toEqual(defaults);
@@ -108,8 +108,8 @@ describe("parseSavedPrefs", () => {
 
   it("keeps valid fields and drops invalid ones", () => {
     expect(parseSavedPrefs(JSON.stringify({
-      minCondition: "NM", finish: "gold", excludeStores: ["a", 3, ""], maxStores: 0,
-    }))).toEqual({ minCondition: "NM", finish: "any", excludeStores: ["a"], maxStores: null });
+      minCondition: "NM", finish: "foil", excludeStores: ["a", 3, ""], maxStores: 0,
+    }))).toEqual({ minCondition: "NM", excludeStores: ["a"], maxStores: null });
   });
 
   it("moves an old eBay-off setting into the store list", () => {

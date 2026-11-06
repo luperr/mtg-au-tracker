@@ -40,6 +40,8 @@ export function requestPrefs(saved: SavedPrefs, postageOverridesAud: Record<stri
     ...saved,
     // eBay is one of the stores the user can untick, so it rides in excludeStores.
     includeEbay: true,
+    // Finish is part of choosing a printing (the card's printing menu), not a global pref.
+    finish: "any",
     postageOverrides: Object.fromEntries(
       Object.entries(postageOverridesAud).map(([storeId, aud]) => [storeId, Math.round(aud * 100)])),
   };
@@ -161,15 +163,15 @@ export function applyPlan(items: WantListItem[], res: OptimiseResponse): WantLis
 
 /**
  * Prefs the user picks on the page. Postage overrides live with the want list
- * instead, and eBay is just another store in `excludeStores`.
+ * instead, eBay is just another store in `excludeStores`, and finish comes from
+ * the printing each card is locked to.
  */
-export type SavedPrefs = Omit<Prefs, "postageOverrides" | "includeEbay">;
+export type SavedPrefs = Omit<Prefs, "postageOverrides" | "includeEbay" | "finish">;
 
 export const PREFS_KEY = "scrymarket_optimiser_prefs";
 
 const DEFAULT_SAVED: SavedPrefs = {
   minCondition: DEFAULT_PREFS.minCondition,
-  finish: DEFAULT_PREFS.finish,
   excludeStores: [],
   maxStores: DEFAULT_PREFS.maxStores,
 };
@@ -185,7 +187,6 @@ export function parseSavedPrefs(raw: string | null): SavedPrefs {
   }
   // Spelled out rather than imported: @mtg-au/shared's index pulls pino into the client bundle.
   const conditions: readonly unknown[] = ["NM", "LP", "MP", "HP", "DMG", "any"] satisfies SavedPrefs["minCondition"][];
-  const finishes: readonly unknown[] = ["nonfoil", "foil", "etched", "any"];
   const excludeStores = Array.isArray(v.excludeStores)
     ? v.excludeStores.filter((s): s is string => typeof s === "string" && s !== "")
     : [];
@@ -193,7 +194,6 @@ export function parseSavedPrefs(raw: string | null): SavedPrefs {
   if (v.includeEbay === false && !excludeStores.includes("ebay_au")) excludeStores.push("ebay_au");
   return {
     minCondition: conditions.includes(v.minCondition) ? v.minCondition as SavedPrefs["minCondition"] : DEFAULT_SAVED.minCondition,
-    finish: finishes.includes(v.finish) ? v.finish as SavedPrefs["finish"] : DEFAULT_SAVED.finish,
     excludeStores,
     maxStores: Number.isInteger(v.maxStores) && (v.maxStores as number) >= 1 ? v.maxStores as number : null,
   };

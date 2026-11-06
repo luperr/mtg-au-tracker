@@ -9,7 +9,7 @@ import {
 } from "@/lib/optimiser/want-list";
 import type { OptimiseResponse, PlanStore, Unavailable } from "@/lib/optimiser/types";
 import type { StoreSummary } from "@/lib/store-shipping";
-import { ImportCards } from "./ImportCards";
+import { ImportCards, type ImportSummary } from "./ImportCards";
 import { PrefsBar } from "./PrefsBar";
 import { StoreSection, type RowFlags } from "./StoreSection";
 import { CardPreviewProvider } from "./CardPreview";
@@ -38,6 +38,7 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
   const { items, clearAll, replaceItems, storeShippingOverrides } = useWantList();
   const [prefs, setPrefs] = useState<SavedPrefs>(() => parseSavedPrefs(null));
   const [optimised, setOptimised] = useState<Optimised | null>(null);
+  const [imported, setImported] = useState<ImportSummary | null>(null);
   const optimiser = useOptimiser();
 
   useEffect(() => {
@@ -221,6 +222,18 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
               <PrefsBar prefs={prefs} stores={stores} onChange={changePrefs} />
             </div>
 
+            {imported && (
+              <div role="status" className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-accent-border bg-surface px-3 py-2.5 text-sm">
+                <p className="text-cream-dim">
+                  <span className="text-cream">Added {plural(imported.added, "card")} ({plural(imported.copies, "copy", "copies")}).</span>
+                  {imported.alreadyListed > 0 && ` ${imported.alreadyListed} already on your list.`}
+                  {imported.notFound.length > 0 && ` Not found: ${imported.notFound.join(", ")}.`}
+                  {" "}Press Optimise for the cheapest stores.
+                </p>
+                <button onClick={() => setImported(null)} aria-label="Dismiss" className="shrink-0 text-cream-dim hover:text-cream">×</button>
+              </div>
+            )}
+
             {unavailable.length > 0 && (
               <div className="mb-3 rounded-lg border border-red-500/30 bg-surface px-3 py-2.5 text-sm">
                 <p className="font-semibold text-cream">Couldn’t find a better listing for</p>
@@ -253,7 +266,7 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
           </>
         )}
 
-        <ImportCards />
+        <ImportCards onImported={(summary) => { setImported(summary); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
       </div>
     </CardPreviewProvider>
   );
