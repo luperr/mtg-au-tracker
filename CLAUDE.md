@@ -390,7 +390,7 @@ Listing-grained search with a filter sidebar (store, set, condition, finish, tre
   per-store postage edits stay in `scrymarket_shipping_overrides`.
 - Umami: `optimise-run` / `optimise-apply` (`version: "v2"`, kept so history separates from the
   old optimiser), `optimise-undo`, `optimise-pref`, `optimise-alt`, `optimise-exclude-store`,
-  `optimise-line-mode`.
+  `optimise-line-mode`, `optimise-unlock-all`.
 - There is no flag or old version to fall back to: the user base doesn't warrant one. Roll back a
   bad release by pinning the previous image (`./scripts/deploy.sh main-<sha>`).
 - **Optimiser engine** (`lib/optimiser/`, `POST /api/optimize`). Seeds → local search → B&B under
