@@ -20,7 +20,8 @@ const CONDITIONS: { value: SavedPrefs["minCondition"]; label: string; short: str
  *
  * Max stores is "All" (no limit) or a number from 1 up to the ticked stores
  * (eBay isn't counted). All sits below 1: + from All gives 1, − from 1 gives
- * All. The number can be typed too; empty or 0 means All.
+ * All. The number can be typed too; empty or 0 means All, and clicking the
+ * label resets it to All.
  */
 export function PrefsBar({
   prefs,
@@ -66,7 +67,14 @@ export function PrefsBar({
         aria-label="Maximum number of stores"
         title="eBay listings aren’t counted — untick eBay under Buy from to leave them out."
       >
-        <span>Max stores</span>
+        <button
+          onClick={() => setMax(null)}
+          title="Reset to All"
+          aria-label="Max stores — reset to All"
+          className="hover:underline"
+        >
+          Max stores
+        </button>
         <button
           onClick={() => setMax(max === null || max <= 1 ? null : max - 1)}
           disabled={max === null}

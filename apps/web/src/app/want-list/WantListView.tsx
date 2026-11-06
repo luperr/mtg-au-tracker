@@ -124,6 +124,12 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
   }
   const unavailable = plan?.unavailable ?? [];
   const copies = items.reduce((n, i) => n + itemQty(i), 0);
+  const locked = items.filter((i) => i.printingMode === "exact").length;
+
+  function unlockAll() {
+    replaceItems(items.map((i) => (i.printingMode === "exact" ? { ...i, printingMode: "any" } : i)));
+    trackEvent("optimise-unlock-all", { cards: locked });
+  }
   const flatStores = storeList.filter((s) => s.kind === "flat").length;
 
   return (
@@ -137,9 +143,16 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
             )}
           </div>
           {items.length > 0 && (
-            <button onClick={() => { clearAll(); setOptimised(null); }} className="text-xs text-cream-dim hover:text-red-400 transition-colors">
-              Clear all
-            </button>
+            <div className="flex items-center gap-4">
+              {locked > 0 && (
+                <button onClick={unlockAll} className="text-xs text-cream-dim hover:text-cream transition-colors">
+                  Unlock all ({locked})
+                </button>
+              )}
+              <button onClick={() => { clearAll(); setOptimised(null); }} className="text-xs text-cream-dim hover:text-red-400 transition-colors">
+                Clear all
+              </button>
+            </div>
           )}
         </div>
 
