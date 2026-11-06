@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { WantListView } from "./WantListView";
-import { getEnabledStores } from "@/lib/store-shipping";
+import { getEnabledStores, getStoreShippingRates } from "@/lib/store-shipping";
 
 // The want list is inherently per-user (localStorage-backed) and reads the store
 // list from the DB — force dynamic rendering so `next build` doesn't try to
@@ -14,5 +14,6 @@ export const metadata: Metadata = {
 };
 
 export default async function WantListPage() {
-  return <WantListView stores={await getEnabledStores()} />;
+  const [stores, rates] = await Promise.all([getEnabledStores(), getStoreShippingRates()]);
+  return <WantListView stores={stores} rates={rates} />;
 }
