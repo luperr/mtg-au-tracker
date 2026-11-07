@@ -322,29 +322,18 @@ repopulate run, which is where the "re-run to repopulate" advice came from.)
 ## apps/web — Next.js front-end
 
 ### Search page (`apps/web/src/app/page.tsx`)
-- Full-text card search with infinite scroll (20 results/page)
-- Price shown is "from $X" — `cards.cheapest_price_aud`, the lowest in-stock sell price,
-  with the thumbnail showing `cheapest_printing_id`'s art. It used to read
-  `cards.scrymarket_price` (a median), whose only writer is the paused
-  `computeScrymarketPrices()`, so every row rendered "no prices" while the card page
-  showed real ones. Anything the search page displays must come from a column written
-  outside `MARKET_STATS_ENABLED`.
-- Trend badge (↑/↓/→) from the pre-computed `cards.price_trend`
-- Card thumbnails (63×88px), color identity pips, CardMagnifier on hover
+- `/` with no query is the landing page (search box + `LandingNotices`); a query under 3
+  characters gets a prompt; anything else renders search v2 below. There is no other search
+  page and no toggle — the old card-grained results (`SearchResults.tsx`) were removed when v2
+  became the only search. Roll back by pinning the previous image (`./scripts/deploy.sh main-<sha>`).
+- `/api/search` and `searchCards()` (the old denormalised-column search) survive only for the
+  contact form's card lookup.
 - Drag-to-search: drag any Scryfall card image onto the app
-- Umami events: `card-search` on new query, `card-click` on row click
 
-### Search v2 — beta, opt-in (`apps/web/src/app/search-v2/`, `apps/web/src/lib/search-v2/`)
+### Search v2 (`apps/web/src/app/search-v2/`, `apps/web/src/lib/search-v2/`)
 Listing-grained search with a filter sidebar (store, set, condition, finish, treatment, price), sort and three views (`view=card|printing|listings`).
-- **Rollout.** `search_v2` cookie is three-state: `1` on, `0` off, absent = `SEARCH_V2_DEFAULT`
-  (runtime env, read by `searchV2Default()` in `lib/config.ts`; decided by `searchV2Enabled()`).
-  The header toggle always writes an explicit `1`/`0`, so an opt-out survives a later flip.
-  Unset = opt-in beta. To make it the default: set `SEARCH_V2_DEFAULT=true` in prod `.env` and
-  `docker compose up -d web`; unset it to roll back. **Don't flip without prod latency
-  evidence** — Loki `component="search-v2"` logs `ms` per query (warn above 2s); check p95 and a
-  capped query such as "the" on a cold morning. Umami `card-search` / `card-click` carry
-  `search: "v1"|"v2"` / `source: "search-v2"` to compare the two. Static pages render the
-  layout at build time, so their header toggle can't see the flag — it only matters on `/`.
+- Loki `component="search-v2"` logs `ms` per query (warn above 2s). Umami `card-search` /
+  `card-click` carry `search: "v2"` / `source: "search-v2"` (older events also have `"v1"`).
 - All state is URL params (`params.ts`). Cookies carry the rest: `search_view` (last view),
   `search_filters` (store/condition/finish/treatment/price carried into the next search —
   used only when the URL names no filter; set is deliberately not sticky), `search_sidebar`
@@ -463,7 +452,6 @@ See `.env.example` for all variables. Key ones:
 | `MTGMATE_FULL_SCAN_DAYS` | Days between full MTG Mate set-code rescans | `7` |
 | `EBAY_AFFILIATE_CAMPAIGN_ID` | EPN campaign id for outbound eBay links. Unset = no affiliate params | unset (off) |
 | `EBAY_AFFILIATE_ROTATION_ID` | EPN rotation id for the eBay AU site | `705-53470-19255-0` |
-| `SEARCH_V2_DEFAULT` | `true` = new search is the default (toggle becomes opt-out). Runtime; unset is the rollback | unset (opt-in) |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Token for `cloudflared` tunnel service | — |
 | `IMAGE_REGISTRY` | Registry+namespace for prod images (ECR-swap lever) | `ghcr.io/luperr` |
 | `IMAGE_TAG` | Which prod image to run; `main-<sha>` to pin/rollback | `latest` |

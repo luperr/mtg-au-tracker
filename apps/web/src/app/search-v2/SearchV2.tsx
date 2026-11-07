@@ -159,7 +159,7 @@ function Results({ result, rendered, filtersHidden }: { result: SearchV2Result; 
   );
 }
 
-/** v2 search page, rendered by `/` when the search_v2 cookie is set. */
+/** The search results page, rendered by `/` for any query of SEARCH_MIN_QUERY_LENGTH or more. */
 export function SearchV2({ state, result, filtersHidden = false }: { state: SearchState; result: SearchV2Result; filtersHidden?: boolean }) {
   // One event per query, not per filter or page change — same as v1's card-search.
   useEffect(() => {
