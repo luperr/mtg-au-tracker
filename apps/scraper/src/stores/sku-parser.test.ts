@@ -60,6 +60,17 @@ describe("parseSkuData", () => {
     expect(parseSkuData("GARBAGE")).toEqual({ setCode: null, collectorNumber: null, isFoil: null });
   });
 
+  // Format D — Archivum Custodio (real SKUs from the live store)
+  it("parses Format D nonfoil and foil SKUs", () => {
+    expect(parseSkuData("AC-MTG-DSK-253-Nonfoil-66898970")).toEqual({ setCode: "dsk", collectorNumber: "253", isFoil: false });
+    expect(parseSkuData("AC-MTG-LTR-240-Foil-b14eaeec")).toEqual({ setCode: "ltr", collectorNumber: "240", isFoil: true });
+  });
+
+  it("keeps Format D collector numbers that carry a prefix or letter", () => {
+    expect(parseSkuData("AC-MTG-PLST-CON-31-Nonfoil-c438a6a7")).toEqual({ setCode: "plst", collectorNumber: "CON-31", isFoil: false });
+    expect(parseSkuData("AC-MTG-PSPM-165s-Foil-e48b28da")).toEqual({ setCode: "pspm", collectorNumber: "165s", isFoil: true });
+  });
+
   // Format C — Mega Games
   it("parses standard single-letter color code nonfoil", () => {
     expect(parseSkuData("SOS-C-L-0267-N")).toEqual({

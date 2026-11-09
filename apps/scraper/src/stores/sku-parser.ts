@@ -17,6 +17,12 @@
  *   {SET}-{RARITY}-{COLOR}-{COLLECTOR}-{FINISH}
  *   e.g. "SOS-C-L-0267-N", "SOS-C-G-0162-F"
  *   FINISH: N = non-foil; F = foil.
+ *
+ * Format D — Archivum Custodio:
+ *   AC-MTG-{SET}-{COLLECTOR}-{FINISH}-{SCRYFALL_ID_PREFIX}
+ *   e.g. "AC-MTG-DSK-253-Nonfoil-66898970", "AC-MTG-PLST-CON-31-Foil-c438a6a7"
+ *   FINISH: Nonfoil / Foil. The collector keeps its case — The List's "CON-31" is
+ *   upper-case in Scryfall, promos' "165s" lower.
  */
 
 export interface SkuData {
@@ -61,6 +67,17 @@ export function parseSkuData(sku: string | null | undefined): SkuData {
       setCode: formatC[1].toLowerCase(),
       collectorNumber: String(parseInt(formatC[2], 10)),
       isFoil: formatC[3].toUpperCase() === "F",
+    };
+  }
+
+  // Format D: AC-MTG-SET-COLLECTOR-FINISH-HEX  e.g. "AC-MTG-DSK-253-Nonfoil-66898970"
+  // Format B is anchored on "MTG-", so it never claims these.
+  const formatD = sku.match(/^AC-MTG-([A-Z0-9]{2,6})-(.+)-(nonfoil|foil|etched)-[0-9a-f]{8}$/i);
+  if (formatD) {
+    return {
+      setCode: formatD[1].toLowerCase(),
+      collectorNumber: formatD[2].replace(/^0+(?=\d)/, ""),
+      isFoil: formatD[3].toLowerCase() !== "nonfoil",
     };
   }
 
