@@ -25,7 +25,7 @@ const SUMMARY_MAX_CHARS = 48;
 
 /** Hand-written lines, in display order. The latest-changelog line is appended after them. */
 export const PINNED_NOTICES: Notice[] = [
-  { marker: "new", text: "new search is now the default", until: "2026-12-07" },
+  { marker: "new", text: "advanced search is now the default", until: "2026-12-07" },
   { marker: "star", text: "got any feedback?", link: { label: "reach out", href: "/contact" } },
 ];
 
