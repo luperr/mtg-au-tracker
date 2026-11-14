@@ -4,7 +4,7 @@
  * Any store running Shopify can be added by creating a registry entry with a
  * `shopify` block in stores.config.ts — no scraper code changes needed.
  *
- * Drives 37 AU stores — see shopifyStores() in stores.config.ts for the live list.
+ * Drives 38 AU stores — see shopifyStores() in stores.config.ts for the live list.
  *
  * Strategy:
  *   Cursor-walk the Storefront GraphQL API — see shopify-graphql.ts for why

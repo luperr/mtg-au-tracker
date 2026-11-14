@@ -243,6 +243,12 @@ export const STORE_REGISTRY: StoreConfig[] = [
     id: "dragons_lair", name: "Dragon's Lair", baseUrl: "https://dragonslair.au", scraperEnabled: true, logoUrl: null,
     flatShippingAud: 3.0, shopify: { collectionHandle: "mtg-singles-instock" },
   },
+  {
+    // No flat rate published — shipping is quoted at checkout (policy, Nov 2026).
+    // $6 is an estimate until shipping rates are scraped.
+    id: "archivum_custodio", name: "Archivum Custodio", baseUrl: "https://archivumcustodio.com", scraperEnabled: true, logoUrl: null,
+    flatShippingAud: 6.0, shopify: { collectionHandle: "buy-singles" },
+  },
   { id: "ebay_au", name: "eBay AU", baseUrl: "https://www.ebay.com.au", scraperEnabled: true, logoUrl: null, flatShippingAud: null },
 ];
 
