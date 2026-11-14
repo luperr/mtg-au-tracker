@@ -51,6 +51,24 @@ function matcherHitting(hits: number) {
 }
 
 describe("runStore health", () => {
+  it("flags a store that yields no listings as zero_products", async () => {
+    const health = await runStore(
+      "test_store",
+      scraperOf(0) as never,
+      matcherHitting(0) as never,
+    );
+    expect(health.issue).toBe("zero_products");
+  });
+
+  it("flags a store that matches none of its listings as zero_matched", async () => {
+    const health = await runStore(
+      "test_store",
+      scraperOf(100) as never,
+      matcherHitting(0) as never,
+    );
+    expect(health.issue).toBe("zero_matched");
+  });
+
   it("flags a store that matches 1 of 100 listings as low_match_rate", async () => {
     const health = await runStore(
       "test_store",
