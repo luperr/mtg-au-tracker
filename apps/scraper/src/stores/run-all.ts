@@ -58,6 +58,16 @@ type StoreHealth = {
   issue: "ok" | "zero_products" | "zero_matched" | "low_match_rate" | "error";
 };
 
+/** A store matching fewer than this percentage of its listings is flagged. */
+const LOW_MATCH_RATE_PERCENT = 50;
+
+function classifyStoreHealth(total: number, matched: number): StoreHealth["issue"] {
+  if (total === 0) return "zero_products";
+  if (matched === 0) return "zero_matched";
+  if (matchRate(matched, total) < LOW_MATCH_RATE_PERCENT) return "low_match_rate";
+  return "ok";
+}
+
 export async function runStore(
   storeId: string,
   scraper: BaseScraper,
@@ -155,11 +165,7 @@ export async function runStore(
   });
 
   const rate = matchRate(matched, total);
-  const issue: StoreHealth["issue"] =
-    total === 0 ? "zero_products"
-    : matched === 0 ? "zero_matched"
-    : rate < 50 ? "low_match_rate" // matchRate() is a percentage
-    : "ok";
+  const issue = classifyStoreHealth(total, matched);
 
   if (issue !== "ok") {
     log.error({ store: storeId, total, matched, match_rate: rate, issue }, "Store health check failed");
