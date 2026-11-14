@@ -158,7 +158,7 @@ export async function runStore(
   const issue: StoreHealth["issue"] =
     total === 0 ? "zero_products"
     : matched === 0 ? "zero_matched"
-    : rate < 0.5 ? "low_match_rate"
+    : rate < 50 ? "low_match_rate" // matchRate() is a percentage
     : "ok";
 
   if (issue !== "ok") {
