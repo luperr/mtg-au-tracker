@@ -52,6 +52,7 @@ export default function RootLayout({
       <Script
         src={ANALYTICS_SCRIPT_URL}
         data-website-id="ba5a4121-875c-4ad2-a05e-dbab6b207c03"
+        data-domains="scrymarket.au"
         strategy="afterInteractive"
       />
       <body className="min-h-screen bg-bg text-cream antialiased flex flex-col">
