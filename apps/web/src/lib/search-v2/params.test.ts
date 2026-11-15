@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   parseSearchParams, toQueryString, toggleFilter, activeFilterCount, clearFilters, facetValueLabel,
-  priceFilterApplies, stickyFilters,
+  priceFilterApplies, stickyFilters, describeRefinement, setPrice,
 } from "./params.js";
 
 describe("parseSearchParams", () => {
@@ -113,5 +113,36 @@ describe("filters carried across searches", () => {
     const own = parseSearchParams({ q: "bolt", finish: "foil" }, undefined, remembered);
     expect(own.filters.store).toEqual([]);
     expect(own.price.min).toBeNull();
+  });
+});
+
+describe("describeRefinement", () => {
+  const base = parseSearchParams({ q: "bolt", store: "mtg_mate" });
+
+  it("ignores a new query and page-only changes", () => {
+    expect(describeRefinement(base, { ...base, q: "counterspell" })).toBeNull();
+    expect(describeRefinement(base, { ...base, page: 2 })).toBeNull();
+    expect(describeRefinement(base, base)).toBeNull();
+  });
+
+  it("reports view and sort with their new value", () => {
+    expect(describeRefinement(base, { ...base, view: "card" })).toEqual({ kind: "view", value: "card" });
+    expect(describeRefinement(base, { ...base, sort: "name" })).toEqual({ kind: "sort", value: "name" });
+  });
+
+  it("reports a single facet tick or untick", () => {
+    expect(describeRefinement(base, toggleFilter(base, "finish", "foil")))
+      .toEqual({ kind: "facet-add", key: "finish", value: "foil" });
+    expect(describeRefinement(base, toggleFilter(base, "store", "mtg_mate")))
+      .toEqual({ kind: "facet-remove", key: "store", value: "mtg_mate" });
+  });
+
+  it("reports clear when every filter goes at once", () => {
+    const busy = setPrice(toggleFilter(base, "finish", "foil"), { min: 1, max: null });
+    expect(describeRefinement(busy, clearFilters(busy))).toEqual({ kind: "clear" });
+  });
+
+  it("reports a price change", () => {
+    expect(describeRefinement(base, setPrice(base, { min: null, max: 5 }))).toEqual({ kind: "price" });
   });
 });

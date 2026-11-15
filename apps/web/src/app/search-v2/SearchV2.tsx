@@ -1,7 +1,8 @@
 "use client";
 
 import { activeFilterCount, toQueryString, SIDEBAR_COOKIE, type SearchState } from "@/lib/search-v2/params";
-import { setCookie, trackEvent, ONE_YEAR_SECONDS } from "@/lib/utils";
+import { setCookie, ONE_YEAR_SECONDS } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 import { SEARCH_V2_PAGE_SIZE, type SearchV2Result } from "@/lib/search-v2/types";
 import { useEffect, useState } from "react";
 import { pillClass } from "@/app/Dropdown";
@@ -160,11 +161,23 @@ function Results({ result, rendered, filtersHidden }: { result: SearchV2Result; 
 }
 
 /** The search results page, rendered by `/` for any query of SEARCH_MIN_QUERY_LENGTH or more. */
-export function SearchV2({ state, result, filtersHidden = false }: { state: SearchState; result: SearchV2Result; filtersHidden?: boolean }) {
-  // One event per query, not per filter or page change — same as v1's card-search.
+export function SearchV2({ state, result, newQuery, filtersHidden = false }: {
+  state: SearchState;
+  result: SearchV2Result;
+  /**
+   * The server's call, from LAST_QUERY_COOKIE, on whether this render is a new query
+   * or a refinement of the last one — the same test that gates the card_searches log,
+   * so Umami and the DB count the same searches. Deciding it here instead fails on
+   * pagination: those links are full page loads, which remount this component.
+   */
+  newQuery: boolean;
+  filtersHidden?: boolean;
+}) {
   useEffect(() => {
-    trackEvent("card-search", { query: state.q, search: "v2" });
-  }, [state.q]);
+    if (newQuery) track("card-search", { query: state.q, results: result.counts.card });
+    // Keyed on the query alone: a refinement re-renders with a new result count, which isn't a new search.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.q, newQuery]);
 
   return (
     <SearchNavProvider state={state}>

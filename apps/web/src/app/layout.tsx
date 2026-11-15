@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Bitcount_Prop_Double } from "next/font/google";
-import Script from "next/script";
 import { Suspense } from "react";
 import "./globals.css";
 import { ThemeToggle } from "./ThemeToggle";
@@ -10,7 +9,8 @@ import { AffiliateProvider } from "./AffiliateContext";
 import { WantListBadge } from "./WantListBadge";
 import { HeaderSearch } from "./HeaderSearch";
 import { BuyMeACoffee } from "./BuyMeACoffee";
-import { SITE_URL, ANALYTICS_SCRIPT_URL } from "@/lib/config";
+import { SITE_URL } from "@/lib/config";
+import { Analytics } from "./Analytics";
 import { getAffiliateConfig } from "@/lib/affiliate";
 
 const bitcount = Bitcount_Prop_Double({ subsets: ["latin"], weight: ["400"] });
@@ -49,12 +49,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: `(function(){var t=localStorage.getItem('theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')})()` }} />
       </head>
-      <Script
-        src={ANALYTICS_SCRIPT_URL}
-        data-website-id="ba5a4121-875c-4ad2-a05e-dbab6b207c03"
-        data-domains="scrymarket.au"
-        strategy="afterInteractive"
-      />
+      <Analytics />
       <body className="min-h-screen bg-bg text-cream antialiased flex flex-col">
         <AffiliateProvider campaignId={affiliate.campaignId} rotationId={affiliate.rotationId}>
           <WantListProvider>

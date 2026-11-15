@@ -59,10 +59,9 @@ export default async function HomePage({
     const result = await searchListings(state);
     // Logged once per new query: every filter, sort, view and
     // page change re-renders this route too, for the query LAST_QUERY_COOKIE already holds.
-    if (!sameQuery(jar.get(LAST_QUERY_COOKIE)?.value, state.q)) {
-      logCardSearch(state.q, result.topCardId);
-    }
-    return <SearchV2 state={state} result={result} filtersHidden={jar.get(SIDEBAR_COOKIE)?.value === "hidden"} />;
+    const newQuery = !sameQuery(jar.get(LAST_QUERY_COOKIE)?.value, state.q);
+    if (newQuery) logCardSearch(state.q, result.topCardId);
+    return <SearchV2 state={state} result={result} newQuery={newQuery} filtersHidden={jar.get(SIDEBAR_COOKIE)?.value === "hidden"} />;
   }
 
   if (!query) {
