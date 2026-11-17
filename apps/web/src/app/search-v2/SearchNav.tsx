@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { setCookie, ONE_YEAR_SECONDS } from "@/lib/utils";
 import { createContext, useContext, useEffect, useOptimistic, useTransition } from "react";
-import { stickyFilters, toQueryString, FILTERS_COOKIE, LAST_QUERY_COOKIE, VIEW_COOKIE, type SearchState } from "@/lib/search-v2/params";
+import { describeRefinement, stickyFilters, toQueryString, FILTERS_COOKIE, LAST_QUERY_COOKIE, VIEW_COOKIE, type SearchState } from "@/lib/search-v2/params";
+import { track } from "@/lib/analytics";
 
 type SearchNav = {
   /**
@@ -40,6 +41,8 @@ export function SearchNavProvider({ state, children }: { state: SearchState; chi
   }, [state.q]);
 
   function navigate(next: SearchState) {
+    const refinement = describeRefinement(optimistic, next);
+    if (refinement) track("search-refine", refinement);
     setCookie(VIEW_COOKIE, next.view, ONE_YEAR_SECONDS);
     setCookie(FILTERS_COOKIE, stickyFilters(next), ONE_YEAR_SECONDS);
     startTransition(() => {

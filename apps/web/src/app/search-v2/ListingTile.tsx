@@ -6,7 +6,8 @@ import { useWantList, toWantListItem, wantListItemId } from "@/app/WantListConte
 import { MTG_CARD_ASPECT_RATIO } from "@/lib/config";
 import { facetValueLabel, DEFAULT_TREATMENT, type SearchView } from "@/lib/search-v2/params";
 import type { SearchTile, UnlistedCard } from "@/lib/search-v2/types";
-import { cardHref, fmtAUD, trackEvent } from "@/lib/utils";
+import { cardHref, fmtAUD } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 
 /**
  * Adds the tile's own listing — the cheapest one in its group — straight from the
@@ -39,7 +40,7 @@ function AddToWantListButton({ tile }: { tile: SearchTile }) {
       },
       { cardId: tile.card_id, cardSlug: tile.slug, cardName: tile.name },
     ));
-    trackEvent("want-list-add", { card: tile.name, source: "search-v2" });
+    track("want-list-add", { card: tile.name, source: "search-v2" });
   }
 
   return (
@@ -57,6 +58,7 @@ function AddToWantListButton({ tile }: { tile: SearchTile }) {
 
 export function ListingTile({ tile, view, query }: { tile: SearchTile; view: SearchView; query: string }) {
   const href = cardHref(tile.slug, tile.card_id, query);
+  const onCardClick = () => track("card-click", { card: tile.name, source: "search-v2" });
   const badges = [
     tile.finish !== "nonfoil" && facetValueLabel("finish", tile.finish),
     tile.treatment !== DEFAULT_TREATMENT && facetValueLabel("treatment", tile.treatment),
@@ -65,7 +67,7 @@ export function ListingTile({ tile, view, query }: { tile: SearchTile; view: Sea
 
   return (
     <div className="flex flex-col rounded-lg overflow-hidden border border-subtle bg-surface hover:border-accent transition-colors group">
-      <a href={href} onClick={() => trackEvent("card-click", { card: tile.name, source: "search-v2" })} className="block w-full overflow-hidden">
+      <a href={href} onClick={onCardClick} className="block w-full overflow-hidden">
         {tile.image_uri ? (
           <img
             src={tile.image_uri}
@@ -82,7 +84,7 @@ export function ListingTile({ tile, view, query }: { tile: SearchTile; view: Sea
       </a>
 
       <div className="px-2 pt-1.5 pb-2 flex flex-col gap-1 flex-1">
-        <a href={href} className="text-xs font-medium text-cream truncate hover:text-accent-light transition-colors" title={tile.name}>
+        <a href={href} onClick={onCardClick} className="text-xs font-medium text-cream truncate hover:text-accent-light transition-colors" title={tile.name}>
           {tile.name}
         </a>
 
@@ -140,10 +142,11 @@ function fmtReleaseDate(date: string): string {
 /** A matched card no store has in stock — same frame as ListingTile, minus price and buy link. */
 export function UnlistedTile({ card, query }: { card: UnlistedCard; query: string }) {
   const href = cardHref(card.slug, card.card_id, query);
+  const onCardClick = () => track("card-click", { card: card.name, source: "search-v2" });
 
   return (
     <div className="flex flex-col rounded-lg overflow-hidden border border-subtle bg-surface hover:border-accent transition-colors group">
-      <a href={href} onClick={() => trackEvent("card-click", { card: card.name, source: "search-v2" })} className="block w-full overflow-hidden">
+      <a href={href} onClick={onCardClick} className="block w-full overflow-hidden">
         {card.image_uri ? (
           <img
             src={card.image_uri}
@@ -160,7 +163,7 @@ export function UnlistedTile({ card, query }: { card: UnlistedCard; query: strin
       </a>
 
       <div className="px-2 pt-1.5 pb-2 flex flex-col gap-1 flex-1">
-        <a href={href} className="text-xs font-medium text-cream truncate hover:text-accent-light transition-colors" title={card.name}>
+        <a href={href} onClick={onCardClick} className="text-xs font-medium text-cream truncate hover:text-accent-light transition-colors" title={card.name}>
           {card.name}
         </a>
 

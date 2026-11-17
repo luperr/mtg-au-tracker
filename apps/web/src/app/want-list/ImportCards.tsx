@@ -3,7 +3,8 @@
 import { useState, useRef } from "react";
 import { useWantList, toWantListItem, wantListItemId } from "@/app/WantListContext";
 import type { BulkLookupResult, BulkLookupInput } from "@/app/api/cards/bulk-lookup/route";
-import { cardHref, trackEvent } from "@/lib/utils";
+import { cardHref } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 
 /**
  * Parse a card list in any of these formats:
@@ -111,13 +112,13 @@ export function ImportCards() {
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json() as { results: BulkLookupResult[] };
       setResults(data.results);
-      trackEvent("bulk-import", {
+      track("bulk-import", {
         source,
         cards: cards.length,
         found: data.results.filter((r) => r.cheapest).length,
       });
     } catch (err) {
-      trackEvent("bulk-import", { source, cards: cards.length, error: true });
+      track("bulk-import", { source, cards: cards.length, error: true });
       setError(err instanceof Error ? err.message : "Lookup failed");
     } finally {
       setLoading(false);
@@ -147,7 +148,7 @@ export function ImportCards() {
       }, { cardId: r.cardId, cardSlug: r.cardSlug, cardName: r.cardName }));
       newAdded.add(itemId);
     }
-    trackEvent("bulk-add", { mode: "all", added: newAdded.size - added.size });
+    track("bulk-add", { mode: "all", added: newAdded.size - added.size });
     setAdded(newAdded);
   }
 
@@ -168,7 +169,7 @@ export function ImportCards() {
       url: r.cheapest.url,
       imageUri: r.imageUri,
     }, { cardId: r.cardId, cardSlug: r.cardSlug, cardName: r.cardName }));
-    trackEvent("bulk-add", { mode: "one", added: 1 });
+    track("bulk-add", { mode: "one", added: 1 });
     setAdded((prev) => new Set([...prev, itemId]));
   }
 

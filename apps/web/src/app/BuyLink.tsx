@@ -1,6 +1,6 @@
 "use client";
 
-import { trackEvent } from "@/lib/utils";
+import { track, type Surface } from "@/lib/analytics";
 import { applyAffiliateParams, buildCustomId } from "@/lib/affiliate";
 import { useAffiliate } from "@/app/AffiliateContext";
 
@@ -10,7 +10,7 @@ interface BuyLinkProps {
   card: string;
   price: number;
   /** Identifies which part of the UI fired the click (used in analytics). */
-  source: string;
+  source: Surface;
   /** Printing being linked to — feeds the affiliate `customid` for per-card attribution. */
   printingId?: string;
   className?: string;
@@ -40,7 +40,7 @@ export function BuyLink({ href, storeId, card, price, source, printingId, classN
       target="_blank"
       rel="noopener noreferrer"
       className={className ?? "text-price hover:text-cream text-sm transition-colors"}
-      onClick={() => trackEvent("store-click", { store: storeId, card, price, source })}
+      onClick={() => track("store-click", { store: storeId, card, price, source })}
     >
       {children ?? "Buy ↗"}
     </a>

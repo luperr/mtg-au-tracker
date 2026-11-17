@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
+import { track } from "@/lib/analytics";
 
 export function DragDropSearch() {
   const router = useRouter();
@@ -35,6 +36,7 @@ export function DragDropSearch() {
       const altMatch = html.match(/<img[^>]+alt="([^"]+)"/i);
       if (altMatch?.[1]) {
         const name = altMatch[1].replace(/\s*\([^)]+#\d+\)\s*$/, "").trim();
+        track("drag-search", { method: "image-alt" });
         router.push(`/?q=${encodeURIComponent(name)}`);
         return;
       }
@@ -42,6 +44,7 @@ export function DragDropSearch() {
       // Fallback: text/plain (some browsers put alt text here)
       const text = e.dataTransfer?.getData("text/plain") ?? "";
       if (text.trim() && !text.startsWith("http")) {
+        track("drag-search", { method: "text" });
         router.push(`/?q=${encodeURIComponent(text.trim())}`);
       }
     }

@@ -8,6 +8,8 @@
  * the values (store ids, set codes, enum labels) can contain a comma.
  */
 
+import type { SearchRefinement } from "../analytics.js";
+
 export const SEARCH_VIEWS = ["card", "printing", "listings"] as const;
 export type SearchView = (typeof SEARCH_VIEWS)[number];
 export const DEFAULT_VIEW: SearchView = "printing";
@@ -185,6 +187,34 @@ export function clearFilters(state: SearchState): SearchState {
 
 export function setPrice(state: SearchState, price: PriceRange): SearchState {
   return { ...state, page: 1, price };
+}
+
+/**
+ * What a navigation changed, for the `search-refine` event — or null when it isn't a
+ * refinement: a new query (that's `card-search`) or only the page. Every control goes
+ * through `navigate()`, so diffing the two states covers them all without per-control
+ * tracking. One click changes one thing, so the first difference found is the answer.
+ */
+export function describeRefinement(prev: SearchState, next: SearchState): SearchRefinement | null {
+  if (prev.q !== next.q) return null;
+  if (prev.view !== next.view) return { kind: "view", value: next.view };
+  if (prev.sort !== next.sort) return { kind: "sort", value: next.sort };
+
+  const priceChanged = prev.price.min !== next.price.min || prev.price.max !== next.price.max;
+  const changes: SearchRefinement[] = [];
+  for (const key of FACET_KEYS) {
+    for (const value of next.filters[key]) {
+      if (!prev.filters[key].includes(value)) changes.push({ kind: "facet-add", key, value });
+    }
+    for (const value of prev.filters[key]) {
+      if (!next.filters[key].includes(value)) changes.push({ kind: "facet-remove", key, value });
+    }
+  }
+
+  if (changes.length === 1 && !priceChanged) return changes[0];
+  if (activeFilterCount(prev) > 0 && activeFilterCount(next) === 0) return { kind: "clear" };
+  if (priceChanged) return { kind: "price" };
+  return null;
 }
 
 // ─── Display ──────────────────────────────────────────────────────────────────

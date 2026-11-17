@@ -332,8 +332,11 @@ repopulate run, which is where the "re-run to repopulate" advice came from.)
 
 ### Search v2 (`apps/web/src/app/search-v2/`, `apps/web/src/lib/search-v2/`)
 Listing-grained search with a filter sidebar (store, set, condition, finish, treatment, price), sort and three views (`view=card|printing|listings`).
-- Loki `component="search-v2"` logs `ms` per query (warn above 2s). Umami `card-search` /
-  `card-click` carry `search: "v2"` / `source: "search-v2"` (older events also have `"v1"`).
+- Loki `component="search-v2"` logs `ms` per query (warn above 2s). Umami `card-search` fires
+  only when `page.tsx` judges the query new (the same `LAST_QUERY_COOKIE` test as the
+  `card_searches` log), and `search-refine` from `navigate()` via `describeRefinement()`.
+  `source: "search-v2"` stays that name for report continuity; events before 2026-11 also
+  carry `search: "v1"|"v2"`.
 - All state is URL params (`params.ts`). Cookies carry the rest: `search_view` (last view),
   `search_filters` (store/condition/finish/treatment/price carried into the next search —
   used only when the URL names no filter; set is deliberately not sticky), `search_sidebar`
@@ -377,7 +380,7 @@ Listing-grained search with a filter sidebar (store, set, condition, finish, tre
 
 ### `apps/web/src/app/BuyLink.tsx` + `apps/web/src/lib/affiliate.ts`
 Single component for all outbound store buy links. Owns:
-- Umami `store-click` event tracking (passes `storeId`, `card`, `price`, `source`)
+- Umami `store-click` event tracking (passes `store`, `card`, `price`, `source`)
 - Correct `rel="noopener noreferrer"` and new-tab behaviour
 - Affiliate rewriting via `applyAffiliateParams()` in `lib/affiliate.ts` — extend per store
   when more deals are set up, no call-sites change
@@ -401,6 +404,19 @@ Rejected: setting `X-EBAY-C-ENDUSERCTX: affiliateCampaignId=…` on the Browse A
 store `itemAffiliateWebUrl` in the DB. It is eBay's blessed route, but it bakes the campaign
 id into millions of stored rows, doesn't retro-fix existing rows, and gives no per-surface
 `customid`. Keep it as the fallback if eBay ever stops honouring hand-built parameters.
+
+### Analytics (`apps/web/src/lib/analytics.ts`, `apps/web/src/app/Analytics.tsx`)
+Umami custom events. **`AnalyticsEvents` in `analytics.ts` is the event catalogue** — every
+name and payload is typed there, and `track()` is the only way to send one; don't call
+`window.umami` directly.
+- `data-domains` limits reporting to `scrymarket.au`, so dev and contributors' builds send
+  nothing. Without it, any build on any host reported into the production site — the likely
+  source of `search: "v1"` events arriving after v1 was deleted. To test events locally, temporarily add `localhost` to
+  `ANALYTICS_DOMAINS` in `lib/config.ts`.
+- The script loads `afterInteractive`, after hydration, so events fired from mount effects
+  (`card-search`) used to be silently dropped. `track()` queues them (capped at 20) and
+  `Analytics.tsx` flushes on the script's `onLoad`.
+- Renaming an event or a `source` value splits its Umami history at the deploy — add a field instead.
 
 ### `apps/web/src/lib/store-shipping.ts`
 `getStoreShippingRates()` — flat-rate postage per store (AUD), keyed by `store_id`, read from `stores.flat_shipping_aud` (seeded from `STORE_REGISTRY` in `stores.config.ts`) and cached in memory for an hour. Fallback when a store_prices row doesn't supply `shipping_aud`. eBay is `null` (per-item shipping).
@@ -563,7 +579,7 @@ product URL (`/catalog/magic_singles-standard-bloomburrow/card_name/693640` → 
 - [x] Next.js web UI — search, card detail, price history charts
 - [x] Want List with per-store postage editing and Branch-and-Bound optimiser
 - [x] BuyLink component — centralised tracking, eBay Partner Network affiliate links live
-- [x] Umami analytics — card-search, card-click, store-click events
+- [x] Umami analytics — typed event catalogue in `apps/web/src/lib/analytics.ts`
 - [x] `card_searches` table — demand analytics foundation (search query + top card ID)
 - [x] Cloudflare tunnel for public access (no open ports)
 - [x] Security headers (CSP, X-Frame-Options, etc.) via Next.js config

@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { useWantList, toWantListItem, type WantListItem } from "@/app/WantListContext";
-import { fmtAUD, trackEvent } from "@/lib/utils";
+import { fmtAUD } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 import { SetSymbol } from "@/app/SetSymbol";
 import { BuyLink } from "@/app/BuyLink";
 import { AffiliateDisclosure } from "@/app/AffiliateDisclosure";
@@ -195,7 +196,7 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
         .map((a) => a.cardId);
       setCheckedCardIds(new Set(changed));
       // Whole dollars: enough to tell "saved nothing" from "saved $40" without logging the basket.
-      trackEvent("optimise-run", {
+      track("optimise-run", {
         items: items.length,
         changed: changed.length,
         stores: data.storeBreakdown.length,
@@ -204,7 +205,7 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
         rerun,
       });
     } catch (err) {
-      trackEvent("optimise-run", { items: items.length, error: true });
+      track("optimise-run", { items: items.length, error: true });
       // Keep the modal open on its error state, which offers a retry.
       setOptimiseError(err instanceof Error && err.message ? err.message : "The optimiser failed. Try again in a moment.");
     } finally {
@@ -270,7 +271,7 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
       addItem(toWantListItem(a, current));
       applied++;
     }
-    trackEvent("optimise-apply", { items: items.length, applied });
+    track("optimise-apply", { items: items.length, applied });
     setOptimiseOpen(false);
     setOptimiseResult(null);
     setLockedPrintingIds(new Set());
@@ -297,6 +298,17 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
   function handlePrintingChange(item: WantListItem, p: StorePrinting) {
     removeItem(item.id);
     addItem(toWantListItem(p, item));
+    track("want-list-edit", { action: "swap", source: "want-list" });
+  }
+
+  function handleRemove(item: WantListItem) {
+    removeItem(item.id);
+    track("want-list-edit", { action: "remove", source: "want-list" });
+  }
+
+  function handleClearAll() {
+    track("want-list-edit", { action: "clear", source: "want-list", items: items.length });
+    clearAll();
   }
 
   return (
@@ -336,7 +348,7 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
               </a>
             </div>
             <button
-              onClick={clearAll}
+              onClick={handleClearAll}
               className="text-xs text-cream-dim/40 hover:text-red-400 transition-colors"
             >
               Clear all
@@ -461,7 +473,7 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
                         {/* Remove */}
                         <td className="pr-2 py-1.5 text-right">
                           <button
-                            onClick={() => removeItem(item.id)}
+                            onClick={() => handleRemove(item)}
                             title="Remove"
                             className="w-5 h-5 rounded flex items-center justify-center text-cream-dim/30 hover:text-red-400 hover:bg-red-900/20 transition-colors ml-auto"
                           >
