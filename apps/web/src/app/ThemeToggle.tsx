@@ -32,23 +32,28 @@ function useLightTheme(): boolean {
   return useSyncExternalStore(subscribe, isLight, () => false);
 }
 
-function Switch({ light }: { light: boolean }) {
+/** ☀ ⬤ ☾ in the header; the menu row, which labels itself, drops the icons. */
+function ThemePill({ light, icons = true }: { light: boolean; icons?: boolean }) {
   return (
-    <span aria-hidden className={`relative inline-block h-4 w-7 rounded-full transition-colors ${light ? "bg-accent" : "bg-subtle"}`}>
-      <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-cream transition-transform ${light ? "translate-x-3.5" : "translate-x-0.5"}`} />
+    <span aria-hidden className="flex items-center gap-1.5 rounded-full border border-subtle bg-muted px-3 py-1 text-xs font-medium transition-colors group-hover:border-accent group-hover:text-cream">
+      {icons && <span className={light ? "opacity-100" : "opacity-40"}>☀</span>}
+      <span className={`relative inline-block h-4 w-7 shrink-0 rounded-full transition-colors ${light ? "bg-accent" : "bg-subtle"}`}>
+        <span className={`absolute left-0 top-0.5 h-3 w-3 rounded-full bg-cream transition-transform ${light ? "translate-x-3.5" : "translate-x-0.5"}`} />
+      </span>
+      {icons && <span className={light ? "opacity-40" : "opacity-100"}>☾</span>}
     </span>
   );
 }
 
 /**
- * `header`: the compact pill, shown from sm up (phones get it in the menu instead).
- * `menu`: a full-width switch row for the mobile nav sheet.
+ * `header`: the pill on its own, shown from sm up (phones get it in the menu instead).
+ * `menu`: a full-width "Theme toggle" row carrying the same pill, for the mobile nav sheet.
  */
 export function ThemeToggle({ variant = "header" }: { variant?: "header" | "menu" }) {
   const light = useLightTheme();
 
   if (variant === "menu") {
-    // A switch named by its visible label, so "tap light theme" works for voice control.
+    // A switch named by its visible label plus the current state, e.g. "Theme toggle: dark".
     return (
       <button
         role="switch"
@@ -56,8 +61,8 @@ export function ThemeToggle({ variant = "header" }: { variant?: "header" | "menu
         onClick={toggleTheme}
         className="flex h-12 w-full items-center justify-between px-4 text-sm text-cream-dim active:bg-muted"
       >
-        <span>Light theme</span>
-        <Switch light={light} />
+        <span>Theme toggle<span className="sr-only">: {light ? "light" : "dark"}</span></span>
+        <ThemePill light={light} icons={false} />
       </button>
     );
   }
@@ -66,11 +71,9 @@ export function ThemeToggle({ variant = "header" }: { variant?: "header" | "menu
     <button
       onClick={toggleTheme}
       aria-label={light ? "Switch to dark theme" : "Switch to light theme"}
-      className="hidden sm:flex items-center gap-1.5 rounded-full border border-subtle bg-muted px-3 py-1 text-xs font-medium text-cream-dim transition-colors hover:border-accent hover:text-cream"
+      className="group hidden sm:flex rounded-full text-cream-dim"
     >
-      <span className={light ? "opacity-100" : "opacity-40"}>☀</span>
-      <Switch light={light} />
-      <span className={light ? "opacity-40" : "opacity-100"}>☾</span>
+      <ThemePill light={light} />
     </button>
   );
 }
