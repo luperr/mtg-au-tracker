@@ -19,7 +19,7 @@ function Pagination({ total }: { total: number }) {
 
   // Real links rather than buttons, so pages are crawlable and open in new tabs.
   const link = (page: number) => `/?${toQueryString({ ...state, page })}`;
-  const cls = pillClass(false, "rounded-lg");
+  const cls = `${pillClass(false, "rounded-lg")} inline-flex items-center min-h-11 sm:min-h-0`;
 
   return (
     <nav className="flex items-center justify-center gap-3 mt-6" aria-label="Pagination">
@@ -31,9 +31,21 @@ function Pagination({ total }: { total: number }) {
 }
 
 /** Below md the sidebar becomes a slide-out drawer behind the toolbar's Filters button. */
-function FilterDrawer({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
+function FilterDrawer({ open, onClose, total, pending, children }: {
+  open: boolean;
+  onClose: () => void;
+  /** Result count for the state last rendered — the drawer covers the results, so this is the only feedback a tap gets. */
+  total: number;
+  pending: boolean;
+  children: React.ReactNode;
+}) {
+  const footer = (
+    <button onClick={onClose} className={`flex h-11 w-full items-center justify-center rounded-lg bg-cta font-medium text-cream transition-opacity ${pending ? "opacity-60" : ""}`}>
+      {pending ? "Updating…" : `Show ${total.toLocaleString()} result${total === 1 ? "" : "s"}`}
+    </button>
+  );
   return (
-    <Sheet open={open} onClose={onClose} side="left" title="Filters" actions={<ClearFiltersButton />} className="md:hidden">
+    <Sheet open={open} onClose={onClose} side="left" title="Filters" actions={<ClearFiltersButton />} footer={footer} className="md:hidden">
       {children}
     </Sheet>
   );
@@ -84,7 +96,7 @@ function Results({ result, rendered, filtersHidden }: { result: SearchV2Result; 
           »{activeCount > 0 && <span className="ml-1 text-xs text-accent-light">{activeCount}</span>}
         </button>
       )}
-      <FilterDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+      <FilterDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} total={total} pending={pending}>
         <FilterSidebar facets={result.facets} framed={false} />
       </FilterDrawer>
 
