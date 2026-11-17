@@ -201,7 +201,7 @@ export function ImportCards() {
   return (
     <div className="rounded-lg border border-subtle bg-surface overflow-hidden">
       {/* Header — always visible */}
-      <div className="px-4 py-3 border-b border-subtle bg-cream-muted flex items-start justify-between gap-3">
+      <div className="px-4 py-3 border-b border-subtle bg-cream-muted flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div>
           <h2 className="font-semibold text-cream text-sm">Import from list</h2>
           <p className="text-xs text-cream-dim/50 mt-0.5">
@@ -210,8 +210,8 @@ export function ImportCards() {
         </div>
 
         {/* Controls always visible */}
-        <div className="flex items-center gap-2 shrink-0 mt-0.5">
-          <label className="rounded-lg border border-subtle bg-muted px-3 py-1.5 text-xs text-cream-dim hover:text-cream hover:border-accent-border transition-colors cursor-pointer whitespace-nowrap">
+        <div className="flex items-center gap-2 shrink-0 sm:mt-0.5">
+          <label className="rounded-lg border border-subtle bg-muted px-3 py-2 sm:py-1.5 text-xs text-cream-dim hover:text-cream hover:border-accent-border transition-colors cursor-pointer whitespace-nowrap">
             Upload .txt
             <input
               ref={fileRef}
@@ -224,7 +224,7 @@ export function ImportCards() {
 
           <button
             onClick={() => setExpanded(!expanded)}
-            className="rounded-lg border border-subtle bg-muted px-3 py-1.5 text-xs text-cream-dim hover:text-cream hover:border-accent-border transition-colors whitespace-nowrap"
+            className="rounded-lg border border-subtle bg-muted px-3 py-2 sm:py-1.5 text-xs text-cream-dim hover:text-cream hover:border-accent-border transition-colors whitespace-nowrap"
           >
             {expanded ? "Collapse ▲" : "Paste list ▼"}
           </button>
@@ -299,8 +299,8 @@ export function ImportCards() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs bg-cream-muted border-b border-subtle/50">
-                  <th className="px-4 py-2 text-left font-medium text-cream-dim">Card</th>
-                  <th className="px-3 py-2 text-left font-medium text-cream-dim">Cheapest store</th>
+                  <th className="px-3 sm:px-4 py-2 text-left font-medium text-cream-dim">Card</th>
+                  <th className="hidden sm:table-cell px-3 py-2 text-left font-medium text-cream-dim">Cheapest store</th>
                   <th className="px-3 py-2 text-right font-medium text-cream-dim">Price AUD</th>
                   <th className="px-3 py-2" />
                 </tr>
@@ -310,7 +310,7 @@ export function ImportCards() {
                   const isAdded = added.has(resultItemId(r));
                   return (
                     <tr key={`${r.inputName}-${i}`} className="border-b border-subtle/40 last:border-0 hover:bg-muted transition-colors">
-                      <td className="px-4 py-2.5">
+                      <td className="px-3 sm:px-4 py-2.5">
                         <div className="flex items-baseline gap-1.5">
                           {r.qty > 1 && (
                             <span className="text-xs text-cream-dim/50 font-medium shrink-0">{r.qty}×</span>
@@ -327,8 +327,10 @@ export function ImportCards() {
                             {r.cheapest.setName.toUpperCase()}{collectorByResult.get(r) ? ` #${collectorByResult.get(r)}` : ""}{r.cheapest.isFoil ? " ✦" : ""}
                           </div>
                         )}
+                        {/* The store column is dropped on phones; it lives under the name instead. */}
+                        {r.cheapest && <div className="sm:hidden text-xs text-cream-dim mt-0.5">{r.cheapest.storeName}</div>}
                       </td>
-                      <td className="px-3 py-2.5 text-cream-dim">{r.cheapest?.storeName}</td>
+                      <td className="hidden sm:table-cell px-3 py-2.5 text-cream-dim">{r.cheapest?.storeName}</td>
                       <td className="px-3 py-2.5 text-right text-price font-semibold">
                         ${r.cheapest?.priceAud.toFixed(2)}
                       </td>
@@ -336,7 +338,8 @@ export function ImportCards() {
                         <button
                           onClick={() => isAdded ? undefined : handleAddOne(r)}
                           disabled={isAdded}
-                          className={`w-6 h-6 rounded flex items-center justify-center text-sm transition-colors ml-auto ${
+                          aria-label={isAdded ? `${r.cardName} added` : `Add ${r.cardName}`}
+                          className={`w-9 h-9 sm:w-6 sm:h-6 rounded flex items-center justify-center text-sm transition-colors ml-auto ${
                             isAdded
                               ? "bg-price/20 text-price cursor-default"
                               : "bg-muted text-cream-dim/40 hover:bg-price/20 hover:text-price"

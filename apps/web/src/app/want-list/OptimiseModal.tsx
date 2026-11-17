@@ -67,7 +67,8 @@ export function OptimiseModal({
   const allChecked = changed.length > 0 && checkedCount === changed.length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    // A bottom sheet on phones (full width, thumb-reachable buttons), a centred dialog from sm up.
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60" onClick={onDismiss} />
 
@@ -76,7 +77,7 @@ export function OptimiseModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="optimise-title"
-        className="relative z-10 w-full max-w-md flex flex-col max-h-[85vh] rounded-xl border border-subtle bg-surface shadow-2xl overflow-hidden">
+        className="relative z-10 w-full sm:max-w-md flex flex-col max-h-[90vh] sm:max-h-[85vh] rounded-t-xl sm:rounded-xl border border-subtle bg-surface shadow-2xl overflow-hidden pb-[env(safe-area-inset-bottom)] sm:pb-0">
 
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-subtle shrink-0">
@@ -168,7 +169,7 @@ export function OptimiseModal({
                           checked={isChecked}
                           disabled={isLocked}
                           onChange={() => onToggleChecked(a.cardId)}
-                          className="shrink-0 accent-[var(--color-price)]"
+                          className="shrink-0 h-5 w-5 sm:h-auto sm:w-auto accent-[var(--color-price)]"
                         />
 
                         {/* Lock button */}
@@ -177,7 +178,7 @@ export function OptimiseModal({
                           aria-label={isLocked ? `Unlock ${a.cardName}` : `Lock ${a.cardName} to its current printing`}
                           aria-pressed={isLocked}
                           title={isLocked ? "Unlock — allow optimizer to change printing" : "Lock to current printing"}
-                          className={`shrink-0 text-sm leading-none transition-colors ${
+                          className={`shrink-0 flex h-9 w-9 sm:h-auto sm:w-auto items-center justify-center text-sm leading-none transition-colors ${
                             isLocked ? "text-amber-400" : "text-cream-dim/20 hover:text-cream-dim/50"
                           }`}
                         >
@@ -267,7 +268,7 @@ export function OptimiseModal({
             <button
               onClick={onReoptimise}
               disabled={loading}
-              className="rounded-lg border border-accent-border bg-accent-muted/40 px-3 py-1.5 text-xs font-semibold text-accent-light hover:bg-accent-muted transition-colors disabled:opacity-50"
+              className="rounded-lg border border-accent-border bg-accent-muted/40 px-3 py-2.5 sm:py-1.5 text-sm sm:text-xs font-semibold text-accent-light hover:bg-accent-muted transition-colors disabled:opacity-50"
             >
               Re-optimise
             </button>
@@ -275,7 +276,7 @@ export function OptimiseModal({
           {changed.length > 0 && (
             <button
               onClick={() => onToggleAll(changed.map((a) => a.cardId))}
-              className="text-xs text-cream-dim/40 hover:text-cream-dim transition-colors"
+              className="py-2 sm:py-0 text-sm sm:text-xs text-cream-dim/40 hover:text-cream-dim transition-colors"
             >
               {allChecked ? "Deselect all" : "Select all"}
             </button>
@@ -283,7 +284,7 @@ export function OptimiseModal({
           <div className="flex items-center gap-3 ml-auto">
             <button
               onClick={onDismiss}
-              className="text-xs text-cream-dim/40 hover:text-cream-dim transition-colors"
+              className="py-2 sm:py-0 text-sm sm:text-xs text-cream-dim/40 hover:text-cream-dim transition-colors"
             >
               Dismiss
             </button>
@@ -292,7 +293,7 @@ export function OptimiseModal({
               <button
                 onClick={onApply}
                 disabled={checkedCount === 0 || loading}
-                className="rounded-lg bg-price text-bg px-3 py-1.5 text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
+                className="rounded-lg bg-price text-bg px-4 py-2.5 sm:px-3 sm:py-1.5 text-sm sm:text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
               >
                 Apply selected ({checkedCount})
               </button>

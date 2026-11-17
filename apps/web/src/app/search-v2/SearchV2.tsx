@@ -5,6 +5,7 @@ import { setCookie, ONE_YEAR_SECONDS } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import { SEARCH_V2_PAGE_SIZE, type SearchV2Result } from "@/lib/search-v2/types";
 import { useEffect, useState } from "react";
+import { Sheet } from "@/app/Sheet";
 import { pillClass } from "@/app/Dropdown";
 import { ClearFiltersButton, FilterSidebar } from "./FilterSidebar";
 import { ListingTile, UnlistedTile } from "./ListingTile";
@@ -31,35 +32,10 @@ function Pagination({ total }: { total: number }) {
 
 /** Below md the sidebar becomes a slide-out drawer behind the toolbar's Filters button. */
 function FilterDrawer({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
-    };
-  }, [open, onClose]);
-
   return (
-    <div className={`md:hidden fixed inset-0 z-50 ${open ? "" : "pointer-events-none"}`} aria-hidden={!open}>
-      <div onClick={onClose} className={`absolute inset-0 bg-black/60 transition-opacity ${open ? "opacity-100" : "opacity-0"}`} />
-      <aside
-        role="dialog"
-        aria-label="Filters"
-        className={`absolute inset-y-0 left-0 w-80 max-w-[85vw] overflow-y-auto bg-surface border-r border-subtle py-3 transition-transform ${
-          open ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <div className="flex items-center gap-1 mb-1 px-3">
-          <h2 className="mr-auto text-sm font-semibold text-cream">Filters</h2>
-          <ClearFiltersButton />
-          <button onClick={onClose} aria-label="Close filters" className="text-cream-dim hover:text-cream text-lg leading-none px-1">×</button>
-        </div>
-        {children}
-      </aside>
-    </div>
+    <Sheet open={open} onClose={onClose} side="left" title="Filters" actions={<ClearFiltersButton />} className="md:hidden">
+      {children}
+    </Sheet>
   );
 }
 
