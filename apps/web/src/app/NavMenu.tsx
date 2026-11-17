@@ -5,21 +5,9 @@ import { usePathname } from "next/navigation";
 import { Sheet } from "./Sheet";
 import { ThemeToggle } from "./ThemeToggle";
 import { useWantList } from "./WantListContext";
+import { APP_PAGES, INFO_PAGES, LEGAL_PAGES } from "@/lib/nav";
 
-const PAGES: { href: string; label: string }[] = [
-  { href: "/", label: "Search" },
-  { href: "/want-list", label: "Want list" },
-  { href: "/changelog", label: "What's new" },
-  { href: "/about", label: "About & stores" },
-  { href: "/faq", label: "FAQ" },
-  { href: "/contact", label: "Contact" },
-];
-
-const LEGAL: { href: string; label: string }[] = [
-  { href: "/disclaimer", label: "Disclaimer" },
-  { href: "/privacy", label: "Privacy" },
-  { href: "/terms", label: "Terms" },
-];
+const PAGES = [...APP_PAGES, ...INFO_PAGES];
 
 /**
  * The phone menu: below sm every page except search and the want list used to be reachable
@@ -75,7 +63,7 @@ export function NavMenu({ extra }: { extra?: React.ReactNode }) {
         <div className="border-t border-subtle px-4 py-4 space-y-4">
           {extra}
           <p className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-cream-dim/60">
-            {LEGAL.map(({ href, label }) => (
+            {LEGAL_PAGES.map(({ href, label }) => (
               <a key={href} href={href} className="hover:text-accent">{label}</a>
             ))}
           </p>

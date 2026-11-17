@@ -34,7 +34,7 @@ export function HeaderSearch() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search cards…"
-          className="w-full rounded-lg border border-subtle bg-muted px-3 py-2 sm:py-1.5 pr-8 text-base sm:text-sm text-cream placeholder:text-cream-dim/40 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          className="w-full rounded-lg border border-subtle bg-muted px-3 py-2 sm:py-1.5 pr-8 text-sm text-cream placeholder:text-cream-dim/40 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
         />
         <button
           type="submit"

@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect } from "react";
+import { useId } from "react";
+import { useModalBehaviour } from "@/lib/hooks/useModalBehaviour";
 
 /**
  * A modal panel that slides in from the left edge (menus, filters) or up from the bottom
- * (pickers on phones). Owns the backdrop, Escape-to-close and the body scroll lock;
- * the body scrolls on its own so the title and footer stay put.
+ * (pickers on phones). Owns the backdrop and, via `useModalBehaviour`, Escape-to-close and
+ * the body scroll lock; the body scrolls on its own so the title and footer stay put.
  *
- * Always mounted, so the slide animates both ways; `open` drives it. Pass a breakpoint
+ * Stays mounted, so the slide animates both ways; `open` drives it. Pass a breakpoint
  * class such as `md:hidden` via `className` when the sheet only exists on small screens.
  */
 export function Sheet({
@@ -17,7 +18,7 @@ export function Sheet({
   onClose: () => void;
   side: "left" | "bottom";
   /** Heading, and the dialog's accessible name. */
-  title: React.ReactNode;
+  title: string;
   /** Extra controls beside the close button. */
   actions?: React.ReactNode;
   /** Pinned below the scrolling body. */
@@ -25,16 +26,8 @@ export function Sheet({
   className?: string;
   children: React.ReactNode;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
-    };
-  }, [open, onClose]);
+  const titleId = useId();
+  useModalBehaviour(open, onClose);
 
   const panel = side === "left"
     ? `inset-y-0 left-0 w-80 max-w-[85vw] border-r ${open ? "translate-x-0" : "-translate-x-full"}`
@@ -46,12 +39,12 @@ export function Sheet({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={typeof title === "string" ? title : undefined}
+        aria-labelledby={titleId}
         className={`absolute flex flex-col bg-surface border-subtle shadow-2xl transition-transform ${panel}`}
       >
         {side === "bottom" && <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-subtle" aria-hidden />}
         <div className="flex items-center gap-1 px-4 py-3 shrink-0">
-          <h2 className="mr-auto min-w-0 truncate text-sm font-semibold text-cream">{title}</h2>
+          <h2 id={titleId} className="mr-auto min-w-0 truncate text-sm font-semibold text-cream">{title}</h2>
           {actions}
           <button
             onClick={onClose}

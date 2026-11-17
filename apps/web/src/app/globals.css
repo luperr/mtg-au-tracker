@@ -101,3 +101,16 @@ html[data-theme="light"] body {
     radial-gradient(ellipse 80% 40% at 15% 0%, #9ec8d0 0%, transparent 65%),
     radial-gradient(ellipse 60% 30% at 85% 100%, #d9a898 0%, transparent 60%);
 }
+
+/*
+ * iOS zooms the page into any focused text field under 16px, and leaves it zoomed. One rule
+ * for every touch device instead of a text size per input — new forms are covered without
+ * anyone remembering. Unlayered on purpose: it has to beat Tailwind's text-* utilities.
+ */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}

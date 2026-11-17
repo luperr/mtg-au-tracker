@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import type { PrintingWithPrices } from "@/lib/db";
 import { useWantList, toWantListItem, wantListItemId } from "@/app/WantListContext";
-import { fmtAUD } from "@/lib/utils";
+import { fmtAUD, fmtPostage } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import { Dropdown, OptionItem, pillClass } from "@/app/Dropdown";
 import { SetSymbol } from "@/app/SetSymbol";
@@ -355,7 +355,7 @@ export function PricesTable({
                         {fmtAUD(row.priceAud)}
                         {row.shippingAud !== null && (
                           <span className="ml-1 text-xs font-normal text-cream-dim/60">
-                            (+{row.shippingAud === 0 ? "free" : fmtAUD(row.shippingAud)})
+                            (+{fmtPostage(row.shippingAud)})
                           </span>
                         )}
                       </span>
@@ -456,7 +456,7 @@ export function PricesTable({
                           {fmtAUD(row.priceAud)}
                           {row.shippingAud !== null && (
                             <span className="ml-1 text-xs font-normal text-cream-dim/60">
-                              (+{row.shippingAud === 0 ? "free" : fmtAUD(row.shippingAud)})
+                              (+{fmtPostage(row.shippingAud)})
                             </span>
                           )}
                         </td>

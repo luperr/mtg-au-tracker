@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useModalBehaviour } from "@/lib/hooks/useModalBehaviour";
 import type { WantListItem } from "@/app/WantListContext";
 import { fmtAUD } from "@/lib/utils";
 import { SetSymbol } from "@/app/SetSymbol";
@@ -43,11 +43,8 @@ export function OptimiseModal({
   onDismiss: () => void;
   onToggleUnchanged: () => void;
 }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onDismiss(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onDismiss]);
+  // Mounted only while open. Also locks the page scroll, which iOS otherwise lets move under the sheet.
+  useModalBehaviour(true, onDismiss);
 
   const currentByCardId = new Map(currentItems.map((i) => [i.cardId, i]));
 
@@ -95,7 +92,7 @@ export function OptimiseModal({
           <button
             onClick={onDismiss}
             aria-label="Close"
-            className="text-cream-dim/40 hover:text-cream transition-colors text-lg leading-none"
+            className="-mr-2 flex h-10 w-10 sm:mr-0 sm:h-auto sm:w-auto items-center justify-center text-cream-dim/40 hover:text-cream transition-colors text-lg leading-none"
           >
             ✕
           </button>

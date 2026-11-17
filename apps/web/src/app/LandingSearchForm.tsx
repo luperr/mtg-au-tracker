@@ -25,7 +25,7 @@ export function LandingSearchForm() {
           enterKeyHint="search"
           aria-label="Search cards by name"
           placeholder="Search cards by name…"
-          className="flex-1 min-w-0 rounded-lg border border-subtle bg-muted px-4 py-3 text-base text-cream placeholder-cream-dim/50 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          className="flex-1 min-w-0 rounded-lg border border-subtle bg-muted px-4 py-3 text-cream placeholder-cream-dim/50 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
         />
         <button
           type="submit"

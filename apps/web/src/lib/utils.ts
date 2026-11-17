@@ -17,6 +17,11 @@ export function cardHref(
   return base;
 }
 
+/** Postage as listings show it: "free", an AUD amount, or "—" when the store doesn't say. */
+export function fmtPostage(shippingAud: number | null): string {
+  return shippingAud === null ? "—" : shippingAud === 0 ? "free" : fmtAUD(shippingAud);
+}
+
 /**
  * Convert a Scryfall "normal" image URI to its "small" variant.
  * Returns null if the input is null.

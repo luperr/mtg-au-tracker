@@ -10,7 +10,8 @@ import { WantListBadge } from "./WantListBadge";
 import { HeaderSearch } from "./HeaderSearch";
 import { BuyMeACoffee } from "./BuyMeACoffee";
 import { NavMenu } from "./NavMenu";
-import { SITE_URL } from "@/lib/config";
+import { INFO_PAGES, LEGAL_PAGES } from "@/lib/nav";
+import { SITE_URL, THEME_ATTRIBUTE, THEME_STORAGE_KEY } from "@/lib/config";
 import { Analytics } from "./Analytics";
 import { getAffiliateConfig } from "@/lib/affiliate";
 
@@ -48,7 +49,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <script dangerouslySetInnerHTML={{ __html: `(function(){var t=localStorage.getItem('theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')})()` }} />
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{if(localStorage.getItem('${THEME_STORAGE_KEY}')==='light')document.documentElement.setAttribute('${THEME_ATTRIBUTE}','light')}catch(e){}})()` }} />
       </head>
       <Analytics />
       <body className="min-h-screen bg-bg text-cream antialiased flex flex-col">
@@ -102,13 +103,12 @@ export default function RootLayout({
                 <div className="hidden sm:block"><BuyMeACoffee /></div>
                 <p className="text-cream-dim/60">© {new Date().getFullYear()} Scrymarket</p>
                 <nav className="flex flex-wrap gap-x-3 gap-y-1">
-                  <a href="/changelog" className="hidden sm:inline hover:text-accent transition-colors">Changelog</a>
-                  <a href="/about" className="hidden sm:inline hover:text-accent transition-colors">About</a>
-                  <a href="/faq" className="hidden sm:inline hover:text-accent transition-colors">FAQ</a>
-                  <a href="/contact" className="hidden sm:inline hover:text-accent transition-colors">Contact</a>
-                  <a href="/disclaimer" className="py-2 sm:py-0 hover:text-accent transition-colors">Disclaimer</a>
-                  <a href="/privacy" className="py-2 sm:py-0 hover:text-accent transition-colors">Privacy</a>
-                  <a href="/terms" className="py-2 sm:py-0 hover:text-accent transition-colors">Terms</a>
+                  {INFO_PAGES.map(({ href, label, shortLabel }) => (
+                    <a key={href} href={href} className="hidden sm:inline hover:text-accent transition-colors">{shortLabel ?? label}</a>
+                  ))}
+                  {LEGAL_PAGES.map(({ href, label }) => (
+                    <a key={href} href={href} className="py-2 sm:py-0 hover:text-accent transition-colors">{label}</a>
+                  ))}
                 </nav>
               </div>
               <p className="mx-auto max-w-5xl mt-1 text-xs text-cream-dim/60">

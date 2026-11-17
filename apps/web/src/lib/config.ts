@@ -99,6 +99,14 @@ export const ANALYTICS_SCRIPT_URL = "https://umami.scrymarket.au/script.js";
 export const ANALYTICS_WEBSITE_ID = "ba5a4121-875c-4ad2-a05e-dbab6b207c03";
 /** Hosts allowed to report to Umami. Anything else — dev, a contributor's branch — sends nothing. */
 export const ANALYTICS_DOMAINS = "scrymarket.au";
+
+// ── Theme ────────────────────────────────────────────────────────────────────
+// Read by the inline script in layout.tsx before first paint, and written by ThemeToggle.
+
+/** localStorage key holding "light" or "dark". */
+export const THEME_STORAGE_KEY = "theme";
+/** Set to "light" on <html> for the light theme; absent means dark. */
+export const THEME_ATTRIBUTE = "data-theme";
 export const GITHUB_API_URL = "https://api.github.com";
 
 // ── eBay Partner Network (affiliate) ─────────────────────────────────────────
