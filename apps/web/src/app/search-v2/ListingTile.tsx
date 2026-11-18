@@ -47,7 +47,7 @@ function AddToWantListButton({ tile }: { tile: SearchTile }) {
     <button
       onClick={handleClick}
       aria-label={added ? "In want list" : "Add to want list"}
-      className={`w-7 h-7 rounded flex items-center justify-center text-sm transition-colors shrink-0 ${
+      className={`w-9 h-9 sm:w-7 sm:h-7 rounded flex items-center justify-center text-sm transition-colors shrink-0 ${
         added ? "bg-price/20 text-price" : "bg-muted text-cream-dim/40 hover:bg-price/20 hover:text-price"
       }`}
     >
@@ -84,7 +84,7 @@ export function ListingTile({ tile, view, query }: { tile: SearchTile; view: Sea
       </a>
 
       <div className="px-2 pt-1.5 pb-2 flex flex-col gap-1 flex-1">
-        <a href={href} onClick={onCardClick} className="text-xs font-medium text-cream truncate hover:text-accent-light transition-colors" title={tile.name}>
+        <a href={href} onClick={onCardClick} className="text-xs font-medium text-cream line-clamp-2 sm:line-clamp-none sm:truncate hover:text-accent-light transition-colors" title={tile.name}>
           {tile.name}
         </a>
 
@@ -105,7 +105,7 @@ export function ListingTile({ tile, view, query }: { tile: SearchTile; view: Sea
         <div className="mt-auto flex items-end justify-between gap-1 pt-1">
           <div className="min-w-0">
             <div className="text-sm font-semibold text-price tabular-nums">{fmtAUD(tile.price)}</div>
-            <div className="text-[11px] text-cream-dim truncate">
+            <div className="text-xs sm:text-[11px] text-cream-dim truncate">
               {tile.url ? (
                 <BuyLink
                   href={tile.url}
@@ -114,7 +114,7 @@ export function ListingTile({ tile, view, query }: { tile: SearchTile; view: Sea
                   price={tile.price}
                   source="search-v2"
                   printingId={tile.printing_id}
-                  className="hover:text-accent transition-colors"
+                  className="inline-block py-1.5 sm:py-0 hover:text-accent transition-colors"
                 >
                   {tile.store_name} ↗
                 </BuyLink>
@@ -163,7 +163,7 @@ export function UnlistedTile({ card, query }: { card: UnlistedCard; query: strin
       </a>
 
       <div className="px-2 pt-1.5 pb-2 flex flex-col gap-1 flex-1">
-        <a href={href} onClick={onCardClick} className="text-xs font-medium text-cream truncate hover:text-accent-light transition-colors" title={card.name}>
+        <a href={href} onClick={onCardClick} className="text-xs font-medium text-cream line-clamp-2 sm:line-clamp-none sm:truncate hover:text-accent-light transition-colors" title={card.name}>
           {card.name}
         </a>
 

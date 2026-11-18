@@ -5,6 +5,7 @@ import { setCookie, ONE_YEAR_SECONDS } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import { SEARCH_V2_PAGE_SIZE, type SearchV2Result } from "@/lib/search-v2/types";
 import { useEffect, useState } from "react";
+import { Sheet } from "@/app/Sheet";
 import { pillClass } from "@/app/Dropdown";
 import { ClearFiltersButton, FilterSidebar } from "./FilterSidebar";
 import { ListingTile, UnlistedTile } from "./ListingTile";
@@ -18,7 +19,7 @@ function Pagination({ total }: { total: number }) {
 
   // Real links rather than buttons, so pages are crawlable and open in new tabs.
   const link = (page: number) => `/?${toQueryString({ ...state, page })}`;
-  const cls = pillClass(false, "rounded-lg");
+  const cls = `${pillClass(false, "rounded-lg")} inline-flex items-center min-h-11 sm:min-h-0`;
 
   return (
     <nav className="flex items-center justify-center gap-3 mt-6" aria-label="Pagination">
@@ -30,36 +31,23 @@ function Pagination({ total }: { total: number }) {
 }
 
 /** Below md the sidebar becomes a slide-out drawer behind the toolbar's Filters button. */
-function FilterDrawer({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
-    };
-  }, [open, onClose]);
-
+function FilterDrawer({ open, onClose, total, pending, children }: {
+  open: boolean;
+  onClose: () => void;
+  /** Result count for the state last rendered — the drawer covers the results, so this is the only feedback a tap gets. */
+  total: number;
+  pending: boolean;
+  children: React.ReactNode;
+}) {
+  const footer = (
+    <button onClick={onClose} className={`flex h-11 w-full items-center justify-center rounded-lg bg-cta font-medium text-cream transition-opacity ${pending ? "opacity-60" : ""}`}>
+      {pending ? "Updating…" : `Show ${total.toLocaleString()} result${total === 1 ? "" : "s"}`}
+    </button>
+  );
   return (
-    <div className={`md:hidden fixed inset-0 z-50 ${open ? "" : "pointer-events-none"}`} aria-hidden={!open}>
-      <div onClick={onClose} className={`absolute inset-0 bg-black/60 transition-opacity ${open ? "opacity-100" : "opacity-0"}`} />
-      <aside
-        role="dialog"
-        aria-label="Filters"
-        className={`absolute inset-y-0 left-0 w-80 max-w-[85vw] overflow-y-auto bg-surface border-r border-subtle py-3 transition-transform ${
-          open ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <div className="flex items-center gap-1 mb-1 px-3">
-          <h2 className="mr-auto text-sm font-semibold text-cream">Filters</h2>
-          <ClearFiltersButton />
-          <button onClick={onClose} aria-label="Close filters" className="text-cream-dim hover:text-cream text-lg leading-none px-1">×</button>
-        </div>
-        {children}
-      </aside>
-    </div>
+    <Sheet open={open} onClose={onClose} side="left" title="Filters" actions={<ClearFiltersButton />} footer={footer} className="md:hidden">
+      {children}
+    </Sheet>
   );
 }
 
@@ -108,7 +96,7 @@ function Results({ result, rendered, filtersHidden }: { result: SearchV2Result; 
           »{activeCount > 0 && <span className="ml-1 text-xs text-accent-light">{activeCount}</span>}
         </button>
       )}
-      <FilterDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+      <FilterDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} total={total} pending={pending}>
         <FilterSidebar facets={result.facets} framed={false} />
       </FilterDrawer>
 

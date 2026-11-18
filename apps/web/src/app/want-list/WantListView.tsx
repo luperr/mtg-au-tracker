@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useWantList, toWantListItem, type WantListItem } from "@/app/WantListContext";
-import { fmtAUD } from "@/lib/utils";
+import { fmtAUD, fmtPostage } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import { SetSymbol } from "@/app/SetSymbol";
 import { BuyLink } from "@/app/BuyLink";
@@ -12,6 +12,7 @@ import { ImportCards } from "./ImportCards";
 import type { OptimizeResult } from "@/app/api/optimize/route";
 import { cardHref } from "@/lib/utils";
 import { variantBadgeWithFoil } from "@/lib/variant-utils";
+import { CardThumb } from "@/app/CardThumb";
 import { PrintingSelector, type StorePrinting } from "./PrintingSelector";
 import { OptimiseModal } from "./OptimiseModal";
 
@@ -133,6 +134,69 @@ function getStoreShipping(
   const fromDb = items.find((i) => i.shippingAud !== null)?.shippingAud;
   const flatAmount = fromDb !== undefined ? fromDb : (storeShippingAud[storeId] ?? null);
   return { isPerItem: false, flatAmount };
+}
+
+/** The item's outbound link, shared by the phone row and the table so attribution is wired once. Nothing when the listing has no URL. */
+function ItemBuyLink({ item, className }: { item: WantListItem; className: string }) {
+  if (!item.url) return null;
+  return (
+    <BuyLink
+      href={item.url}
+      storeId={item.storeId}
+      card={item.cardName}
+      price={item.priceAud}
+      source="want-list"
+      printingId={item.printingId}
+      className={className}
+    />
+  );
+}
+
+/**
+ * One want-list item below `sm`, where the six-column table doesn't fit. The art stands in
+ * for the desktop hover preview, and every control is sized for a thumb.
+ */
+function MobileItemRow({
+  item, isPerItem, onRemove, onPrintingChange,
+}: {
+  item: WantListItem;
+  isPerItem: boolean;
+  onRemove: () => void;
+  onPrintingChange: (p: StorePrinting) => void;
+}) {
+  const href = cardHref(item.cardSlug, item.cardId);
+  return (
+    <li className="flex gap-3 px-3 py-2.5">
+      <a href={href} className="shrink-0" tabIndex={-1} aria-hidden>
+        <CardThumb uri={item.imageUri} className="w-12" />
+      </a>
+      <div className="flex min-w-0 flex-1 flex-col justify-between gap-1.5">
+        <div className="flex items-start justify-between gap-2">
+          <a href={href} className="text-sm font-medium leading-snug text-cream">{item.cardName}</a>
+          <span className="shrink-0 text-right">
+            <span className="block text-sm font-semibold text-price tabular-nums">{fmtAUD(item.priceAud)}</span>
+            {isPerItem && <span className="block text-[11px] text-cream-dim/50">+ {fmtPostage(item.shippingAud)} post</span>}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <PrintingSelector item={item} onSelect={onPrintingChange} variant="chip" />
+          <div className="ml-auto flex items-center gap-2">
+            <ItemBuyLink
+              item={item}
+              className="flex h-8 items-center rounded border border-price/40 px-3 text-xs font-medium text-price active:bg-price/10"
+            />
+            <button
+              onClick={onRemove}
+              aria-label={`Remove ${item.cardName}`}
+              className="-mr-1 flex h-9 w-9 items-center justify-center rounded text-lg text-cream-dim/50 active:bg-red-900/20 active:text-red-400"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      </div>
+    </li>
+  );
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -329,7 +393,8 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
         </div>
         {totalCount > 0 && (
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1">
+            {/* Phones get Optimise in the sticky bar at the bottom instead. */}
+            <div className="hidden sm:flex items-center gap-1">
               <button
                 onClick={handleOptimise}
                 title="Finds the cheapest available printing of each card across all stores. Lock cards in the review screen to keep their current printing."
@@ -400,7 +465,21 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
                   </div>
                 </button>
 
-                {!collapsed && <table className="w-full text-sm">
+                {!collapsed && (
+                  <ul className="sm:hidden divide-y divide-subtle/60">
+                    {storeItems.map((item) => (
+                      <MobileItemRow
+                        key={item.id}
+                        item={item}
+                        isPerItem={isPerItem}
+                        onRemove={() => handleRemove(item)}
+                        onPrintingChange={(p) => handlePrintingChange(item, p)}
+                      />
+                    ))}
+                  </ul>
+                )}
+
+                {!collapsed && <table className="hidden sm:table w-full text-sm">
                   <thead>
                     <tr className="text-xs border-b border-subtle">
                       <th className="px-3 py-1.5 text-left font-medium text-cream-dim">Card</th>
@@ -442,11 +521,7 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
                         {/* Per-item postage (eBay only) */}
                         {isPerItem && (
                           <td className="px-2 py-1.5 text-right text-xs text-cream-dim/50 whitespace-nowrap">
-                            {item.shippingAud === null
-                              ? "—"
-                              : item.shippingAud === 0
-                              ? "free"
-                              : fmtAUD(item.shippingAud)}
+                            {fmtPostage(item.shippingAud)}
                           </td>
                         )}
 
@@ -457,17 +532,7 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
 
                         {/* Buy link */}
                         <td className="px-2 py-1.5 text-right">
-                          {item.url && (
-                            <BuyLink
-                              href={item.url}
-                              storeId={item.storeId}
-                              card={item.cardName}
-                              price={item.priceAud}
-                              source="want-list"
-                              printingId={item.printingId}
-                              className="text-xs text-price hover:text-cream transition-colors"
-                            />
-                          )}
+                          <ItemBuyLink item={item} className="text-xs text-price hover:text-cream transition-colors" />
                         </td>
 
                         {/* Remove */}
@@ -485,7 +550,7 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
                   </tbody>
                 </table>}
 
-                {!collapsed && <div className="flex justify-end px-3 py-2 pr-[72px] border-t border-subtle bg-cream-muted/50 rounded-b-lg">
+                {!collapsed && <div className="flex justify-end px-3 py-2 sm:pr-[72px] border-t border-subtle bg-cream-muted/50 rounded-b-lg">
                   <div className="flex flex-col items-end gap-0.5">
                     {!isPerItem && (
                       <EditablePostageRow
@@ -562,6 +627,23 @@ export function WantListView({ storeShippingAud }: { storeShippingAud: Record<st
 
       {/* Import section */}
       <ImportCards />
+
+      {/* Phones: the total and the main action stay in reach however long the list gets.
+          Sticky rather than fixed, so it stops at the end of the page instead of covering the footer. */}
+      {totalCount > 0 && (
+        <div className="sm:hidden sticky bottom-0 z-40 -mx-4 mt-6 flex items-center justify-between gap-3 border-t border-subtle bg-surface/95 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur">
+          <div className="min-w-0">
+            <div className="text-[11px] text-cream-dim/60">{totalCount} item{totalCount !== 1 ? "s" : ""}{hasUnknownPostage ? " · + some postage" : ""}</div>
+            <div className="text-base font-bold text-price tabular-nums">{fmtAUD(grandTotal)}</div>
+          </div>
+          <button
+            onClick={handleOptimise}
+            className="flex h-11 shrink-0 items-center rounded-lg border border-accent-border bg-accent-muted/40 px-4 text-sm font-semibold text-accent-light active:bg-accent-muted"
+          >
+            ✦ Optimise
+          </button>
+        </div>
+      )}
     </div>
   );
 }

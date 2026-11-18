@@ -22,7 +22,8 @@ const FIXED_ORDER: Partial<Record<FacetKey, string[]>> = {
   treatment: ["borderless", "showcase", "extendedart", "retro", "fullart", "serialized"],
 };
 
-const INPUT_CLASS = "w-full min-w-0 rounded-lg border border-subtle bg-muted px-2.5 py-1 text-xs text-cream placeholder:text-cream-dim/40 focus:border-accent focus:outline-none";
+// Taller below md, where the sidebar is the drawer. (Touch font size: see globals.css.)
+const INPUT_CLASS = "w-full min-w-0 rounded-lg border border-subtle bg-muted px-2.5 py-2 md:py-1 text-xs text-cream placeholder:text-cream-dim/40 focus:border-accent focus:outline-none";
 
 /** Long groups show this many options before "Show more", and get a search box. */
 const COLLAPSED_LIMIT = 8;
