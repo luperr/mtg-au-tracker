@@ -77,6 +77,9 @@ export const MAX_CARD_QTY = 99;
 /** Highest "max stores" the optimiser accepts — more is no constraint at all, the roster is ~40. */
 export const MAX_STORES_CAP = 20;
 
+/** Below Tailwind's sm breakpoint: where pickers open as bottom sheets instead of popovers. */
+export const PHONE_MEDIA_QUERY = "(max-width: 639.98px)";
+
 // ── Price trends ─────────────────────────────────────────────────────────────
 
 export { TREND_UP_THRESHOLD, TREND_DOWN_THRESHOLD } from "@mtg-au/shared";

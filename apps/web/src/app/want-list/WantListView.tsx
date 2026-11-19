@@ -14,7 +14,7 @@ import {
 import { toCents, type OptimiseResponse, type Unavailable } from "@/lib/optimiser/types";
 import type { StoreSummary } from "@/lib/store-shipping";
 import { ImportCards, type ImportSummary } from "./ImportCards";
-import { PrefsBar } from "./PrefsBar";
+import { PrefsBar, PrefsSheet, activePrefCount } from "./PrefsBar";
 import { StoreSection } from "./StoreSection";
 import { CardPreviewProvider } from "./CardPreview";
 import { useOptimiser } from "./useOptimiser";
@@ -51,6 +51,7 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
   const [prefs, setPrefs] = useState<SavedPrefs>(() => parseSavedPrefs(null));
   const [optimised, setOptimised] = useState<Optimised | null>(null);
   const [imported, setImported] = useState<ImportSummary | null>(null);
+  const [prefsOpen, setPrefsOpen] = useState(false);
   const optimiser = useOptimiser();
 
   useEffect(() => {
@@ -133,25 +134,8 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
     track("optimise-unlock-all", { cards: locked });
   }
 
-  return (
-    <CardPreviewProvider>
-      <div className="mx-auto max-w-3xl">
-        <div className="mb-3">
-          <h1 className="text-2xl font-bold text-cream">Want List</h1>
-          {items.length > 0 && (
-            <p className="mt-0.5 text-sm text-cream-dim">{plural(items.length, "card")} · {plural(copies, "copy", "copies")}</p>
-          )}
-        </div>
-
-        {items.length === 0 ? (
-          <div className="mb-6 rounded-lg border border-subtle bg-surface px-6 py-10 text-center">
-            <p className="mb-1 text-cream">Your want list is empty.</p>
-            <p className="text-sm text-cream-dim">Paste a deck list below, or click <span className="text-price">+</span> on any card.</p>
-          </div>
-        ) : (
-          <>
-            {/* Sticky, so the total and Optimise stay in reach while scrolling on a phone. */}
-            <div className="sticky top-0 z-20 -mx-4 mb-3 border-b border-subtle bg-bg/95 px-4 py-2.5 backdrop-blur" aria-live="polite">
+  const summary = (
+    <>
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-baseline gap-x-2">
@@ -180,7 +164,7 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
                 <button
                   onClick={() => optimise()}
                   disabled={optimiser.loading || fresh}
-                  className="shrink-0 rounded-lg bg-cta px-4 py-2 text-sm font-semibold text-white hover:bg-price disabled:opacity-60 disabled:hover:bg-cta transition-colors"
+                  className="shrink-0 rounded-lg bg-cta px-4 py-3 sm:py-2 text-sm font-semibold text-white hover:bg-price disabled:opacity-60 disabled:hover:bg-cta transition-colors"
                 >
                   {optimiser.loading ? "Optimising…" : fresh ? "Optimised ✓" : "✦ Optimise"}
                 </button>
@@ -213,21 +197,55 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
                   )}
                 </div>
               )}
+    </>
+  );
+
+  const listActions = (
+    <>
+      {locked > 0 && (
+        <button onClick={unlockAll} className="whitespace-nowrap py-2 sm:py-0 text-xs text-cream-dim hover:text-cream transition-colors">
+          Unlock all ({locked})
+        </button>
+      )}
+      <button onClick={() => { track("want-list-edit", { action: "clear", source: "want-list", items: items.length }); clearAll(); setOptimised(null); }} className="whitespace-nowrap py-2 sm:py-0 text-xs text-cream-dim hover:text-red-400 transition-colors">
+        Clear all
+      </button>
+    </>
+  );
+
+  return (
+    <CardPreviewProvider>
+      <div className="mx-auto max-w-3xl">
+        <div className="mb-3">
+          <h1 className="text-2xl font-bold text-cream">Want List</h1>
+          {items.length > 0 && (
+            <p className="mt-0.5 text-sm text-cream-dim">{plural(items.length, "card")} · {plural(copies, "copy", "copies")}</p>
+          )}
+        </div>
+
+        {items.length === 0 ? (
+          <div className="mb-6 rounded-lg border border-subtle bg-surface px-6 py-10 text-center">
+            <p className="mb-1 text-cream">Your want list is empty.</p>
+            <p className="text-sm text-cream-dim">Paste a deck list below, or click <span className="text-price">+</span> on any card.</p>
+          </div>
+        ) : (
+          <>
+            {/* sm+: the summary sticks to the top. Phones get it as a bar at the bottom instead, below. */}
+            <div className="hidden sm:block sticky top-0 z-20 -mx-4 mb-3 border-b border-subtle bg-bg/95 px-4 py-2.5 backdrop-blur" aria-live="polite">
+              {summary}
             </div>
 
-            {/* One row on a phone, scrolled sideways, rather than three rows of pills. */}
-            <div className="-mx-4 mb-4 overflow-x-auto px-4 sm:mx-0 sm:overflow-visible sm:px-0">
-              <PrefsBar prefs={prefs} stores={stores} onChange={changePrefs}>
-                {locked > 0 && (
-                  <button onClick={unlockAll} className="whitespace-nowrap text-xs text-cream-dim hover:text-cream transition-colors">
-                    Unlock all ({locked})
-                  </button>
-                )}
-                <button onClick={() => { track("want-list-edit", { action: "clear", source: "want-list", items: items.length }); clearAll(); setOptimised(null); }} className="whitespace-nowrap text-xs text-cream-dim hover:text-red-400 transition-colors">
-                  Clear all
-                </button>
-              </PrefsBar>
+            {/* sm+: the preferences as pills. Phones: one button opening them in a drawer, as search does its filters. */}
+            <div className="mb-4 hidden sm:block">
+              <PrefsBar prefs={prefs} stores={stores} onChange={changePrefs}>{listActions}</PrefsBar>
             </div>
+            <div className="mb-3 flex items-center gap-4 sm:hidden">
+              <button onClick={() => setPrefsOpen(true)} className={`${pillClass(activePrefCount(prefs) > 0, "rounded-lg")} min-h-10`}>
+                Preferences{activePrefCount(prefs) > 0 && ` (${activePrefCount(prefs)})`}
+              </button>
+              <div className="ml-auto flex items-center gap-4">{listActions}</div>
+            </div>
+            <PrefsSheet open={prefsOpen} onClose={() => setPrefsOpen(false)} prefs={prefs} stores={stores} onChange={changePrefs} />
 
             {imported && (
               <div role="status" className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-accent-border bg-surface px-3 py-2.5 text-sm">
@@ -267,6 +285,11 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
                   />
                 </React.Fragment>
               ))}
+            </div>
+
+            {/* Phones: total and Optimise in thumb reach. Sticky rather than fixed, so it settles above the import panel. */}
+            <div className="sm:hidden sticky bottom-0 z-20 -mx-4 mb-6 border-t border-subtle bg-bg/95 px-4 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] backdrop-blur" aria-live="polite">
+              {summary}
             </div>
           </>
         )}

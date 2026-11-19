@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useWantList, toWantListItem, type WantListItem } from "@/app/WantListContext";
 import { SetSymbol } from "@/app/SetSymbol";
+import { Sheet } from "@/app/Sheet";
+import { CardThumb } from "@/app/CardThumb";
+import { PHONE_MEDIA_QUERY } from "@/lib/config";
 import { useClickOutside } from "@/lib/hooks/useClickOutside";
 import { fmtAUD, plural } from "@/lib/utils";
 import { track } from "@/lib/analytics";
@@ -69,9 +72,16 @@ export function PrintingPicker({ item }: { item: WantListItem }) {
   const hover = useCardHover();
   const hidePreview = useHideCardPreview();
   const [open, setOpen] = useState(false);
+  // Decided when it opens: a bottom sheet on a phone (no hover, no room for a popover), else the popover.
+  const [sheet, setSheet] = useState(false);
   const [options, setOptions] = useState<PrintingOption[] | null>(null);
   const ref = useRef<HTMLDivElement>(null);
-  useClickOutside(ref, open, () => setOpen(false));
+  useClickOutside(ref, open && !sheet, () => setOpen(false));
+
+  function toggleOpen() {
+    if (!open) setSheet(window.matchMedia(PHONE_MEDIA_QUERY).matches);
+    setOpen(!open);
+  }
   useEffect(() => { if (!open) hidePreview(); }, [open, hidePreview]);
 
   useEffect(() => {
@@ -91,6 +101,12 @@ export function PrintingPicker({ item }: { item: WantListItem }) {
     setOpen(false);
   }
 
+  const status = options === null
+    ? <p className="px-3 py-3 text-xs text-cream-dim">Loading printings…</p>
+    : options.length === 0
+    ? <p className="px-3 py-3 text-xs text-cream-dim">No in-stock printings found.</p>
+    : null;
+
   const locked = item.printingMode === "exact";
   const lockLabel = locked ? "Locked to this printing — click to allow any" : "Any printing — click to lock to this one";
 
@@ -104,7 +120,7 @@ export function PrintingPicker({ item }: { item: WantListItem }) {
     <div ref={ref} className="relative">
       <div className="flex items-stretch rounded-lg border border-subtle text-xs" role="group" aria-label={`Printing for ${item.cardName}`}>
         <button
-          onClick={() => setOpen((o) => !o)}
+          onClick={toggleOpen}
           aria-haspopup="listbox"
           aria-expanded={open}
           title={`${item.setName} — choose a printing`}
@@ -129,19 +145,49 @@ export function PrintingPicker({ item }: { item: WantListItem }) {
         </button>
       </div>
 
-      {open && (
+      {sheet ? (
+        <Sheet open={open} onClose={() => setOpen(false)} side="bottom" title={`Printing — ${item.cardName}`}>
+          {status ?? (
+            <ul role="listbox" aria-label={`Printings of ${item.cardName}`} className="pb-2">
+              {options!.map(({ listing: p, stores }) => {
+                const current = p.printingId === item.printingId;
+                const badge = variantBadgeWithFoil(p);
+                return (
+                  <li key={p.printingId}>
+                    <button
+                      role="option"
+                      aria-selected={current}
+                      onClick={() => pick(p)}
+                      className={`flex w-full items-center gap-3 px-4 py-2 text-left active:bg-muted ${current ? "bg-accent/10" : ""}`}
+                    >
+                      <CardThumb uri={p.imageUri} className="w-10 shrink-0" />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1 text-sm text-cream">
+                          <SetSymbol setCode={p.setCode} setName={p.setName} rarity={p.rarity} />
+                          <span className="truncate">{p.setName} #{p.collectorNumber}</span>
+                        </span>
+                        <span className="block text-xs text-cream-dim">
+                          {badge && <span className="text-accent-light">{badge} · </span>}
+                          {plural(stores, "store")}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-sm font-semibold text-price tabular-nums">from {fmtAUD(p.priceAud)}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Sheet>
+      ) : open && (
         <div
           role="listbox"
           aria-label={`Printings of ${item.cardName}`}
           className="absolute left-0 top-full z-30 mt-1 w-[min(20rem,calc(100vw-5rem))] rounded-lg border border-subtle bg-surface shadow-xl shadow-black/50"
         >
-          {options === null ? (
-            <p className="px-3 py-3 text-xs text-cream-dim">Loading printings…</p>
-          ) : options.length === 0 ? (
-            <p className="px-3 py-3 text-xs text-cream-dim">No in-stock printings found.</p>
-          ) : (
+          {status ?? (
             <div className="max-h-72 overflow-y-auto py-1">
-              {options.map(({ listing: p, stores }) => {
+              {options!.map(({ listing: p, stores }) => {
                 const current = p.printingId === item.printingId;
                 const badge = variantBadgeWithFoil(p);
                 return (
