@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyPlan, itemQty, listStores, parseSavedPrefs, requestPrefs, toLines } from "./want-list";
+import { applyPlan, itemQty, listStores, listTotals, parseSavedPrefs, requestPrefs, toLines, withPlan } from "./want-list";
 import { MAX_STORES_CAP } from "../config";
 import { offer } from "./test-fixtures";
 import type { WantListItem } from "../want-list-item";
@@ -65,6 +65,23 @@ describe("listStores", () => {
       ["ebay_au", "per-item", 110, 150, ["2"]],
       ["b", "flat", 110, 0, ["4"]],
     ]);
+  });
+});
+
+describe("withPlan / listTotals", () => {
+  const flat = (id: string) => ({ a: 650, b: 500 } as Record<string, number>)[id] ?? null;
+  const groups = () => listStores([item("1"), item("2", { storeId: "b", storeName: "B" })], flat);
+
+  it("is all estimate without a plan", () => {
+    expect(listTotals(groups())).toEqual({ totalCents: 110 + 650 + 110 + 500, postageCents: 1150, storeCount: 2, estimated: true });
+  });
+
+  it("takes the plan's postage for the stores it covers, and still counts the ones it doesn't", () => {
+    // The plan covers only B (postage waived to 0); A holds a card it couldn't place.
+    const stores = withPlan(groups(), response([]));
+    expect(stores.map((s) => [s.storeId, s.postageCents, s.estimated])).toEqual([["a", 650, true], ["b", 0, false]]);
+    // The header sums the same groups: A's card and estimated postage are in it, so it's still marked estimated.
+    expect(listTotals(stores)).toEqual({ totalCents: 110 + 650 + 110, postageCents: 650, storeCount: 2, estimated: true });
   });
 });
 

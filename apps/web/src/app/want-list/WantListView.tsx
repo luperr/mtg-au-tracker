@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useWantList, type WantListItem } from "@/app/WantListContext";
 import { AffiliateDisclosure } from "@/app/AffiliateDisclosure";
 import { pillClass } from "@/app/Dropdown";
@@ -8,7 +8,7 @@ import { EBAY_STORE_ID } from "@/lib/affiliate";
 import { cardHref, fmtCents, plural } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import {
-  applyPlan, listStores, parseSavedPrefs, requestPrefs, toLines, totalQty, PREFS_KEY,
+  applyPlan, listStores, listTotals, parseSavedPrefs, requestPrefs, toLines, totalQty, withPlan, PREFS_KEY,
   type PlannedFlags, type SavedPrefs, type StoreGroup,
 } from "@/lib/optimiser/want-list";
 import { toCents, type OptimiseResponse, type Unavailable } from "@/lib/optimiser/types";
@@ -52,6 +52,13 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
   const [optimised, setOptimised] = useState<Optimised | null>(null);
   const [imported, setImported] = useState<ImportSummary | null>(null);
   const [prefsOpen, setPrefsOpen] = useState(false);
+  // Set when a run's answer was dropped because the list changed while it ran.
+  const [changedDuringRun, setChangedDuringRun] = useState(false);
+  // The list as it is now, for a run to compare against when its answer arrives.
+  const itemsRef = useRef(items);
+  useEffect(() => { itemsRef.current = items; }, [items]);
+  // Bumped per run; an answer from anything but the latest run is dropped.
+  const runRef = useRef(0);
   const optimiser = useOptimiser();
 
   useEffect(() => {
@@ -79,11 +86,21 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
     && optimised.overrides === storeShippingOverrides;
 
   async function optimise(withPrefs: SavedPrefs = prefs) {
-    const data = await optimiser.run({ lines: toLines(items), prefs: requestPrefs(withPrefs, storeShippingOverrides) });
-    if (!data) return;
-    const { items: after, flags: planned } = applyPlan(items, data);
-    // Chained runs (a store-count chip, "Don't use this store") keep the original list for Undo.
-    const before = current?.before ?? items;
+    const run = ++runRef.current;
+    const sent = items;
+    // Undo goes back to the list from before the first run: a later run with only prefs or
+    // postage changed (a chip, "Don't use this store", a new condition) keeps that original.
+    const before = optimised !== null && optimised.after === items ? optimised.before : items;
+    setChangedDuringRun(false);
+    const data = await optimiser.run({ lines: toLines(sent), prefs: requestPrefs(withPrefs, storeShippingOverrides) });
+    if (!data || run !== runRef.current) return; // failed, or a newer run has taken over
+    // The plan was for the list as sent. If it changed while the request ran, applying the
+    // plan would silently throw those edits away — keep them, and ask for another run.
+    if (itemsRef.current !== sent) {
+      setChangedDuringRun(true);
+      return;
+    }
+    const { items: after, flags: planned } = applyPlan(sent, data);
     replaceItems(after);
     setOptimised({ data, planned, before, after, prefs: withPrefs, overrides: storeShippingOverrides });
   }
@@ -113,17 +130,9 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
   // The last optimise, only while it still describes the list.
   const current = fresh ? optimised : null;
   const plan = current?.data ?? null;
-  // Exact postage, waivers and free-postage gaps from the plan when it's current.
-  const storeList = listStores(items, flatCents).map((s) => {
-    const p = plan?.plan.stores.find((ps) => ps.storeId === s.storeId);
-    return p ? { ...s, postageCents: p.postageCents, postageWaived: p.postageWaived, freeShippingGapCents: p.freeShippingGapCents } : s;
-  });
-  // The plan's totals when it's current, else the estimate from each store's flat postage.
-  const totals = plan ? plan.plan.totals : {
-    totalCents: storeList.reduce((sum, s) => sum + s.subtotalCents + s.postageCents, 0),
-    storeCount: storeList.filter((s) => s.kind === "flat").length,
-    postageCents: storeList.reduce((sum, s) => sum + s.postageCents, 0),
-  };
+  // The plan's exact postage where it's current; the header sums the same groups the page lists.
+  const storeList = withPlan(listStores(items, flatCents), plan);
+  const totals = listTotals(storeList);
 
   const unavailable = plan?.unavailable ?? [];
   const copies = totalQty(items);
@@ -140,7 +149,7 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-baseline gap-x-2">
                     <span className="text-xl font-bold text-price">
-                      {plan ? "" : "~"}{fmtCents(totals.totalCents)}
+                      {totals.estimated ? "~" : ""}{fmtCents(totals.totalCents)}
                     </span>
                     <span className="text-sm text-cream-dim">
                       {plural(totals.storeCount, "store")} · postage {fmtCents(totals.postageCents)}
@@ -154,6 +163,8 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
                           : <span>Optimised — {plan.savingsCents === 0 ? "already the cheapest. " : "done. "}</span>}
                         <button onClick={undo} className="text-accent-light hover:underline">Undo</button>
                       </>
+                    ) : changedDuringRun ? (
+                      "Your list changed while optimising, so nothing was moved — optimise again."
                     ) : optimised ? (
                       "List or preferences changed — optimise again for the cheapest plan."
                     ) : (
@@ -184,6 +195,7 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
                     <button
                       key={c.n}
                       onClick={() => !c.active && handleMaxStores(c.n)}
+                      disabled={optimiser.loading}
                       aria-pressed={c.active}
                       className={`${pillClass(c.active)} !py-1`}
                     >
@@ -191,7 +203,7 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
                     </button>
                   ))}
                   {prefs.maxStores !== null && (
-                    <button onClick={() => handleMaxStores(null)} className={`${pillClass(false)} !py-1`}>
+                    <button onClick={() => handleMaxStores(null)} disabled={optimiser.loading} className={`${pillClass(false)} !py-1`}>
                       All stores
                     </button>
                   )}

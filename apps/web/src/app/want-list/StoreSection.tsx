@@ -113,8 +113,8 @@ function CardRow({ item, planned }: { item: WantListItem; planned?: PlannedFlags
 
 /**
  * A store on the list: what's bought there, its postage, and a way to drop it.
- * `planned` holds what the last optimise changed, by item id; when it's present
- * the totals are the optimiser's, otherwise an estimate.
+ * `planned` holds what the last optimise changed, by item id. The total carries
+ * `~` while the store's postage is an estimate rather than the plan's.
  */
 export function StoreSection({
   store,
@@ -125,7 +125,6 @@ export function StoreSection({
   planned: Map<string, PlannedFlags> | null;
   onExclude: () => void;
 }) {
-  const exact = planned !== null;
   const { storeShippingOverrides, setStoreShipping } = useWantList();
   const [collapsed, setCollapsed] = useState(false);
   const copies = totalQty(store.items);
@@ -142,7 +141,7 @@ export function StoreSection({
         <h3 className="font-semibold text-cream">{store.storeName}</h3>
         <span className="shrink-0 text-sm text-cream-dim">
           {plural(copies, "card")}
-          {" · "}<span className="font-semibold text-price">{exact ? "" : "~"}{fmtCents(store.subtotalCents + store.postageCents)}</span>
+          {" · "}<span className="font-semibold text-price">{store.estimated ? "~" : ""}{fmtCents(store.subtotalCents + store.postageCents)}</span>
           <span className="ml-2 text-xs opacity-60" aria-hidden>{collapsed ? "▶" : "▼"}</span>
         </span>
       </button>

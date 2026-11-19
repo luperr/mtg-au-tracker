@@ -25,10 +25,27 @@ export function useOptimiser() {
   const [error, setError] = useState<string | null>(null);
 
   const run = useCallback(async (request: { lines: OptimiseLine[]; prefs: Prefs }): Promise<OptimiseResponse | null> => {
+    // Answers are applied to the list, cached or not, so this one event covers what used to be
+    // run + apply. Whole dollars: enough to tell "saved nothing" from "saved $40"
+    // without logging the basket.
+    const report = (data: OptimiseResponse, cached: boolean) => track("optimise-run", {
+      version: "v2",
+      lines: request.lines.length,
+      units: data.plan.totals.unitsWanted,
+      stores: data.plan.totals.storeCount,
+      unavailable: data.unavailable.length,
+      alternatives: data.alternatives.length,
+      saving: data.savingsCents === null ? null : Math.round(data.savingsCents / 100),
+      cached,
+    });
+
     setError(null);
     const body = JSON.stringify(request);
     const hit = cache.current.get(body);
-    if (hit) return hit;
+    if (hit) {
+      report(hit, true);
+      return hit;
+    }
     setLoading(true);
     try {
       const res = await fetch("/api/optimize", { method: "POST", headers: { "Content-Type": "application/json" }, body });
@@ -36,17 +53,7 @@ export function useOptimiser() {
       const data = await res.json() as OptimiseResponse;
       cache.current.set(body, data);
       if (cache.current.size > CACHE_SIZE) cache.current.delete(cache.current.keys().next().value!);
-      // Every run is applied to the list, so this one event covers what used to be run + apply.
-      // Whole dollars: enough to tell "saved nothing" from "saved $40" without logging the basket.
-      track("optimise-run", {
-        version: "v2",
-        lines: request.lines.length,
-        units: data.plan.totals.unitsWanted,
-        stores: data.plan.totals.storeCount,
-        unavailable: data.unavailable.length,
-        alternatives: data.alternatives.length,
-        saving: data.savingsCents === null ? null : Math.round(data.savingsCents / 100),
-      });
+      report(data, false);
       return data;
     } catch (err) {
       track("optimise-run", { version: "v2", error: true });

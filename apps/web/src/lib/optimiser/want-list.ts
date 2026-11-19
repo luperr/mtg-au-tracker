@@ -54,8 +54,11 @@ export function requestPrefs(saved: SavedPrefs, postageOverridesAud: Record<stri
   };
 }
 
-/** The items bought from one store, as the page shows them — a plan store with items in place of units. */
-export type StoreGroup = Omit<PlanStore, "units"> & { items: WantListItem[] };
+/**
+ * The items bought from one store, as the page shows them — a plan store with items in
+ * place of units. `estimated`: its postage is the flat-rate guess, not the plan's.
+ */
+export type StoreGroup = Omit<PlanStore, "units"> & { items: WantListItem[]; estimated: boolean };
 
 /**
  * The list grouped by the store each item is bought from. `flatCents` is a
@@ -72,7 +75,7 @@ export function listStores(items: WantListItem[], flatCents: (storeId: string) =
       const flat = flatCents(item.storeId);
       store = {
         storeId: item.storeId, storeName: item.storeName, kind: flat === null ? "per-item" : "flat", items: [],
-        subtotalCents: 0, postageCents: flat ?? 0, postageWaived: false, freeShippingGapCents: null,
+        subtotalCents: 0, postageCents: flat ?? 0, postageWaived: false, freeShippingGapCents: null, estimated: true,
       };
       stores.set(item.storeId, store);
     }
@@ -82,6 +85,35 @@ export function listStores(items: WantListItem[], flatCents: (storeId: string) =
     if (store.kind === "per-item") store.postageCents += qty * toCents(item.shippingAud ?? 0);
   }
   return [...stores.values()];
+}
+
+/**
+ * The plan's exact postage, waivers and free-postage gaps on the stores it covers. A store
+ * it doesn't cover — one holding only cards it couldn't place — keeps its estimate.
+ */
+export function withPlan(stores: StoreGroup[], plan: OptimiseResponse | null): StoreGroup[] {
+  if (!plan) return stores;
+  const byId = new Map(plan.plan.stores.map((p) => [p.storeId, p]));
+  return stores.map((s) => {
+    const p = byId.get(s.storeId);
+    return p
+      ? { ...s, postageCents: p.postageCents, postageWaived: p.postageWaived, freeShippingGapCents: p.freeShippingGapCents, estimated: false }
+      : s;
+  });
+}
+
+/**
+ * The header's totals, summed from the same groups the page lists, so they always agree —
+ * including cards the plan left where they were. `estimated` if any store's postage is.
+ * eBay isn't counted as a store, as the optimiser doesn't.
+ */
+export function listTotals(stores: StoreGroup[]): { totalCents: Cents; postageCents: Cents; storeCount: number; estimated: boolean } {
+  return {
+    totalCents: stores.reduce((sum, s) => sum + s.subtotalCents + s.postageCents, 0),
+    postageCents: stores.reduce((sum, s) => sum + s.postageCents, 0),
+    storeCount: stores.filter((s) => s.kind === "flat").length,
+    estimated: stores.some((s) => s.estimated),
+  };
 }
 
 /** What the last optimise changed about an item, keyed by the item it produced. */

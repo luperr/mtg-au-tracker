@@ -20,19 +20,23 @@ type PrintingOption = { listing: StorePrinting; stores: number };
 /**
  * A card's printings, fetched once per card per page: every picker for the card
  * shares it, and it survives a row remounting under a new id after Optimise or a
- * pick. A failed fetch isn't kept, so the next open retries.
+ * pick. A failed fetch resolves to null and isn't kept, so the next open retries —
+ * it must not read as "no printings", which would stick.
  */
-const printingsByCard = new Map<string, Promise<PrintingOption[]>>();
+const printingsByCard = new Map<string, Promise<PrintingOption[] | null>>();
 
-function printingsOf(cardId: string): Promise<PrintingOption[]> {
+function printingsOf(cardId: string): Promise<PrintingOption[] | null> {
   let p = printingsByCard.get(cardId);
   if (!p) {
     p = fetch(`/api/cards/store-printings?cardId=${encodeURIComponent(cardId)}`)
-      .then((r) => r.json())
-      .then((rows: StorePrinting[]) => byPrinting(rows))
+      .then((r) => {
+        if (!r.ok) throw new Error(`store-printings ${r.status}`);
+        return r.json() as Promise<StorePrinting[]>;
+      })
+      .then(byPrinting)
       .catch(() => {
         printingsByCard.delete(cardId);
-        return [];
+        return null;
       });
     printingsByCard.set(cardId, p);
   }
@@ -75,6 +79,7 @@ export function PrintingPicker({ item }: { item: WantListItem }) {
   // Decided when it opens: a bottom sheet on a phone (no hover, no room for a popover), else the popover.
   const [sheet, setSheet] = useState(false);
   const [options, setOptions] = useState<PrintingOption[] | null>(null);
+  const [failed, setFailed] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useClickOutside(ref, open && !sheet, () => setOpen(false));
 
@@ -87,7 +92,12 @@ export function PrintingPicker({ item }: { item: WantListItem }) {
   useEffect(() => {
     if (!open || options) return;
     let live = true;
-    printingsOf(item.cardId).then((o) => { if (live) setOptions(o); });
+    setFailed(false);
+    printingsOf(item.cardId).then((o) => {
+      if (!live) return;
+      if (o) setOptions(o);
+      else setFailed(true); // options stay null, so the next open fetches again
+    });
     return () => { live = false; };
   }, [open, options, item.cardId]);
 
@@ -101,7 +111,9 @@ export function PrintingPicker({ item }: { item: WantListItem }) {
     setOpen(false);
   }
 
-  const status = options === null
+  const status = failed
+    ? <p className="px-3 py-3 text-xs text-cream-dim">Couldn’t load printings — close this and try again.</p>
+    : options === null
     ? <p className="px-3 py-3 text-xs text-cream-dim">Loading printings…</p>
     : options.length === 0
     ? <p className="px-3 py-3 text-xs text-cream-dim">No in-stock printings found.</p>

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useWantList, toWantListItem } from "@/app/WantListContext";
+import { useWantList, toWantListItem, type WantListItem } from "@/app/WantListContext";
+import { itemQty, totalQty } from "@/lib/optimiser/want-list";
 import type { BulkLookupResult, BulkLookupInput } from "@/app/api/cards/bulk-lookup/route";
 import { track } from "@/lib/analytics";
 import { MAX_CARD_QTY } from "@/lib/config";
@@ -87,7 +88,7 @@ export type ImportSummary = { added: number; copies: number; alreadyListed: numb
  * imports it at once. `onImported` hands the parent the outcome to show.
  */
 export function ImportCards({ onImported }: { onImported: (summary: ImportSummary) => void }) {
-  const { items, addItem } = useWantList();
+  const { items, replaceItems } = useWantList();
   const [expanded, setExpanded] = useState(false);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -111,27 +112,42 @@ export function ImportCards({ onImported }: { onImported: (summary: ImportSummar
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const { results } = await res.json() as { results: BulkLookupResult[] };
 
-      const listed = new Set(items.map((i) => i.id));
       const summary: ImportSummary = { added: 0, copies: 0, alreadyListed: 0, notFound: [] };
-      results.forEach((r) => {
+      // One want per card: a list can name a card twice (main deck and sideboard), so its
+      // lines add up, capped like any quantity.
+      const wanted = new Map<string, { result: BulkLookupResult; qty: number }>();
+      for (const r of results) {
         if (!r.cheapest || !r.cardId || !r.cardName) {
           summary.notFound.push(r.inputName);
-          return;
+          continue;
         }
-        const item = toWantListItem(
-          { ...r.cheapest, imageUri: r.imageUri },
-          { cardId: r.cardId, cardSlug: r.cardSlug, cardName: r.cardName },
-          { printingMode: "any", qty: r.qty },
-        );
-        if (listed.has(item.id)) {
+        const w = wanted.get(r.cardId);
+        wanted.set(r.cardId, { result: w?.result ?? r, qty: Math.min((w?.qty ?? 0) + r.qty, MAX_CARD_QTY) });
+      }
+
+      // A card already on the list — at any listing, perhaps split across stores by an
+      // earlier Optimise — isn't added again; it's raised to the imported count if it's short.
+      const next: WantListItem[] = [...items];
+      for (const [cardId, { result: r, qty }] of wanted) {
+        const onList = next.filter((i) => i.cardId === cardId);
+        if (onList.length > 0) {
           summary.alreadyListed++;
-          return;
+          const short = qty - totalQty(onList);
+          if (short > 0) {
+            const first = onList[0];
+            next[next.indexOf(first)] = { ...first, qty: Math.min(itemQty(first) + short, MAX_CARD_QTY) };
+          }
+          continue;
         }
-        listed.add(item.id);
-        addItem(item);
+        next.push(toWantListItem(
+          { ...r.cheapest!, imageUri: r.imageUri },
+          { cardId, cardSlug: r.cardSlug, cardName: r.cardName! },
+          { printingMode: "any", qty },
+        ));
         summary.added++;
-        summary.copies += r.qty;
-      });
+        summary.copies += qty;
+      }
+      replaceItems(next);
 
       track("bulk-import", { source, cards: cards.length, found: summary.added + summary.alreadyListed });
       setText("");

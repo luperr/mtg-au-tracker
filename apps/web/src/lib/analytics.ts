@@ -34,7 +34,7 @@ export type AnalyticsEvents = {
    * `saving` is whole dollars (null when not comparable) — enough to tell nothing from $40.
    */
   "optimise-run":
-    | { version: "v2"; lines: number; units: number; stores: number; unavailable: number; alternatives: number; saving: number | null }
+    | { version: "v2"; lines: number; units: number; stores: number; unavailable: number; alternatives: number; saving: number | null; cached: boolean }
     | { version: "v2"; error: true };
   /** Undo back to the list before the first optimiser run. */
   "optimise-undo": Record<string, never>;

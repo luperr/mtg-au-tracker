@@ -10,8 +10,13 @@
 export const RATE_LIMIT_SEARCH_PER_MINUTE = 60;
 export const RATE_LIMIT_CONTACT_PER_HOUR = 3;
 export const RATE_LIMIT_BULK_LOOKUP_PER_MINUTE = 10;
-/** Each Optimise press, store-count chip and "Don't use this store" is a run. */
-export const RATE_LIMIT_OPTIMIZE_PER_MINUTE = 30;
+/**
+ * Each Optimise press, store-count chip and "Don't use this store" is a run, and a run is up
+ * to ~2s of CPU on the web process's one event loop (OPTIMIZE_DEADLINE_MS + alternatives).
+ * 15 leaves room to click through the chips; 30 let one client stall the site for a minute
+ * of every minute.
+ */
+export const RATE_LIMIT_OPTIMIZE_PER_MINUTE = 15;
 export const RATE_LIMIT_READ_PER_MINUTE = 120;
 
 // ── Want List optimiser ──────────────────────────────────────────────────────

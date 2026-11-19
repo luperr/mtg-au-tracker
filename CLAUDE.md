@@ -366,8 +366,12 @@ Listing-grained search with a filter sidebar (store, set, condition, finish, tre
   qty stepper, printing button + padlock (`PrintingPicker`), buy link and remove in place. A sticky summary holds
   the total and the **Optimise** button — the optimiser only runs when pressed (the user wants it
   on a button, not automatic). Optimise moves every card to its planned listing at once
-  (`applyPlan()`), with **Undo** back to the list before the first run; store-count chips and
-  "Don't use this store" re-run it. Until it runs, or once the list or prefs change, totals are an
+  (`applyPlan()`), with **Undo** back to the list before the first run — runs that only change
+  prefs or postage keep that original; store-count chips and "Don't use this store" re-run it.
+  A run's answer is dropped if the list changed while it ran (the edit wins; the page asks for
+  another run), and only the latest run's answer is applied. The header totals are summed from
+  the same store groups the page lists (`withPlan()` + `listTotals()`), so cards a plan left
+  where they were still count. Until it runs, or once the list or prefs change, totals are an
   estimate (flat postage per store, eBay's per listing, no thresholds) marked with `~`.
 - **An item is a want plus the listing it's bought from.** `qty` (absent = 1) and `printingMode`
   (`"exact"` | `"any"`, absent = any — the padlock, unlocked by default; picking a printing from
@@ -377,10 +381,12 @@ Listing-grained search with a filter sidebar (store, set, condition, finish, tre
   locked to. Where a card is added from decides the lock: a card-level "+" (search results,
   search v2's card view) adds it unlocked; a printing or listing "+" (card-page price rows,
   search v2's printing and listings views) locks it. Import is one step (paste/upload → Import → on the list), keeps qty, and brings
-  everything in unlocked even when lines name a set, since Arena/MTGO exports always do.
+  everything in unlocked even when lines name a set, since Arena/MTGO exports always do. It merges
+  by card: repeated lines add up, and a card already on the list (at any listing) isn't added
+  again — it's raised to the imported count if short.
 - Prefs: conditions (a checklist, NM by default, at least one ticked; listings with no or an
-  unrecognised condition always pass and are flagged; an old saved "worst condition" floor is
-  read as every condition at or above it), max stores, and "Buy from" — a
+  unrecognised condition always pass and are flagged), max stores (capped at `MAX_STORES_CAP`,
+  the same limit the API enforces — a saved value above it is dropped), and "Buy from" — a
   checklist of every store, eBay included, all ticked, saved as the *unticked* ids
   (`excludeStores`) so a store added later starts ticked. localStorage `scrymarket_optimiser_prefs`;
   per-store postage edits stay in `scrymarket_shipping_overrides`.
