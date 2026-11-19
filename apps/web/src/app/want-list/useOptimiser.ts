@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { trackEvent } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 import type { OptimiseLine, OptimiseResponse, Prefs } from "@/lib/optimiser/types";
 
 /** Answers kept for re-presses (Undo then Optimise, a chip then "All stores"); older ones are dropped. */
@@ -38,7 +38,7 @@ export function useOptimiser() {
       if (cache.current.size > CACHE_SIZE) cache.current.delete(cache.current.keys().next().value!);
       // Every run is applied to the list, so this one event covers what used to be run + apply.
       // Whole dollars: enough to tell "saved nothing" from "saved $40" without logging the basket.
-      trackEvent("optimise-run", {
+      track("optimise-run", {
         version: "v2",
         lines: request.lines.length,
         units: data.plan.totals.unitsWanted,
@@ -49,7 +49,7 @@ export function useOptimiser() {
       });
       return data;
     } catch (err) {
-      trackEvent("optimise-run", { version: "v2", error: true });
+      track("optimise-run", { version: "v2", error: true });
       setError(err instanceof Error && err.message ? err.message : "The optimiser failed. Try again in a moment.");
       return null;
     } finally {

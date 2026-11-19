@@ -5,7 +5,8 @@ import { useWantList, type WantListItem } from "@/app/WantListContext";
 import { AffiliateDisclosure } from "@/app/AffiliateDisclosure";
 import { pillClass } from "@/app/Dropdown";
 import { EBAY_STORE_ID } from "@/lib/affiliate";
-import { cardHref, fmtCents, plural, trackEvent } from "@/lib/utils";
+import { cardHref, fmtCents, plural } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 import {
   applyPlan, itemQty, listStores, parseSavedPrefs, requestPrefs, toLines, PREFS_KEY,
   type PlannedFlags, type SavedPrefs, type StoreGroup,
@@ -63,7 +64,7 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
   function changePrefs(patch: Partial<SavedPrefs>, pref: string): SavedPrefs {
     const next = { ...prefs, ...patch };
     setPrefs(next);
-    trackEvent("optimise-pref", { pref });
+    track("optimise-pref", { pref });
     try {
       localStorage.setItem(PREFS_KEY, JSON.stringify(next));
     } catch {
@@ -90,16 +91,16 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
     if (!optimised) return;
     replaceItems(optimised.before);
     setOptimised(null);
-    trackEvent("optimise-undo");
+    track("optimise-undo", {});
   }
 
   function handleExclude(store: StoreGroup) {
-    trackEvent("optimise-exclude-store", { store: store.storeId });
+    track("optimise-exclude-store", { store: store.storeId });
     optimise(changePrefs({ excludeStores: [...prefs.excludeStores, store.storeId] }, "stores"));
   }
 
   function handleMaxStores(n: number | null) {
-    trackEvent("optimise-alt", { stores: n });
+    track("optimise-alt", { stores: n });
     optimise(changePrefs({ maxStores: n }, "max-stores"));
   }
 
@@ -123,7 +124,7 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
 
   function unlockAll() {
     replaceItems(items.map((i) => (i.printingMode === "exact" ? { ...i, printingMode: "any" } : i)));
-    trackEvent("optimise-unlock-all", { cards: locked });
+    track("optimise-unlock-all", { cards: locked });
   }
   const flatStores = storeList.filter((s) => s.kind === "flat").length;
 
@@ -217,7 +218,7 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
                     Unlock all ({locked})
                   </button>
                 )}
-                <button onClick={() => { clearAll(); setOptimised(null); }} className="whitespace-nowrap text-xs text-cream-dim hover:text-red-400 transition-colors">
+                <button onClick={() => { track("want-list-edit", { action: "clear", source: "want-list", items: items.length }); clearAll(); setOptimised(null); }} className="whitespace-nowrap text-xs text-cream-dim hover:text-red-400 transition-colors">
                   Clear all
                 </button>
               </PrefsBar>

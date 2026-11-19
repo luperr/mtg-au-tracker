@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   parseSearchParams, toQueryString, toggleFilter, activeFilterCount, clearFilters, facetValueLabel,
-  priceFilterApplies, searchV2Enabled, stickyFilters,
+  priceFilterApplies, stickyFilters, describeRefinement, setPrice,
 } from "./params.js";
 
 describe("parseSearchParams", () => {
@@ -116,12 +116,33 @@ describe("filters carried across searches", () => {
   });
 });
 
-describe("searchV2Enabled", () => {
-  it("lets an explicit choice win and falls back to the default", () => {
-    expect(searchV2Enabled("1", false)).toBe(true);
-    expect(searchV2Enabled("0", true)).toBe(false);
-    expect(searchV2Enabled(undefined, true)).toBe(true);
-    expect(searchV2Enabled(undefined, false)).toBe(false);
-    expect(searchV2Enabled("", true)).toBe(true);
+describe("describeRefinement", () => {
+  const base = parseSearchParams({ q: "bolt", store: "mtg_mate" });
+
+  it("ignores a new query and page-only changes", () => {
+    expect(describeRefinement(base, { ...base, q: "counterspell" })).toBeNull();
+    expect(describeRefinement(base, { ...base, page: 2 })).toBeNull();
+    expect(describeRefinement(base, base)).toBeNull();
+  });
+
+  it("reports view and sort with their new value", () => {
+    expect(describeRefinement(base, { ...base, view: "card" })).toEqual({ kind: "view", value: "card" });
+    expect(describeRefinement(base, { ...base, sort: "name" })).toEqual({ kind: "sort", value: "name" });
+  });
+
+  it("reports a single facet tick or untick", () => {
+    expect(describeRefinement(base, toggleFilter(base, "finish", "foil")))
+      .toEqual({ kind: "facet-add", key: "finish", value: "foil" });
+    expect(describeRefinement(base, toggleFilter(base, "store", "mtg_mate")))
+      .toEqual({ kind: "facet-remove", key: "store", value: "mtg_mate" });
+  });
+
+  it("reports clear when every filter goes at once", () => {
+    const busy = setPrice(toggleFilter(base, "finish", "foil"), { min: 1, max: null });
+    expect(describeRefinement(busy, clearFilters(busy))).toEqual({ kind: "clear" });
+  });
+
+  it("reports a price change", () => {
+    expect(describeRefinement(base, setPrice(base, { min: null, max: 5 }))).toEqual({ kind: "price" });
   });
 });

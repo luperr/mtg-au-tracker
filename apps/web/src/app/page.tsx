@@ -1,36 +1,14 @@
-import { logCardSearch, searchCards } from "@/lib/db";
-import { SEARCH_PAGE_SIZE, SEARCH_MIN_QUERY_LENGTH, searchV2Default } from "@/lib/config";
-import { SearchResults } from "./SearchResults";
+import { logCardSearch } from "@/lib/db";
+import { SEARCH_MIN_QUERY_LENGTH } from "@/lib/config";
 import { cookies } from "next/headers";
-import { parseSearchParams, searchV2Enabled, FILTERS_COOKIE, LAST_QUERY_COOKIE, SEARCH_V2_COOKIE, SIDEBAR_COOKIE, VIEW_COOKIE } from "@/lib/search-v2/params";
+import { parseSearchParams, FILTERS_COOKIE, LAST_QUERY_COOKIE, SIDEBAR_COOKIE, VIEW_COOKIE } from "@/lib/search-v2/params";
 import { searchListings } from "@/lib/search-v2/query";
 import { SearchV2 } from "./search-v2/SearchV2";
 import { LandingNotices } from "./LandingNotices";
+import { LandingSearchForm } from "./LandingSearchForm";
 
 // Next.js route segment config — must be a static literal, not an imported variable
 export const revalidate = 3600;
-
-function LandingSearchForm() {
-  return (
-    <form method="GET" action="/">
-      <div className="flex flex-col sm:flex-row gap-2">
-        <input
-          type="text"
-          name="q"
-          placeholder="Search cards by name…"
-          autoFocus
-          className="flex-1 min-w-0 rounded-lg border border-subtle bg-muted px-4 py-3 text-cream placeholder-cream-dim/50 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-        />
-        <button
-          type="submit"
-          className="rounded-lg bg-cta px-6 py-3 font-medium text-cream hover:bg-price transition-colors shrink-0"
-        >
-          Search
-        </button>
-      </div>
-    </form>
-  );
-}
 
 /** The cookie is written URI-encoded; compare both forms in case the framework already decoded it. */
 function sameQuery(cookie: string | undefined, q: string): boolean {
@@ -53,72 +31,40 @@ export default async function HomePage({
   const query = q?.trim() ?? "";
   const tooShort = query.length > 0 && query.length < SEARCH_MIN_QUERY_LENGTH;
 
-  // Beta, chosen from the header (SearchV2Toggle) or defaulted by SEARCH_V2_DEFAULT. Only reached with a query:
-  // the landing page is shared, and v2 requires one (see searchListings()).
-  const jar = await cookies();
-  if (query && !tooShort && searchV2Enabled(jar.get(SEARCH_V2_COOKIE)?.value, searchV2Default())) {
+  // Only reached with a query: v2 requires one (see searchListings()).
+  if (query && !tooShort) {
+    const jar = await cookies();
     const state = parseSearchParams(params, jar.get(VIEW_COOKIE)?.value, jar.get(FILTERS_COOKIE)?.value);
     const result = await searchListings(state);
-    // Same demand log as /api/search, once per new query: every filter, sort, view and
+    // Logged once per new query: every filter, sort, view and
     // page change re-renders this route too, for the query LAST_QUERY_COOKIE already holds.
-    if (!sameQuery(jar.get(LAST_QUERY_COOKIE)?.value, state.q)) {
-      logCardSearch(state.q, result.topCardId);
-    }
-    return <SearchV2 state={state} result={result} filtersHidden={jar.get(SIDEBAR_COOKIE)?.value === "hidden"} />;
+    const newQuery = !sameQuery(jar.get(LAST_QUERY_COOKIE)?.value, state.q);
+    if (newQuery) logCardSearch(state.q, result.topCardId);
+    return <SearchV2 state={state} result={result} newQuery={newQuery} filtersHidden={jar.get(SIDEBAR_COOKIE)?.value === "hidden"} />;
   }
-
-  const { results, totalCount, capped, fuzzy } = await searchCards(query, 0);
 
   if (!query) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
-        <h1 className="text-4xl font-bold text-cream mb-2">
+      // Phones: start near the top. Centring in 60vh pushed the box down to where the
+      // keyboard covers it. sm+ keeps the centred hero.
+      <div className="flex flex-col items-center pt-4 sm:pt-0 sm:justify-center sm:min-h-[60vh] text-center">
+        <h1 className="text-2xl sm:text-4xl font-bold text-cream mb-2 text-balance">
           The Australian MTG Price Tracker
         </h1>
-        <p className="text-cream-dim mb-10 max-w-md">
+        <p className="text-sm sm:text-base text-cream-dim mb-6 sm:mb-10 max-w-md text-balance">
           Scry before you buy — <b>Actual prices</b> from Australian stores, updated daily
         </p>
         <div className="w-full max-w-lg">
           <LandingSearchForm />
-          <LandingNotices searchV2On={searchV2Enabled(jar.get(SEARCH_V2_COOKIE)?.value, searchV2Default())} />
+          <LandingNotices />
         </div>
       </div>
     );
   }
 
   return (
-    <div>
-      {tooShort && (
-        <p className="text-cream-dim">
-          Enter at least {SEARCH_MIN_QUERY_LENGTH} characters to search.
-        </p>
-      )}
-
-      {!tooShort && results.length === 0 && (
-        <p className="text-cream-dim">
-          No cards found for &ldquo;{query}&rdquo;.
-        </p>
-      )}
-
-      {results.length > 0 && (
-        <>
-          {/* The fuzzy pass only fires when the literal search found nothing, so say
-              so — otherwise a typo silently returns a card the user never typed. */}
-          {fuzzy && (
-            <p className="mb-4 text-cream-dim">
-              No exact match for &ldquo;{query}&rdquo;. Showing the closest cards instead.
-            </p>
-          )}
-          <SearchResults
-            initialResults={results}
-            query={query}
-            initialHasMore={results.length === SEARCH_PAGE_SIZE}
-            totalCount={totalCount}
-            capped={capped}
-            fuzzy={fuzzy}
-          />
-        </>
-      )}
-    </div>
+    <p className="text-cream-dim">
+      Enter at least {SEARCH_MIN_QUERY_LENGTH} characters to search.
+    </p>
   );
 }

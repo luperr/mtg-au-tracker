@@ -222,7 +222,7 @@ product beyond it. Measured: Cardhouse 41,210 printings (was 22,355), Plenty of 
 - `quantityAvailable` needs an inventory scope we don't have; `inventory_quantity` is set to 0
   and `isInStock()` reads `availableForSale` instead.
 
-`stores.config.ts` is the single source of truth for store registration — see [Adding a new Shopify store scraper](#adding-a-new-shopify-store-scraper) below. `shopifyStores()` derives the active Shopify store list (currently 37) from `STORE_REGISTRY`; `seedStores()` (`apps/scraper/src/seed.ts`) and the web app's shipping fallback (`apps/web/src/lib/store-shipping.ts`) derive from the same file, so a store exists in exactly one place.
+`stores.config.ts` is the single source of truth for store registration — see [Adding a new Shopify store scraper](#adding-a-new-shopify-store-scraper) below. `shopifyStores()` derives the active Shopify store list (currently 38) from `STORE_REGISTRY`; `seedStores()` (`apps/scraper/src/seed.ts`) and the web app's shipping fallback (`apps/web/src/lib/store-shipping.ts`) derive from the same file, so a store exists in exactly one place.
 
 ### `apps/scraper/src/stores/crystalcommerce.ts`
 Generic CrystalCommerce scraper — one class drives all stores on the CrystalCommerce
@@ -322,29 +322,21 @@ repopulate run, which is where the "re-run to repopulate" advice came from.)
 ## apps/web — Next.js front-end
 
 ### Search page (`apps/web/src/app/page.tsx`)
-- Full-text card search with infinite scroll (20 results/page)
-- Price shown is "from $X" — `cards.cheapest_price_aud`, the lowest in-stock sell price,
-  with the thumbnail showing `cheapest_printing_id`'s art. It used to read
-  `cards.scrymarket_price` (a median), whose only writer is the paused
-  `computeScrymarketPrices()`, so every row rendered "no prices" while the card page
-  showed real ones. Anything the search page displays must come from a column written
-  outside `MARKET_STATS_ENABLED`.
-- Trend badge (↑/↓/→) from the pre-computed `cards.price_trend`
-- Card thumbnails (63×88px), color identity pips, CardMagnifier on hover
+- `/` with no query is the landing page (search box + `LandingNotices`); a query under 3
+  characters gets a prompt; anything else renders search v2 below. There is no other search
+  page and no toggle — the old card-grained results (`SearchResults.tsx`) were removed when v2
+  became the only search. Roll back by pinning the previous image (`./scripts/deploy.sh main-<sha>`).
+- `/api/search` and `searchCards()` (the old denormalised-column search) survive only for the
+  contact form's card lookup.
 - Drag-to-search: drag any Scryfall card image onto the app
-- Umami events: `card-search` on new query, `card-click` on row click
 
-### Search v2 — beta, opt-in (`apps/web/src/app/search-v2/`, `apps/web/src/lib/search-v2/`)
+### Search v2 (`apps/web/src/app/search-v2/`, `apps/web/src/lib/search-v2/`)
 Listing-grained search with a filter sidebar (store, set, condition, finish, treatment, price), sort and three views (`view=card|printing|listings`).
-- **Rollout.** `search_v2` cookie is three-state: `1` on, `0` off, absent = `SEARCH_V2_DEFAULT`
-  (runtime env, read by `searchV2Default()` in `lib/config.ts`; decided by `searchV2Enabled()`).
-  The header toggle always writes an explicit `1`/`0`, so an opt-out survives a later flip.
-  Unset = opt-in beta. To make it the default: set `SEARCH_V2_DEFAULT=true` in prod `.env` and
-  `docker compose up -d web`; unset it to roll back. **Don't flip without prod latency
-  evidence** — Loki `component="search-v2"` logs `ms` per query (warn above 2s); check p95 and a
-  capped query such as "the" on a cold morning. Umami `card-search` / `card-click` carry
-  `search: "v1"|"v2"` / `source: "search-v2"` to compare the two. Static pages render the
-  layout at build time, so their header toggle can't see the flag — it only matters on `/`.
+- Loki `component="search-v2"` logs `ms` per query (warn above 2s). Umami `card-search` fires
+  only when `page.tsx` judges the query new (the same `LAST_QUERY_COOKIE` test as the
+  `card_searches` log), and `search-refine` from `navigate()` via `describeRefinement()`.
+  `source: "search-v2"` stays that name for report continuity; events before 2026-11 also
+  carry `search: "v1"|"v2"`.
 - All state is URL params (`params.ts`). Cookies carry the rest: `search_view` (last view),
   `search_filters` (store/condition/finish/treatment/price carried into the next search —
   used only when the URL names no filter; set is deliberately not sticky), `search_sidebar`
@@ -408,7 +400,7 @@ Listing-grained search with a filter sidebar (store, set, condition, finish, tre
 
 ### `apps/web/src/app/BuyLink.tsx` + `apps/web/src/lib/affiliate.ts`
 Single component for all outbound store buy links. Owns:
-- Umami `store-click` event tracking (passes `storeId`, `card`, `price`, `source`)
+- Umami `store-click` event tracking (passes `store`, `card`, `price`, `source`)
 - Correct `rel="noopener noreferrer"` and new-tab behaviour
 - Affiliate rewriting via `applyAffiliateParams()` in `lib/affiliate.ts` — extend per store
   when more deals are set up, no call-sites change
@@ -432,6 +424,19 @@ Rejected: setting `X-EBAY-C-ENDUSERCTX: affiliateCampaignId=…` on the Browse A
 store `itemAffiliateWebUrl` in the DB. It is eBay's blessed route, but it bakes the campaign
 id into millions of stored rows, doesn't retro-fix existing rows, and gives no per-surface
 `customid`. Keep it as the fallback if eBay ever stops honouring hand-built parameters.
+
+### Analytics (`apps/web/src/lib/analytics.ts`, `apps/web/src/app/Analytics.tsx`)
+Umami custom events. **`AnalyticsEvents` in `analytics.ts` is the event catalogue** — every
+name and payload is typed there, and `track()` is the only way to send one; don't call
+`window.umami` directly.
+- `data-domains` limits reporting to `scrymarket.au`, so dev and contributors' builds send
+  nothing. Without it, any build on any host reported into the production site — the likely
+  source of `search: "v1"` events arriving after v1 was deleted. To test events locally, temporarily add `localhost` to
+  `ANALYTICS_DOMAINS` in `lib/config.ts`.
+- The script loads `afterInteractive`, after hydration, so events fired from mount effects
+  (`card-search`) used to be silently dropped. `track()` queues them (capped at 20) and
+  `Analytics.tsx` flushes on the script's `onLoad`.
+- Renaming an event or a `source` value splits its Umami history at the deploy — add a field instead.
 
 ### `apps/web/src/lib/store-shipping.ts`
 `getStoreShippingRates()` — flat-rate postage per store (AUD), keyed by `store_id`, read from `stores.flat_shipping_aud` (seeded from `STORE_REGISTRY` in `stores.config.ts`) and cached in memory for an hour. Fallback when a store_prices row doesn't supply `shipping_aud`. eBay is `null` (per-item shipping).
@@ -483,7 +488,6 @@ See `.env.example` for all variables. Key ones:
 | `MTGMATE_FULL_SCAN_DAYS` | Days between full MTG Mate set-code rescans | `7` |
 | `EBAY_AFFILIATE_CAMPAIGN_ID` | EPN campaign id for outbound eBay links. Unset = no affiliate params | unset (off) |
 | `EBAY_AFFILIATE_ROTATION_ID` | EPN rotation id for the eBay AU site | `705-53470-19255-0` |
-| `SEARCH_V2_DEFAULT` | `true` = new search is the default (toggle becomes opt-out). Runtime; unset is the rollback | unset (opt-in) |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Token for `cloudflared` tunnel service | — |
 | `IMAGE_REGISTRY` | Registry+namespace for prod images (ECR-swap lever) | `ghcr.io/luperr` |
 | `IMAGE_TAG` | Which prod image to run; `main-<sha>` to pin/rollback | `latest` |
@@ -589,13 +593,13 @@ product URL (`/catalog/magic_singles-standard-bloomburrow/card_name/693640` → 
 - [x] Scryfall bulk import (~32k cards, ~141k printings)
 - [x] Card matcher with exact / name-only / fuzzy / collector-number matching
 - [x] eBay AU import pipeline (OAuth → Browse API → title parser → DB)
-- [x] Generic Shopify scraper — 37 AU stores, config-driven
+- [x] Generic Shopify scraper — 38 AU stores, config-driven
 - [x] Generic CrystalCommerce scraper — config-driven, The Games Cube
 - [x] MTG Mate HTML scraper
 - [x] Next.js web UI — search, card detail, price history charts
 - [x] Want List with per-store postage editing and Branch-and-Bound optimiser
 - [x] BuyLink component — centralised tracking, eBay Partner Network affiliate links live
-- [x] Umami analytics — card-search, card-click, store-click events
+- [x] Umami analytics — typed event catalogue in `apps/web/src/lib/analytics.ts`
 - [x] `card_searches` table — demand analytics foundation (search query + top card ID)
 - [x] Cloudflare tunnel for public access (no open ports)
 - [x] Security headers (CSP, X-Frame-Options, etc.) via Next.js config

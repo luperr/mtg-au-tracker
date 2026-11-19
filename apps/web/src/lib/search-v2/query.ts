@@ -266,7 +266,7 @@ export async function searchListings(state: SearchState): Promise<SearchV2Result
       (SELECT id FROM cand ORDER BY rnk LIMIT 1) AS top_card_id
   `;
 
-  // Prod latency evidence for flipping SEARCH_V2_DEFAULT — v2 reads store_prices live,
+  // Latency per query — v2 reads store_prices live,
   // which the old search's denormalised columns avoid. Grafana: component="search-v2".
   const ms = Math.round(performance.now() - started);
   const log = { component: "search-v2", q: state.q, view: state.view, page: state.page, ms, cards: row?.cand_count ?? 0, fuzzy: row?.fuzzy ?? false };

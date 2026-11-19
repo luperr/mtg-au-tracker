@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useWantList, toWantListItem, type WantListItem } from "@/app/WantListContext";
 import { SetSymbol } from "@/app/SetSymbol";
 import { useClickOutside } from "@/lib/hooks/useClickOutside";
-import { fmtAUD, plural, trackEvent } from "@/lib/utils";
+import { fmtAUD, plural } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 import { variantBadgeWithFoil } from "@/lib/variant-utils";
 import type { StoreListing } from "@/lib/store-listing";
 import { useCardHover, useHideCardPreview } from "./CardPreview";
@@ -86,7 +87,7 @@ export function PrintingPicker({ item }: { item: WantListItem }) {
     replaceItem(item.id, same
       ? { ...item, printingMode: "exact" }
       : toWantListItem(listing, item, { printingMode: "exact", qty: item.qty }));
-    trackEvent("optimise-line-mode", { mode: "exact", changed: !same });
+    track("optimise-line-mode", { mode: "exact", changed: !same });
     setOpen(false);
   }
 
@@ -96,7 +97,7 @@ export function PrintingPicker({ item }: { item: WantListItem }) {
   function toggleLock() {
     const next = locked ? "any" : "exact";
     updateItem(item.id, { printingMode: next });
-    trackEvent("optimise-line-mode", { mode: next });
+    track("optimise-line-mode", { mode: next });
   }
 
   return (
@@ -108,7 +109,7 @@ export function PrintingPicker({ item }: { item: WantListItem }) {
           aria-expanded={open}
           title={`${item.setName} — choose a printing`}
           aria-label={`${item.setName} — choose a printing`}
-          className="flex min-w-0 items-center gap-1.5 rounded-l-lg px-2 py-1 text-cream-dim transition-colors hover:text-cream"
+          className="flex min-w-0 items-center gap-1.5 rounded-l-lg px-2.5 py-2 sm:px-2 sm:py-1 text-cream-dim transition-colors hover:text-cream"
         >
           <SetSymbol setCode={item.setCode} setName={item.setName} rarity={item.rarity} />
           {/* Phones show the set under the card name instead, so the row's controls fit on one line. */}
@@ -120,7 +121,7 @@ export function PrintingPicker({ item }: { item: WantListItem }) {
           aria-pressed={locked}
           aria-label={lockLabel}
           title={lockLabel}
-          className={`flex items-center rounded-r-lg border-l border-subtle px-2 transition-colors ${
+          className={`flex items-center rounded-r-lg border-l border-subtle px-3 sm:px-2 transition-colors ${
             locked ? "bg-accent/20 text-cream" : "text-cream-dim hover:text-cream"
           }`}
         >

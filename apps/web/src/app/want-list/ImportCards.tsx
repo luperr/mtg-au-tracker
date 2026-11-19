@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useWantList, toWantListItem } from "@/app/WantListContext";
 import type { BulkLookupResult, BulkLookupInput } from "@/app/api/cards/bulk-lookup/route";
-import { trackEvent } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 
 /**
  * Parse a card list in any of these formats:
@@ -132,12 +132,12 @@ export function ImportCards({ onImported }: { onImported: (summary: ImportSummar
         summary.copies += r.qty;
       });
 
-      trackEvent("bulk-import", { source, cards: cards.length, found: summary.added + summary.alreadyListed });
+      track("bulk-import", { source, cards: cards.length, found: summary.added + summary.alreadyListed });
       setText("");
       setExpanded(false);
       onImported(summary);
     } catch (err) {
-      trackEvent("bulk-import", { source, cards: cards.length, error: true });
+      track("bulk-import", { source, cards: cards.length, error: true });
       setExpanded(true);
       setError(err instanceof Error ? err.message : "Lookup failed");
     } finally {

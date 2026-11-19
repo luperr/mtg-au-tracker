@@ -3,7 +3,8 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import type { PrintingWithPrices } from "@/lib/db";
 import { useWantList, toWantListItem, wantListItemId } from "@/app/WantListContext";
-import { fmtAUD } from "@/lib/utils";
+import { fmtAUD, fmtPostage } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 import { Dropdown, OptionItem, pillClass } from "@/app/Dropdown";
 import { SetSymbol } from "@/app/SetSymbol";
 import { BuyLink } from "@/app/BuyLink";
@@ -56,6 +57,7 @@ function WantListButton({
       onClick={() => {
         if (inList) {
           removeItem(itemId);
+          track("want-list-edit", { action: "remove", source: "card-detail" });
         } else {
           // A price row is a specific printing, so the card is locked to it.
           addItem(toWantListItem({
@@ -75,6 +77,7 @@ function WantListButton({
             url: row.url,
             imageUri: row.printing.imageUri,
           }, { cardId, cardSlug, cardName }, { printingMode: "exact" }));
+          track("want-list-add", { card: cardName, source: "card-detail" });
         }
       }}
       title={inList ? "Remove from want list" : "Add to want list"}
@@ -353,7 +356,7 @@ export function PricesTable({
                         {fmtAUD(row.priceAud)}
                         {row.shippingAud !== null && (
                           <span className="ml-1 text-xs font-normal text-cream-dim/60">
-                            (+{row.shippingAud === 0 ? "free" : fmtAUD(row.shippingAud)})
+                            (+{fmtPostage(row.shippingAud)})
                           </span>
                         )}
                       </span>
@@ -454,7 +457,7 @@ export function PricesTable({
                           {fmtAUD(row.priceAud)}
                           {row.shippingAud !== null && (
                             <span className="ml-1 text-xs font-normal text-cream-dim/60">
-                              (+{row.shippingAud === 0 ? "free" : fmtAUD(row.shippingAud)})
+                              (+{fmtPostage(row.shippingAud)})
                             </span>
                           )}
                         </td>

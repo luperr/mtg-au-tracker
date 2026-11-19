@@ -4,6 +4,7 @@ import { useState } from "react";
 import { BuyLink } from "@/app/BuyLink";
 import { useWantList, type WantListItem } from "@/app/WantListContext";
 import { cardHref, fmtAUD, fmtCents, plural, toSmallImage } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 import { variantBadgeWithFoil } from "@/lib/variant-utils";
 import { MAX_CARD_QTY } from "@/lib/config";
 import { itemQty, type PlannedFlags, type StoreGroup } from "@/lib/optimiser/want-list";
@@ -34,6 +35,11 @@ function CardRow({ item, planned }: { item: WantListItem; planned?: PlannedFlags
   const qty = itemQty(item);
   const badge = variantBadgeWithFoil(item);
   const thumb = toSmallImage(item.imageUri);
+
+  function remove() {
+    removeItem(item.id);
+    track("want-list-edit", { action: "remove", source: "want-list" });
+  }
 
   return (
     <li className="flex gap-3 border-b border-subtle/60 px-3 py-2.5 last:border-0">
@@ -66,9 +72,9 @@ function CardRow({ item, planned }: { item: WantListItem; planned?: PlannedFlags
 
           <div className="flex items-center rounded-lg border border-subtle text-sm" role="group" aria-label={`Quantity of ${item.cardName}`}>
             <button
-              onClick={() => qty > 1 ? updateItem(item.id, { qty: qty - 1 }) : removeItem(item.id)}
+              onClick={() => qty > 1 ? updateItem(item.id, { qty: qty - 1 }) : remove()}
               aria-label={qty > 1 ? `One fewer ${item.cardName}` : `Remove ${item.cardName}`}
-              className="px-2.5 py-0.5 text-cream-dim hover:text-cream"
+              className="px-3 py-2 sm:px-2.5 sm:py-0.5 text-cream-dim hover:text-cream"
             >
               −
             </button>
@@ -77,7 +83,7 @@ function CardRow({ item, planned }: { item: WantListItem; planned?: PlannedFlags
               onClick={() => updateItem(item.id, { qty: Math.min(qty + 1, MAX_CARD_QTY) })}
               disabled={qty >= MAX_CARD_QTY}
               aria-label={`One more ${item.cardName}`}
-              className="px-2.5 py-0.5 text-cream-dim hover:text-cream disabled:opacity-40"
+              className="px-3 py-2 sm:px-2.5 sm:py-0.5 text-cream-dim hover:text-cream disabled:opacity-40"
             >
               +
             </button>
@@ -96,9 +102,9 @@ function CardRow({ item, planned }: { item: WantListItem; planned?: PlannedFlags
             />
           )}
           <button
-            onClick={() => removeItem(item.id)}
+            onClick={remove}
             aria-label={`Remove ${item.cardName}`}
-            className="flex h-6 w-6 items-center justify-center rounded text-cream-dim hover:bg-red-900/20 hover:text-red-400"
+            className="flex h-9 w-9 sm:h-6 sm:w-6 items-center justify-center rounded text-lg sm:text-base text-cream-dim hover:bg-red-900/20 hover:text-red-400"
           >
             ×
           </button>

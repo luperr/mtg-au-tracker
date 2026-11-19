@@ -27,6 +27,11 @@ export function cardHref(
   return base;
 }
 
+/** Postage as listings show it: "free", an AUD amount, or "—" when the store doesn't say. */
+export function fmtPostage(shippingAud: number | null): string {
+  return shippingAud === null ? "—" : shippingAud === 0 ? "free" : fmtAUD(shippingAud);
+}
+
 /**
  * Convert a Scryfall "normal" image URI to its "small" variant.
  * Returns null if the input is null.
@@ -42,14 +47,3 @@ export function setCookie(name: string, value: string, maxAge?: number): void {
 
 export const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
-/** Fire an Umami analytics event. No-ops gracefully if Umami is absent. */
-export function trackEvent(event: string, data?: Record<string, unknown>): void {
-  window.umami?.track(event, data);
-}
-
-// ── Global type augmentation for Umami ───────────────────────────────────────
-declare global {
-  interface Window {
-    umami?: { track: (event: string, data?: Record<string, unknown>) => void };
-  }
-}

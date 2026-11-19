@@ -1,41 +1,16 @@
-"use client";
-
-import { CardMagnifier } from "./CardMagnifier";
-
-interface Props {
-  imageUri: string | null;
-  alt: string;
-  /** Tailwind classes that set the container size, e.g. "w-7 h-10" or "w-[44px] h-[61px] sm:w-[63px] sm:h-[88px]" */
-  className: string;
-  /** Delay before the magnifier popup appears. Defaults to 300ms. */
-  delayMs?: number;
-}
-
-function toSmallImage(uri: string): string {
-  return uri.replace("/normal/", "/small/");
-}
+import { MTG_CARD_ASPECT_RATIO } from "@/lib/config";
+import { toSmallImage } from "@/lib/utils";
 
 /**
- * Card thumbnail with hover magnifier. Pass the normal-sized Scryfall URI;
- * the small variant is derived automatically. Size the thumbnail via className.
+ * A small card image at the card's aspect ratio, or a blank card-shaped placeholder.
+ * Loads Scryfall's "small" rendition — these show at 40–48px, and the stored "normal"
+ * URI is a ~488px file.
  */
-export function CardThumb({ imageUri, alt, className, delayMs = 300 }: Props) {
-  if (!imageUri) {
-    return (
-      <div className={`rounded bg-muted flex items-center justify-center text-cream-dim/40 text-xs shrink-0 ${className}`}>
-        ?
-      </div>
-    );
-  }
-
-  return (
-    <div className={`rounded overflow-hidden shrink-0 ${className}`}>
-      <CardMagnifier
-        smallSrc={toSmallImage(imageUri)}
-        largeSrc={imageUri}
-        alt={alt}
-        delayMs={delayMs}
-      />
-    </div>
+export function CardThumb({ uri, className }: { uri: string | null; className: string }) {
+  const src = toSmallImage(uri);
+  return src ? (
+    <img src={src} alt="" loading="lazy" className={`rounded ${className}`} style={{ aspectRatio: MTG_CARD_ASPECT_RATIO }} />
+  ) : (
+    <div className={`rounded bg-muted ${className}`} style={{ aspectRatio: MTG_CARD_ASPECT_RATIO }} />
   );
 }

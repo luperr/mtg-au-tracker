@@ -1,17 +1,18 @@
 import type { Metadata } from "next";
 import { Bitcount_Prop_Double } from "next/font/google";
-import Script from "next/script";
 import { Suspense } from "react";
 import "./globals.css";
 import { ThemeToggle } from "./ThemeToggle";
-import { SearchV2Toggle } from "./SearchV2Toggle";
 import { DragDropSearch } from "./DragDropSearch";
 import { WantListProvider } from "./WantListContext";
 import { AffiliateProvider } from "./AffiliateContext";
 import { WantListBadge } from "./WantListBadge";
 import { HeaderSearch } from "./HeaderSearch";
 import { BuyMeACoffee } from "./BuyMeACoffee";
-import { SITE_URL, ANALYTICS_SCRIPT_URL, searchV2Default } from "@/lib/config";
+import { NavMenu } from "./NavMenu";
+import { INFO_PAGES, LEGAL_PAGES } from "@/lib/nav";
+import { SITE_URL, THEME_ATTRIBUTE, THEME_STORAGE_KEY } from "@/lib/config";
+import { Analytics } from "./Analytics";
 import { getAffiliateConfig } from "@/lib/affiliate";
 
 const bitcount = Bitcount_Prop_Double({ subsets: ["latin"], weight: ["400"] });
@@ -44,26 +45,22 @@ export default function RootLayout({
 }) {
   // Read on the server so the campaign id stays runtime config (see @/lib/affiliate).
   const affiliate = getAffiliateConfig();
-  const v2Default = searchV2Default();
 
   return (
     <html lang="en">
       <head>
-        <script dangerouslySetInnerHTML={{ __html: `(function(){var t=localStorage.getItem('theme');if(t==='light')document.documentElement.setAttribute('data-theme','light')})()` }} />
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{if(localStorage.getItem('${THEME_STORAGE_KEY}')==='light')document.documentElement.setAttribute('${THEME_ATTRIBUTE}','light')}catch(e){}})()` }} />
       </head>
-      <Script
-        src={ANALYTICS_SCRIPT_URL}
-        data-website-id="ba5a4121-875c-4ad2-a05e-dbab6b207c03"
-        strategy="afterInteractive"
-      />
+      <Analytics />
       <body className="min-h-screen bg-bg text-cream antialiased flex flex-col">
         <AffiliateProvider campaignId={affiliate.campaignId} rotationId={affiliate.rotationId}>
           <WantListProvider>
             <DragDropSearch />
             <header className="border-b border-subtle px-4 py-3 header-gradient">
-              <div className="mx-auto max-w-5xl w-full flex items-center gap-4">
-                {/* Left: logo + beta badge */}
+              <div className="mx-auto max-w-5xl w-full flex items-center gap-2 sm:gap-4">
+                {/* Left: menu (phones only) + logo + beta badge */}
                 <div className="flex items-center gap-2 shrink-0">
+                  <NavMenu extra={<BuyMeACoffee />} />
                   {/* Desktop: SCRYMARKET + beta beside */}
                   <div className="hidden sm:flex items-center gap-2">
                     <a href="/" className={`${bitcount.className} text-2xl logo-gradient`}>
@@ -91,25 +88,27 @@ export default function RootLayout({
                 </div>
                 {/* Right: controls */}
                 <div className="flex items-center gap-3 shrink-0">
-                  <SearchV2Toggle defaultOn={v2Default} />
                   <WantListBadge />
                   <ThemeToggle />
                 </div>
               </div>
             </header>
-            <main className="mx-auto max-w-5xl w-full px-4 py-6 flex-1">{children}</main>
+            {/* Phones: main is at least a full screen tall, so the footer starts below the fold.
+                It holds the affiliate disclosure and legal links, which stay on every page; the
+                menu already carries everything else. svh, so it stays hidden with the browser bars out. */}
+            <main className="mx-auto max-w-5xl w-full px-4 py-4 sm:py-6 flex-1 min-h-[100svh] sm:min-h-0">{children}</main>
             <footer className="border-t border-subtle px-4 py-2 text-cream-dim">
+              {/* Phones: one row of © + legal links (coffee and the page links live in the menu). */}
               <div className="mx-auto max-w-5xl flex flex-wrap items-center justify-between gap-x-6 gap-y-1 text-xs">
-                <BuyMeACoffee />
+                <div className="hidden sm:block"><BuyMeACoffee /></div>
                 <p className="text-cream-dim/60">© {new Date().getFullYear()} Scrymarket</p>
                 <nav className="flex flex-wrap gap-x-3 gap-y-1">
-                  <a href="/changelog" className="hover:text-accent transition-colors">Changelog</a>
-                  <a href="/about" className="hover:text-accent transition-colors">About</a>
-                  <a href="/faq" className="hover:text-accent transition-colors">FAQ</a>
-                  <a href="/contact" className="hover:text-accent transition-colors">Contact</a>
-                  <a href="/disclaimer" className="hover:text-accent transition-colors">Disclaimer</a>
-                  <a href="/privacy" className="hover:text-accent transition-colors">Privacy</a>
-                  <a href="/terms" className="hover:text-accent transition-colors">Terms</a>
+                  {INFO_PAGES.map(({ href, label, shortLabel }) => (
+                    <a key={href} href={href} className="hidden sm:inline hover:text-accent transition-colors">{shortLabel ?? label}</a>
+                  ))}
+                  {LEGAL_PAGES.map(({ href, label }) => (
+                    <a key={href} href={href} className="py-2 sm:py-0 hover:text-accent transition-colors">{label}</a>
+                  ))}
                 </nav>
               </div>
               <p className="mx-auto max-w-5xl mt-1 text-xs text-cream-dim/60">
