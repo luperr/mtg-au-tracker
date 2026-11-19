@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useWantList, toWantListItem } from "@/app/WantListContext";
 import type { BulkLookupResult, BulkLookupInput } from "@/app/api/cards/bulk-lookup/route";
 import { track } from "@/lib/analytics";
+import { MAX_CARD_QTY } from "@/lib/config";
 
 /**
  * Parse a card list in any of these formats:
@@ -44,7 +45,7 @@ function parseCardList(text: string): BulkLookupInput[] {
         name: full[2].trim(),
         setCode: full[3].toLowerCase(),
         collectorNumber: full[4],
-        qty: Math.min(parseInt(full[1], 10), 99),
+        qty: Math.min(parseInt(full[1], 10), MAX_CARD_QTY),
       });
       continue;
     }
@@ -55,7 +56,7 @@ function parseCardList(text: string): BulkLookupInput[] {
       results.push({
         name: withSet[2].trim(),
         setCode: withSet[3].toLowerCase(),
-        qty: Math.min(parseInt(withSet[1], 10), 99),
+        qty: Math.min(parseInt(withSet[1], 10), MAX_CARD_QTY),
       });
       continue;
     }
@@ -63,7 +64,7 @@ function parseCardList(text: string): BulkLookupInput[] {
     // Plain: {qty} {Name}  or  {qty}x {Name}  or  x{qty} {Name}
     const plain = line.match(/^(\d+)[xX]?\s+(.+)$/) ?? line.match(/^[xX](\d+)\s+(.+)$/);
     if (plain) {
-      results.push({ name: plain[2].trim(), qty: Math.min(parseInt(plain[1], 10), 99) });
+      results.push({ name: plain[2].trim(), qty: Math.min(parseInt(plain[1], 10), MAX_CARD_QTY) });
       continue;
     }
 

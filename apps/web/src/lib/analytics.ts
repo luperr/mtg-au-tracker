@@ -22,7 +22,7 @@ export type AnalyticsEvents = {
   "store-click": { store: string; card: string; price: number; source: Surface };
   /** A listing added to the want list. */
   "want-list-add": { card: string; source: Surface };
-  /** A user-initiated want-list change. The optimiser's swaps are `optimise-apply`, not this. */
+  /** A user-initiated want-list change. Moves made by the optimiser are `optimise-run`, not this. */
   "want-list-edit": { action: "remove" | "swap" | "clear"; source: Surface; items?: number };
   /** A filter, sort or view change on the same search query. */
   "search-refine": SearchRefinement;

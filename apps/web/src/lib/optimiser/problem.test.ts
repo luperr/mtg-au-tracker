@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { meetsCondition, offerFromRow, toCents, type OfferRow } from "./problem";
+import { meetsCondition, offerFromRow, type OfferRow } from "./problem";
+import { toCents } from "./types";
 import { line, offer, prefs, problem, store } from "./test-fixtures";
 
 const stores = [store("a", 500), store("b", 700), store("ebay_au", null)];

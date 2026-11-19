@@ -8,7 +8,7 @@ import { EBAY_STORE_ID } from "@/lib/affiliate";
 import { cardHref, fmtCents, plural } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import {
-  applyPlan, itemQty, listStores, parseSavedPrefs, requestPrefs, toLines, PREFS_KEY,
+  applyPlan, listStores, parseSavedPrefs, requestPrefs, toLines, totalQty, PREFS_KEY,
   type PlannedFlags, type SavedPrefs, type StoreGroup,
 } from "@/lib/optimiser/want-list";
 import { toCents, type OptimiseResponse, type Unavailable } from "@/lib/optimiser/types";
@@ -82,7 +82,7 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
     if (!data) return;
     const { items: after, flags: planned } = applyPlan(items, data);
     // Chained runs (a store-count chip, "Don't use this store") keep the original list for Undo.
-    const before = fresh ? optimised.before : items;
+    const before = current?.before ?? items;
     replaceItems(after);
     setOptimised({ data, planned, before, after, prefs: withPrefs, overrides: storeShippingOverrides });
   }
@@ -109,24 +109,29 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
     if (rates[storeId] == null) return null;
     return toCents(storeShippingOverrides[storeId] ?? rates[storeId]!);
   };
-  const plan = fresh ? optimised.data : null;
+  // The last optimise, only while it still describes the list.
+  const current = fresh ? optimised : null;
+  const plan = current?.data ?? null;
   // Exact postage, waivers and free-postage gaps from the plan when it's current.
   const storeList = listStores(items, flatCents).map((s) => {
     const p = plan?.plan.stores.find((ps) => ps.storeId === s.storeId);
     return p ? { ...s, postageCents: p.postageCents, postageWaived: p.postageWaived, freeShippingGapCents: p.freeShippingGapCents } : s;
   });
-  const estimate = storeList.reduce((sum, s) => sum + s.subtotalCents + s.postageCents, 0);
-  const postage = storeList.reduce((sum, s) => sum + s.postageCents, 0);
+  // The plan's totals when it's current, else the estimate from each store's flat postage.
+  const totals = plan ? plan.plan.totals : {
+    totalCents: storeList.reduce((sum, s) => sum + s.subtotalCents + s.postageCents, 0),
+    storeCount: storeList.filter((s) => s.kind === "flat").length,
+    postageCents: storeList.reduce((sum, s) => sum + s.postageCents, 0),
+  };
 
   const unavailable = plan?.unavailable ?? [];
-  const copies = items.reduce((n, i) => n + itemQty(i), 0);
+  const copies = totalQty(items);
   const locked = items.filter((i) => i.printingMode === "exact").length;
 
   function unlockAll() {
     replaceItems(items.map((i) => (i.printingMode === "exact" ? { ...i, printingMode: "any" } : i)));
     track("optimise-unlock-all", { cards: locked });
   }
-  const flatStores = storeList.filter((s) => s.kind === "flat").length;
 
   return (
     <CardPreviewProvider>
@@ -151,10 +156,10 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-baseline gap-x-2">
                     <span className="text-xl font-bold text-price">
-                      {plan ? fmtCents(plan.plan.totals.totalCents) : `~${fmtCents(estimate)}`}
+                      {plan ? "" : "~"}{fmtCents(totals.totalCents)}
                     </span>
                     <span className="text-sm text-cream-dim">
-                      {plural(plan ? plan.plan.totals.storeCount : flatStores, "store")} · postage {fmtCents(plan ? plan.plan.totals.postageCents : postage)}
+                      {plural(totals.storeCount, "store")} · postage {fmtCents(totals.postageCents)}
                     </span>
                   </div>
                   <p className="text-xs text-cream-dim">
@@ -257,8 +262,7 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
                   {store.storeId === EBAY_STORE_ID && <AffiliateDisclosure className="!mb-2 px-1" />}
                   <StoreSection
                     store={store}
-                    planned={fresh ? optimised.planned : null}
-                    exact={plan !== null}
+                    planned={current?.planned ?? null}
                     onExclude={() => handleExclude(store)}
                   />
                 </React.Fragment>

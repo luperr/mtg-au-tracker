@@ -6,16 +6,21 @@
 // bought from. Running the optimiser moves each item to its planned listing
 // (`applyPlan`); until then it's the listing it was added at.
 
-import { MAX_CARD_QTY } from "../config";
+import { MAX_CARD_QTY, MAX_STORES_CAP } from "../config";
 import {
-  DEFAULT_PREFS, toCents, type Cents, type Offer, type OptimiseLine, type OptimiseResponse, type PlanUnit, type Prefs,
-  type UnitFlags,
+  DEFAULT_PREFS, toCents, type Cents, type Offer, type OptimiseLine, type OptimiseResponse, type PlanStore, type PlanUnit,
+  type Prefs, type UnitFlags,
 } from "./types";
-import { toWantListItem, type WantListItem } from "../../app/WantListContext";
+import { toWantListItem, type WantListItem } from "../want-list-item";
 
 export function itemQty(item: Pick<WantListItem, "qty">): number {
   const q = item.qty ?? 1;
   return Number.isInteger(q) ? Math.min(Math.max(q, 1), MAX_CARD_QTY) : 1;
+}
+
+/** Copies across the items — the "N copies" the page and each store header show. */
+export function totalQty(items: Pick<WantListItem, "qty">[]): number {
+  return items.reduce((n, i) => n + itemQty(i), 0);
 }
 
 /** One engine line per want-list item, with its listing as the line's current one. */
@@ -49,18 +54,8 @@ export function requestPrefs(saved: SavedPrefs, postageOverridesAud: Record<stri
   };
 }
 
-/** The items bought from one store, as the page shows them. */
-export type StoreGroup = {
-  storeId: string;
-  storeName: string;
-  /** "per-item": each listing ships separately (eBay). */
-  kind: "flat" | "per-item";
-  items: WantListItem[];
-  subtotalCents: Cents;
-  postageCents: Cents;
-  postageWaived: boolean;
-  freeShippingGapCents: Cents | null;
-};
+/** The items bought from one store, as the page shows them — a plan store with items in place of units. */
+export type StoreGroup = Omit<PlanStore, "units"> & { items: WantListItem[] };
 
 /**
  * The list grouped by the store each item is bought from. `flatCents` is a
@@ -91,6 +86,13 @@ export function listStores(items: WantListItem[], flatCents: (storeId: string) =
 
 /** What the last optimise changed about an item, keyed by the item it produced. */
 export type PlannedFlags = { flags: UnitFlags; prevCondition: string | null };
+
+/** Two lines landing on one listing: a flag is set if it is set for either. */
+function mergeFlags(a: UnitFlags, b: UnitFlags): UnitFlags {
+  return Object.fromEntries(
+    (Object.keys(a) as (keyof UnitFlags)[]).map((k) => [k, a[k] || b[k]]),
+  ) as UnitFlags;
+}
 
 function offerToItem(offer: Offer, from: WantListItem, qty: number): WantListItem {
   const { priceCents, shippingCents, stockQty, variantId, ...listing } = offer;
@@ -123,15 +125,7 @@ export function applyPlan(items: WantListItem[], res: OptimiseResponse): { items
     out.set(item.id, existing ? { ...existing, qty: itemQty(existing) + itemQty(item) } : item);
     if (!planned) return;
     const had = flags.get(item.id);
-    flags.set(item.id, had ? {
-      flags: {
-        printingChanged: had.flags.printingChanged || planned.flags.printingChanged,
-        conditionChanged: had.flags.conditionChanged || planned.flags.conditionChanged,
-        conditionUnknown: had.flags.conditionUnknown || planned.flags.conditionUnknown,
-        stockUnconfirmed: had.flags.stockUnconfirmed || planned.flags.stockUnconfirmed,
-      },
-      prevCondition: had.prevCondition,
-    } : planned);
+    flags.set(item.id, had ? { flags: mergeFlags(had.flags, planned.flags), prevCondition: had.prevCondition } : planned);
   };
   for (const item of items) {
     const units = unitsByLine.get(item.id);
@@ -174,6 +168,8 @@ export function parseSavedPrefs(raw: string | null): SavedPrefs {
     excludeStores: Array.isArray(v.excludeStores)
       ? v.excludeStores.filter((s): s is string => typeof s === "string" && s !== "")
       : [],
-    maxStores: Number.isInteger(v.maxStores) && (v.maxStores as number) >= 1 ? v.maxStores as number : null,
+    // The server's own bounds: a saved value it would reject must not survive to every later run.
+    maxStores: Number.isInteger(v.maxStores) && (v.maxStores as number) >= 1 && (v.maxStores as number) <= MAX_STORES_CAP
+      ? v.maxStores as number : null,
   };
 }

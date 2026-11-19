@@ -2,13 +2,11 @@
 // localStorage, so any of it can be stale or hand-edited.
 
 import { CARD_CONDITIONS } from "@mtg-au/shared";
-import { MAX_BULK_CARDS, MAX_CARD_QTY } from "../config";
+import { MAX_BULK_CARDS, MAX_CARD_QTY, MAX_STORES_CAP } from "../config";
 import { DEFAULT_PREFS, type OptimiseLine, type Prefs } from "./types";
 
 export type OptimiseRequest = { lines: OptimiseLine[]; prefs: Prefs };
 
-/** More stores than this is no constraint at all — the roster is ~40. */
-const MAX_STORES_CAP = 20;
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);

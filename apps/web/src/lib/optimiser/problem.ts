@@ -6,8 +6,6 @@ import { isKnownCondition } from "@mtg-au/shared";
 import { mapListingRow, type StoreListingRow } from "../store-listing";
 import { toCents, type Cents, type OptimiseLine, type Offer, type Prefs, type StoreInfo, type Unavailable } from "./types";
 
-export { toCents };
-
 export type OfferRow = StoreListingRow & { card_id: string; stock_qty: number | null; variant_id: string | null };
 
 export function offerFromRow(row: OfferRow): Offer {

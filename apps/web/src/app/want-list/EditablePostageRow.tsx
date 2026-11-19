@@ -9,7 +9,7 @@ export function EditablePostageRow({
   isOverride,
   onSave,
 }: {
-  amount: number | null;
+  amount: number;
   isOverride: boolean;
   onSave: (amount: number | null) => void;
 }) {
@@ -17,7 +17,7 @@ export function EditablePostageRow({
   const [draft, setDraft] = useState("");
 
   function startEdit() {
-    setDraft(amount !== null ? String(amount) : "");
+    setDraft(String(amount));
     setEditing(true);
   }
 
@@ -69,14 +69,10 @@ export function EditablePostageRow({
         title="Click to edit postage"
         className="flex items-center gap-1 bg-muted border border-accent-border rounded px-1.5 py-0.5 hover:border-accent-light/50 hover:text-cream-dim transition-colors cursor-pointer"
       >
-        {amount === null
-          ? "Postage: unknown"
-          : amount === 0
-          ? "Postage: free (in-store)"
-          : `Postage: ${fmtAUD(amount)}`}
+        {amount === 0 ? "Postage: free (in-store)" : `Postage: ${fmtAUD(amount)}`}
         {isOverride && <span className="ml-1 text-[9px] text-accent-light/60">·edited</span>}
       </button>
-      {!isOverride && amount !== null && (
+      {!isOverride && (
         <span
           className="cursor-help text-[10px] text-cream-dim/30"
           title="Estimated. Postage is charged once per order and the actual amount may vary at checkout."

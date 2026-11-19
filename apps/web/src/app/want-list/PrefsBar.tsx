@@ -4,6 +4,7 @@ import { Dropdown, OptionItem, pillClass } from "@/app/Dropdown";
 import { CONDITIONS, type SavedPrefs } from "@/lib/optimiser/want-list";
 import type { ReactNode } from "react";
 import type { StoreSummary } from "@/lib/store-shipping";
+import { MAX_STORES_CAP } from "@/lib/config";
 
 const CONDITION_LABELS: Record<SavedPrefs["conditions"][number], string> = {
   NM: "Near mint",
@@ -54,7 +55,8 @@ export function PrefsBar({
   // Per-item stores (eBay) last: a marketplace, not one shop.
   const storeList = [...stores.filter((s) => !s.perItem), ...stores.filter((s) => s.perItem)];
   const unticked = storeList.filter((s) => excluded.has(s.id)).length;
-  const available = storeList.filter((s) => !s.perItem && !excluded.has(s.id)).length;
+  // The counter tops out at the ticked flat-rate stores, and never past what the optimiser accepts.
+  const available = Math.min(storeList.filter((s) => !s.perItem && !excluded.has(s.id)).length, MAX_STORES_CAP);
   const max = prefs.maxStores;
 
   function setMax(n: number | null) {

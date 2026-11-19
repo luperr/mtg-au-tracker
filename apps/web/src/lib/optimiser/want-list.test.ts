@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { applyPlan, itemQty, listStores, parseSavedPrefs, requestPrefs, toLines } from "./want-list";
+import { MAX_STORES_CAP } from "../config";
 import { offer } from "./test-fixtures";
-import type { WantListItem } from "../../app/WantListContext";
+import type { WantListItem } from "../want-list-item";
 import type { OptimiseResponse, PlanUnit } from "./types";
 
 function item(id: string, o: Partial<WantListItem> = {}): WantListItem {
@@ -126,5 +127,10 @@ describe("parseSavedPrefs", () => {
 
   it("falls back to NM when no condition is left", () => {
     expect(parseSavedPrefs(JSON.stringify({ conditions: [] })).conditions).toEqual(["NM"]);
+  });
+
+  it("drops a max stores the server would reject, so it can't fail every later run", () => {
+    expect(parseSavedPrefs(JSON.stringify({ maxStores: MAX_STORES_CAP })).maxStores).toBe(MAX_STORES_CAP);
+    expect(parseSavedPrefs(JSON.stringify({ maxStores: MAX_STORES_CAP + 1 })).maxStores).toBeNull();
   });
 });

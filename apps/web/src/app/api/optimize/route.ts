@@ -8,10 +8,10 @@ import {
   RATE_LIMIT_OPTIMIZE_PER_MINUTE, OPTIMIZE_DEADLINE_MS, OPTIMIZE_EXACT_MAX_STORES, OPTIMIZE_ALTERNATIVES_MS,
 } from "@/lib/config";
 import { parseOptimiseRequest } from "@/lib/optimiser/request";
-import { buildProblem, offerFromRow, toCents, type OfferRow } from "@/lib/optimiser/problem";
+import { buildProblem, offerFromRow, type OfferRow } from "@/lib/optimiser/problem";
 import { alternatives, solve } from "@/lib/optimiser/search";
 import { buildResponse } from "@/lib/optimiser/plan";
-import type { Offer, StoreInfo } from "@/lib/optimiser/types";
+import { toCents, type Offer, type StoreInfo } from "@/lib/optimiser/types";
 
 const log = logger.child({ component: "api-optimize" });
 const checkRateLimit = createRateLimiter(RATE_LIMIT_OPTIMIZE_PER_MINUTE, 60 * 1000);

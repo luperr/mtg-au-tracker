@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { BuyLink } from "@/app/BuyLink";
 import { useWantList, type WantListItem } from "@/app/WantListContext";
-import { cardHref, fmtAUD, fmtCents, plural, toSmallImage } from "@/lib/utils";
+import { cardHref, fmtAUD, fmtCents, plural } from "@/lib/utils";
+import { CardThumb } from "@/app/CardThumb";
 import { track } from "@/lib/analytics";
 import { variantBadgeWithFoil } from "@/lib/variant-utils";
 import { MAX_CARD_QTY } from "@/lib/config";
-import { itemQty, type PlannedFlags, type StoreGroup } from "@/lib/optimiser/want-list";
+import { itemQty, totalQty, type PlannedFlags, type StoreGroup } from "@/lib/optimiser/want-list";
 import { EditablePostageRow } from "./EditablePostageRow";
 import { useCardHover } from "./CardPreview";
 import { PrintingPicker } from "./PrintingPicker";
@@ -34,7 +35,6 @@ function CardRow({ item, planned }: { item: WantListItem; planned?: PlannedFlags
   const hover = useCardHover()(item.imageUri);
   const qty = itemQty(item);
   const badge = variantBadgeWithFoil(item);
-  const thumb = toSmallImage(item.imageUri);
 
   function remove() {
     removeItem(item.id);
@@ -43,10 +43,7 @@ function CardRow({ item, planned }: { item: WantListItem; planned?: PlannedFlags
 
   return (
     <li className="flex gap-3 border-b border-subtle/60 px-3 py-2.5 last:border-0">
-      {thumb ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={thumb} alt="" width={36} height={50} className="h-[50px] w-9 shrink-0 rounded-sm object-cover" loading="lazy" {...hover} />
-      ) : <span className="h-[50px] w-9 shrink-0 rounded-sm bg-muted" />}
+      <span className="shrink-0" {...hover}><CardThumb uri={item.imageUri} className="w-9 object-cover" /></span>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-3">
@@ -116,23 +113,22 @@ function CardRow({ item, planned }: { item: WantListItem; planned?: PlannedFlags
 
 /**
  * A store on the list: what's bought there, its postage, and a way to drop it.
- * `exact` says the postage comes from the optimiser rather than an estimate;
- * `planned` holds what the last optimise changed, by item id.
+ * `planned` holds what the last optimise changed, by item id; when it's present
+ * the totals are the optimiser's, otherwise an estimate.
  */
 export function StoreSection({
   store,
   planned,
-  exact,
   onExclude,
 }: {
   store: StoreGroup;
   planned: Map<string, PlannedFlags> | null;
-  exact: boolean;
   onExclude: () => void;
 }) {
+  const exact = planned !== null;
   const { storeShippingOverrides, setStoreShipping } = useWantList();
   const [collapsed, setCollapsed] = useState(false);
-  const copies = store.items.reduce((n, i) => n + itemQty(i), 0);
+  const copies = totalQty(store.items);
 
   return (
     <section className="rounded-lg border border-subtle bg-surface" aria-label={store.storeName}>
