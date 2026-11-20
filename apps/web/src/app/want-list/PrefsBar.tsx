@@ -2,7 +2,8 @@
 
 import { Dropdown, OptionItem, pillClass } from "@/app/Dropdown";
 import { Sheet } from "@/app/Sheet";
-import { FilterGroup } from "@/app/FilterGroup";
+import { FILTER_CLEAR_CLASS, FilterGroup, selectionSummary } from "@/app/FilterGroup";
+import { DEFAULT_PREFS } from "@/lib/optimiser/types";
 import { CONDITIONS, type SavedPrefs } from "@/lib/optimiser/want-list";
 import { useEffect, useState, type ReactNode } from "react";
 import type { SetFamily } from "@/lib/set-families";
@@ -312,7 +313,7 @@ export function PrefsSheet({
 }) {
   const c = usePrefsControls(prefs, stores, onChange);
   const conditionsSet = activePrefCount({ ...prefs, maxStores: null, excludeStores: [] });
-  const conditionSummary = c.chosen.size === CONDITIONS.length ? "Any" : CONDITIONS.filter((x) => c.chosen.has(x)).join(", ");
+  const conditionSummary = c.chosen.size === CONDITIONS.length ? "Any" : selectionSummary(CONDITIONS.filter((x) => c.chosen.has(x)));
   const storesSummary = c.unticked === 0 ? "All" : `${c.storeList.length - c.unticked} of ${c.storeList.length}`;
   const { families } = useSetFamilies(prefs.excludeSets.length > 0);
 
@@ -322,6 +323,14 @@ export function PrefsSheet({
       onClose={onClose}
       side="left"
       title="Filters"
+      actions={activePrefCount(prefs) > 0 && (
+        <button
+          onClick={() => onChange({ conditions: [...DEFAULT_PREFS.conditions], maxStores: null, excludeStores: [], excludeSets: [] }, "clear")}
+          className={FILTER_CLEAR_CLASS}
+        >
+          Clear
+        </button>
+      )}
       className="sm:hidden"
       footer={<button onClick={onClose} className="flex h-11 w-full items-center justify-center rounded-lg bg-cta font-medium text-cream">Done</button>}
     >

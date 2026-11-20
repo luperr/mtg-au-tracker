@@ -8,7 +8,7 @@ import {
 } from "@/lib/search-v2/params";
 import type { FacetCount, Facets } from "@/lib/search-v2/types";
 import { useSearchNav } from "./SearchNav";
-import { FilterGroup } from "@/app/FilterGroup";
+import { FILTER_CLEAR_CLASS, FilterGroup, selectionSummary } from "@/app/FilterGroup";
 
 /** Group order in the sidebar — most-used first. */
 const GROUP_ORDER: FacetKey[] = ["store", "set", "condition", "finish", "treatment"];
@@ -53,7 +53,7 @@ export function ClearFiltersButton() {
   const { state, navigate } = useSearchNav();
   if (activeFilterCount(state) === 0) return null;
   return (
-    <button onClick={() => navigate(clearFilters(state))} className="px-1.5 text-[11px] text-cream-dim/60 hover:text-cream transition-colors">
+    <button onClick={() => navigate(clearFilters(state))} className={FILTER_CLEAR_CLASS}>
       Clear
     </button>
   );
@@ -64,7 +64,7 @@ export function ClearFiltersButton() {
  * in printing and listing views, where a tile is one listing's price. Keyed on the
  * range by its parent, so Clear, back or a remembered filter remounts it fresh.
  */
-function PriceGroup() {
+function PriceGroup({ folded }: { folded: boolean }) {
   const { state, navigate } = useSearchNav();
   const [min, setMin] = useState(state.price.min?.toString() ?? "");
   const [max, setMax] = useState(state.price.max?.toString() ?? "");
@@ -75,7 +75,13 @@ function PriceGroup() {
   }
 
   return (
-    <FilterGroup title="Price" active={priceFilterApplies(state) ? 1 : 0} defaultOpen={false}>
+    <FilterGroup
+      title="Price"
+      active={priceFilterApplies(state) ? 1 : 0}
+      summary={folded ? priceSummary(state.price) : undefined}
+      defaultOpen={false}
+      openIfActive={!folded}
+    >
       <form onSubmit={apply} className="flex items-center gap-1.5 px-3">
         <input type="number" inputMode="decimal" min={0} step="0.01" value={min} onChange={(e) => setMin(e.target.value)}
           placeholder="Min $" aria-label="Minimum price" className={INPUT_CLASS} />
@@ -88,7 +94,15 @@ function PriceGroup() {
   );
 }
 
-function FacetGroup({ facetKey, options }: { facetKey: FacetKey; options: FacetCount[] }) {
+function priceSummary({ min, max }: { min: number | null; max: number | null }): string {
+  if (min !== null && max !== null) return `$${min}–$${max}`;
+  if (min !== null) return `$${min}+`;
+  if (max !== null) return `up to $${max}`;
+  return "Any";
+}
+
+/** `folded`: the phone drawer — groups start closed with a summary, like the want list's filters. */
+function FacetGroup({ facetKey, options, folded }: { facetKey: FacetKey; options: FacetCount[]; folded: boolean }) {
   const { state, rendered, navigate } = useSearchNav();
   const [expanded, setExpanded] = useState(false);
   const [search, setSearch] = useState("");
@@ -111,7 +125,13 @@ function FacetGroup({ facetKey, options }: { facetKey: FacetKey; options: FacetC
   const visible = needle || expanded ? matches : matches.slice(0, COLLAPSED_LIMIT);
 
   return (
-    <FilterGroup title={FACET_TITLES[facetKey]} active={selected.length}>
+    <FilterGroup
+      title={FACET_TITLES[facetKey]}
+      active={selected.length}
+      summary={folded ? selectionSummary(selected.map((v) => facetValueLabel(facetKey, v, all.find((o) => o.value === v)?.label))) : undefined}
+      defaultOpen={!folded}
+      openIfActive={!folded}
+    >
           {searchable && (
             <div className="px-3 pb-1.5">
               <input
@@ -161,8 +181,8 @@ export function FilterSidebar({ facets, framed = true }: { facets: Facets; frame
   const { state } = useSearchNav();
   return (
     <div className={`flex flex-col divide-y divide-subtle/60 ${framed ? "rounded-lg border border-subtle bg-surface overflow-hidden" : ""}`}>
-      {GROUP_ORDER.map((key) => <FacetGroup key={key} facetKey={key} options={facets[key]} />)}
-      {state.view !== "card" && <PriceGroup key={`${state.price.min}:${state.price.max}`} />}
+      {GROUP_ORDER.map((key) => <FacetGroup key={key} facetKey={key} options={facets[key]} folded={!framed} />)}
+      {state.view !== "card" && <PriceGroup key={`${state.price.min}:${state.price.max}`} folded={!framed} />}
     </div>
   );
 }

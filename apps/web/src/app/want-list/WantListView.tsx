@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useWantList, type WantListItem } from "@/app/WantListContext";
 import { AffiliateDisclosure } from "@/app/AffiliateDisclosure";
 import { pillClass } from "@/app/Dropdown";
+import { filtersButtonClass } from "@/app/FilterGroup";
 import { EBAY_STORE_ID } from "@/lib/affiliate";
 import { cardHref, fmtCents, plural } from "@/lib/utils";
 import { track } from "@/lib/analytics";
@@ -252,7 +253,7 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
               <PrefsBar prefs={prefs} stores={stores} onChange={changePrefs}>{listActions}</PrefsBar>
             </div>
             <div className="mb-3 flex items-center gap-4 sm:hidden">
-              <button onClick={() => setPrefsOpen(true)} className={`${pillClass(activePrefCount(prefs) > 0, "rounded-lg")} min-h-10`}>
+              <button onClick={() => setPrefsOpen(true)} className={filtersButtonClass(activePrefCount(prefs) > 0)}>
                 Filters{activePrefCount(prefs) > 0 && ` (${activePrefCount(prefs)})`}
               </button>
               <div className="ml-auto flex items-center gap-4">{listActions}</div>

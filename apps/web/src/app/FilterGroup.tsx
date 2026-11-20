@@ -2,6 +2,21 @@
 
 import { useState } from "react";
 import { InfoTip } from "./InfoTip";
+import { pillClass } from "./Dropdown";
+
+/** The phone "Filters (n)" button that opens a filter drawer — search and the want list share it. */
+export function filtersButtonClass(active: boolean): string {
+  return `${pillClass(active)} min-h-9`;
+}
+
+/** "Clear" in a filter drawer's header (and the search sidebar's). */
+export const FILTER_CLEAR_CLASS = "px-1.5 py-2 text-[11px] text-cream-dim/60 hover:text-cream transition-colors";
+
+/** A folded section's summary of what's picked: "Any", the labels if one or two, else "3 selected". */
+export function selectionSummary(labels: string[]): string {
+  if (labels.length === 0) return "Any";
+  return labels.length <= 2 ? labels.join(", ") : `${labels.length} selected`;
+}
 
 /**
  * A collapsible filter section — the search sidebar's groups and the want list's filter
