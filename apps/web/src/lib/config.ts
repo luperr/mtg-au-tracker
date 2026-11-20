@@ -10,9 +10,13 @@
 export const RATE_LIMIT_SEARCH_PER_MINUTE = 60;
 export const RATE_LIMIT_CONTACT_PER_HOUR = 3;
 export const RATE_LIMIT_BULK_LOOKUP_PER_MINUTE = 10;
-export const RATE_LIMIT_OPTIMIZE_PER_MINUTE = 5;
-/** Higher than v1's: every preference change re-runs the v2 optimiser. */
-export const RATE_LIMIT_OPTIMIZE_V2_PER_MINUTE = 20;
+/**
+ * Each Optimise press, store-count chip and "Don't use this store" is a run, and a run is up
+ * to ~2s of CPU on the web process's one event loop (OPTIMIZE_DEADLINE_MS + alternatives).
+ * 15 leaves room to click through the chips; 30 let one client stall the site for a minute
+ * of every minute.
+ */
+export const RATE_LIMIT_OPTIMIZE_PER_MINUTE = 15;
 export const RATE_LIMIT_READ_PER_MINUTE = 120;
 
 // ── Want List optimiser ──────────────────────────────────────────────────────
@@ -36,7 +40,7 @@ export const OPTIMIZE_DEADLINE_MS = 1500;
 export const OPTIMIZE_EXACT_MAX_STORES = 18;
 
 /**
- * v2 only: a separate budget (ms) for the cheapest 1-, 2-, 3-… store plans shown
+ * A separate budget (ms) for the cheapest 1-, 2-, 3-… store plans shown
  * beside the best one. Each is a capped search, so branch and bound usually
  * finishes them in milliseconds even when the uncapped search can't run.
  */
@@ -75,6 +79,13 @@ export const SEARCH_CANDIDATE_CAP = 2000;
 export const SEARCH_FUZZY_MIN_SIMILARITY = 0.6;
 export const MAX_BULK_CARDS = 200;
 export const MAX_CARD_QTY = 99;
+/** Highest "max stores" the optimiser accepts — more is no constraint at all, the roster is ~40. */
+export const MAX_STORES_CAP = 20;
+/** Most set codes a want list may exclude — a set plus its sub-sets is several codes. */
+export const MAX_EXCLUDED_SETS = 300;
+
+/** Below Tailwind's sm breakpoint: where pickers open as bottom sheets instead of popovers. */
+export const PHONE_MEDIA_QUERY = "(max-width: 639.98px)";
 
 // ── Price trends ─────────────────────────────────────────────────────────────
 

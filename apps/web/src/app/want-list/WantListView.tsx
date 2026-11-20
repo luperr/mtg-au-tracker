@@ -1,649 +1,314 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useWantList, toWantListItem, type WantListItem } from "@/app/WantListContext";
-import { fmtAUD, fmtPostage } from "@/lib/utils";
-import { track } from "@/lib/analytics";
-import { SetSymbol } from "@/app/SetSymbol";
-import { BuyLink } from "@/app/BuyLink";
+import React, { useEffect, useRef, useState } from "react";
+import { useWantList, type WantListItem } from "@/app/WantListContext";
 import { AffiliateDisclosure } from "@/app/AffiliateDisclosure";
-import { computePopupPos, CardImagePopup } from "@/app/CardMagnifier";
-import { ImportCards } from "./ImportCards";
-import type { OptimizeResult } from "@/app/api/optimize/route";
-import { cardHref } from "@/lib/utils";
-import { variantBadgeWithFoil } from "@/lib/variant-utils";
-import { CardThumb } from "@/app/CardThumb";
-import { PrintingSelector, type StorePrinting } from "./PrintingSelector";
-import { OptimiseModal } from "./OptimiseModal";
+import { pillClass } from "@/app/Dropdown";
+import { filtersButtonClass } from "@/app/FilterGroup";
+import { EBAY_STORE_ID } from "@/lib/affiliate";
+import { cardHref, fmtCents, plural } from "@/lib/utils";
+import { track } from "@/lib/analytics";
+import {
+  applyPlan, listStores, listTotals, parseSavedPrefs, requestPrefs, toLines, totalQty, withPlan, PREFS_KEY,
+  type PlannedFlags, type SavedPrefs, type StoreGroup,
+} from "@/lib/optimiser/want-list";
+import { toCents, type OptimiseResponse, type Unavailable } from "@/lib/optimiser/types";
+import type { StoreSummary } from "@/lib/store-shipping";
+import { ImportCards, type ImportSummary } from "./ImportCards";
+import { PrefsBar, PrefsSheet, activePrefCount } from "./PrefsBar";
+import { StoreSection } from "./StoreSection";
+import { CardPreviewProvider } from "./CardPreview";
+import { useOptimiser } from "./useOptimiser";
 
-// ── Editable postage row ──────────────────────────────────────────────────────
-
-function EditablePostageRow({
-  amount,
-  isOverride,
-  onSave,
-}: {
-  amount: number | null;
-  isOverride: boolean;
-  onSave: (amount: number | null) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-
-  function startEdit() {
-    setDraft(amount !== null ? String(amount) : "");
-    setEditing(true);
-  }
-
-  function commit() {
-    const n = parseFloat(draft);
-    if (!isNaN(n) && n >= 0) onSave(n);
-    setEditing(false);
-  }
-
-  if (editing) {
-    return (
-      <div className="flex items-center gap-1.5 text-xs text-cream-dim/50">
-        <span>Postage: $</span>
-        <input
-          autoFocus
-          type="number"
-          min="0"
-          step="0.50"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
-          className="w-14 bg-muted border border-accent-border rounded px-1 py-0.5 text-cream text-xs text-right [appearance:textfield]"
-        />
-        <button
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => { onSave(0); setEditing(false); }}
-          className="text-[10px] text-cream-dim/40 hover:text-green-400 transition-colors whitespace-nowrap"
-        >
-          In-store
-        </button>
-        {isOverride && (
-          <button
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => { onSave(null); setEditing(false); }}
-            className="text-[10px] text-cream-dim/30 hover:text-cream-dim/60 transition-colors"
-          >
-            Reset
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-1 text-xs text-cream-dim/50">
-      <button
-        onClick={startEdit}
-        title="Click to edit postage"
-        className="flex items-center gap-1 bg-muted border border-accent-border rounded px-1.5 py-0.5 hover:border-accent-light/50 hover:text-cream-dim transition-colors cursor-pointer"
-      >
-        {amount === null
-          ? "Postage: unknown"
-          : amount === 0
-          ? "Postage: free (in-store)"
-          : `Postage: ${fmtAUD(amount)}`}
-        {isOverride && <span className="ml-1 text-[9px] text-accent-light/60">·edited</span>}
-      </button>
-      {!isOverride && amount !== null && (
-        <span
-          className="cursor-help text-[10px] text-cream-dim/30"
-          title="Estimated. Postage is charged once per order and the actual amount may vary at checkout."
-        >
-          ⓘ
-        </span>
-      )}
-    </div>
-  );
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/** Keyed by storeId — names aren't unique keys, ids are. */
-function groupByStore(items: WantListItem[]): Map<string, WantListItem[]> {
-  const map = new Map<string, WantListItem[]>();
-  for (const item of items) {
-    const group = map.get(item.storeId) ?? [];
-    group.push(item);
-    map.set(item.storeId, group);
-  }
-  return map;
-}
-
-/** Returns the shipping charge for a store group.
- *  eBay items are per-seller so each row has its own shippingAud → sum them.
- *  Other stores charge flat rate per order — user overrides take precedence,
- *  then DB value, then the store's registered flat rate. */
-function getStoreShipping(
-  items: WantListItem[],
-  overrides: Record<string, number>,
-  storeShippingAud: Record<string, number | null>
-): { isPerItem: boolean; flatAmount: number | null } {
-  const storeId = items[0]?.storeId ?? "";
-  if (storeId === "ebay_au") {
-    return { isPerItem: true, flatAmount: null };
-  }
-  if (storeId in overrides) {
-    return { isPerItem: false, flatAmount: overrides[storeId] };
-  }
-  const fromDb = items.find((i) => i.shippingAud !== null)?.shippingAud;
-  const flatAmount = fromDb !== undefined ? fromDb : (storeShippingAud[storeId] ?? null);
-  return { isPerItem: false, flatAmount };
-}
-
-/** The item's outbound link, shared by the phone row and the table so attribution is wired once. Nothing when the listing has no URL. */
-function ItemBuyLink({ item, className }: { item: WantListItem; className: string }) {
-  if (!item.url) return null;
-  return (
-    <BuyLink
-      href={item.url}
-      storeId={item.storeId}
-      card={item.cardName}
-      price={item.priceAud}
-      source="want-list"
-      printingId={item.printingId}
-      className={className}
-    />
-  );
-}
+const UNAVAILABLE_REASON: Record<Unavailable["reason"], string> = {
+  "no-listings": "not in stock anywhere",
+  "no-match": "none in stock that match your preferences",
+  // Also what a store cap or unticked stores produce, so it names the stores, not stock.
+  short: "not enough copies at the stores this plan can use",
+};
 
 /**
- * One want-list item below `sm`, where the six-column table doesn't fit. The art stands in
- * for the desktop hover preview, and every control is sized for a thumb.
+ * The last optimise: its answer, what it changed, the list before it (for Undo),
+ * and the list, prefs and postage it produced — compared by reference, since
+ * every edit makes a new one.
  */
-function MobileItemRow({
-  item, isPerItem, onRemove, onPrintingChange,
-}: {
-  item: WantListItem;
-  isPerItem: boolean;
-  onRemove: () => void;
-  onPrintingChange: (p: StorePrinting) => void;
-}) {
-  const href = cardHref(item.cardSlug, item.cardId);
-  return (
-    <li className="flex gap-3 px-3 py-2.5">
-      <a href={href} className="shrink-0" tabIndex={-1} aria-hidden>
-        <CardThumb uri={item.imageUri} className="w-12" />
-      </a>
-      <div className="flex min-w-0 flex-1 flex-col justify-between gap-1.5">
-        <div className="flex items-start justify-between gap-2">
-          <a href={href} className="text-sm font-medium leading-snug text-cream">{item.cardName}</a>
-          <span className="shrink-0 text-right">
-            <span className="block text-sm font-semibold text-price tabular-nums">{fmtAUD(item.priceAud)}</span>
-            {isPerItem && <span className="block text-[11px] text-cream-dim/50">+ {fmtPostage(item.shippingAud)} post</span>}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <PrintingSelector item={item} onSelect={onPrintingChange} variant="chip" />
-          <div className="ml-auto flex items-center gap-2">
-            <ItemBuyLink
-              item={item}
-              className="flex h-8 items-center rounded border border-price/40 px-3 text-xs font-medium text-price active:bg-price/10"
-            />
-            <button
-              onClick={onRemove}
-              aria-label={`Remove ${item.cardName}`}
-              className="-mr-1 flex h-9 w-9 items-center justify-center rounded text-lg text-cream-dim/50 active:bg-red-900/20 active:text-red-400"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-      </div>
-    </li>
-  );
-}
+type Optimised = {
+  data: OptimiseResponse;
+  planned: Map<string, PlannedFlags>;
+  before: WantListItem[];
+  after: WantListItem[];
+  prefs: SavedPrefs;
+  overrides: Record<string, number>;
+};
 
-// ── Main component ────────────────────────────────────────────────────────────
+/**
+ * The want list, grouped by the store each card is bought from. Optimise asks the
+ * optimiser for the cheapest plan under the preferences and moves every card to
+ * its planned listing in one go, with Undo. Until then — or once the list or
+ * preferences change — totals are an estimate from each store's flat postage.
+ */
+export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates: Record<string, number | null> }) {
+  const { items, clearAll, replaceItems, storeShippingOverrides } = useWantList();
+  const [prefs, setPrefs] = useState<SavedPrefs>(() => parseSavedPrefs(null));
+  const [optimised, setOptimised] = useState<Optimised | null>(null);
+  const [imported, setImported] = useState<ImportSummary | null>(null);
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  // Set when a run's answer was dropped because the list changed while it ran.
+  const [changedDuringRun, setChangedDuringRun] = useState(false);
+  // The list as it is now, for a run to compare against when its answer arrives.
+  const itemsRef = useRef(items);
+  useEffect(() => { itemsRef.current = items; }, [items]);
+  // Bumped per run; an answer from anything but the latest run is dropped.
+  const runRef = useRef(0);
+  const optimiser = useOptimiser();
 
-export function WantListView({ storeShippingAud }: { storeShippingAud: Record<string, number | null> }) {
-  const { items, removeItem, addItem, clearAll, totalCount, storeShippingOverrides, setStoreShipping } = useWantList();
-  const byStore = groupByStore(items);
-  const [optimiseOpen, setOptimiseOpen] = useState(false);
-  const [cardPreview, setCardPreview] = useState<{ uri: string; top: number; left: number } | null>(null);
-
-  function showCardPreview(uri: string, e: React.MouseEvent<HTMLElement>) {
-    const { top, left } = computePopupPos(e.currentTarget.getBoundingClientRect(), 244, 340);
-    setCardPreview({ uri, top, left });
-  }
-  const [optimiseLoading, setOptimiseLoading] = useState(false);
-  const [optimiseResult, setOptimiseResult] = useState<OptimizeResult | null>(null);
-  const [optimiseError, setOptimiseError] = useState<string | null>(null);
-  const [lockedPrintingIds, setLockedPrintingIds] = useState<Set<string>>(new Set());
-  const [checkedCardIds, setCheckedCardIds] = useState<Set<string>>(new Set());
-  const [unchangedExpanded, setUnchangedExpanded] = useState(false);
-  const [collapsedStores, setCollapsedStores] = useState<Set<string>>(new Set());
-
-  function toggleStore(storeId: string) {
-    setCollapsedStores((prev) => {
-      const next = new Set(prev);
-      if (next.has(storeId)) next.delete(storeId);
-      else next.add(storeId);
-      return next;
-    });
-  }
-
-  async function runOptimise(locked: Set<string>, rerun: boolean) {
-    setOptimiseLoading(true);
-    setOptimiseError(null);
+  useEffect(() => {
     try {
-      const res = await fetch("/api/optimize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((i) => ({ cardId: i.cardId, cardName: i.cardName, printingId: i.printingId })),
-          lockedPrintingIds: [...locked],
-          shippingOverrides: storeShippingOverrides,
-        }),
-      });
-      if (!res.ok) {
-        throw new Error(
-          res.status === 429 ? "Too many optimiser runs — wait a minute and try again."
-          : res.status === 400 ? ((await res.json().catch(() => null))?.error ?? "Your want list couldn't be read.")
-          : "The optimiser failed. Try again in a moment.",
-        );
-      }
-      const data = await res.json() as OptimizeResult;
-      setOptimiseResult(data);
-      // Default: check all changed cards
-      const currentByCardId = new Map(items.map((i) => [i.cardId, i]));
-      const changed = data.assignments
-        .filter((a) => {
-          const cur = currentByCardId.get(a.cardId);
-          return cur && (a.printingId !== cur.printingId || a.storeId !== cur.storeId);
-        })
-        .map((a) => a.cardId);
-      setCheckedCardIds(new Set(changed));
-      // Whole dollars: enough to tell "saved nothing" from "saved $40" without logging the basket.
-      track("optimise-run", {
-        items: items.length,
-        changed: changed.length,
-        stores: data.storeBreakdown.length,
-        unavailable: data.unavailable.length,
-        saving: Math.round(grandTotal - data.totalCost),
-        rerun,
-      });
-    } catch (err) {
-      track("optimise-run", { items: items.length, error: true });
-      // Keep the modal open on its error state, which offers a retry.
-      setOptimiseError(err instanceof Error && err.message ? err.message : "The optimiser failed. Try again in a moment.");
-    } finally {
-      setOptimiseLoading(false);
+      setPrefs(parseSavedPrefs(localStorage.getItem(PREFS_KEY)));
+    } catch {
+      // storage blocked: defaults stand
     }
-  }
+  }, []);
 
-  function handleOptimise() {
-    setOptimiseOpen(true);
-    setOptimiseResult(null);
-    setLockedPrintingIds(new Set());
-    setCheckedCardIds(new Set());
-    setUnchangedExpanded(false);
-    runOptimise(new Set(), false);
-  }
-
-  function handleReoptimise() {
-    runOptimise(lockedPrintingIds, true);
-  }
-
-  function handleToggleLock(cardId: string) {
-    const cur = items.find((i) => i.cardId === cardId);
-    if (!cur) return;
-    setLockedPrintingIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(cur.printingId)) next.delete(cur.printingId);
-      else next.add(cur.printingId);
-      return next;
-    });
-  }
-
-  function handleToggleChecked(cardId: string) {
-    setCheckedCardIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(cardId)) next.delete(cardId);
-      else next.add(cardId);
-      return next;
-    });
-  }
-
-  function handleToggleAll(cardIds: string[]) {
-    const allChecked = cardIds.every((id) => checkedCardIds.has(id));
-    if (allChecked) {
-      setCheckedCardIds((prev) => {
-        const next = new Set(prev);
-        cardIds.forEach((id) => next.delete(id));
-        return next;
-      });
-    } else {
-      setCheckedCardIds((prev) => new Set([...prev, ...cardIds]));
+  function changePrefs(patch: Partial<SavedPrefs>, pref: string): SavedPrefs {
+    const next = { ...prefs, ...patch };
+    setPrefs(next);
+    track("optimise-pref", { pref });
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify(next));
+    } catch {
+      // not persisted; still applies this visit
     }
+    return next;
   }
 
-  function applyOptimisedPlan() {
-    if (!optimiseResult) return;
-    let applied = 0;
-    for (const a of optimiseResult.assignments) {
-      if (!checkedCardIds.has(a.cardId)) continue;
-      const current = items.find((i) => i.cardId === a.cardId);
-      if (!current) continue;
-      if (current.storeId === a.storeId && current.printingId === a.printingId) continue;
-      removeItem(current.id);
-      addItem(toWantListItem(a, current));
-      applied++;
+  // The plan still describes the list only while neither the list, the prefs nor the postage have moved.
+  const fresh = optimised !== null && optimised.after === items && optimised.prefs === prefs
+    && optimised.overrides === storeShippingOverrides;
+
+  async function optimise(withPrefs: SavedPrefs = prefs) {
+    const run = ++runRef.current;
+    const sent = items;
+    // Undo goes back to the list from before the first run: a later run with only prefs or
+    // postage changed (a chip, "Don't use this store", a new condition) keeps that original.
+    const before = optimised !== null && optimised.after === items ? optimised.before : items;
+    setChangedDuringRun(false);
+    const data = await optimiser.run({ lines: toLines(sent), prefs: requestPrefs(withPrefs, storeShippingOverrides) });
+    if (!data || run !== runRef.current) return; // failed, or a newer run has taken over
+    // The plan was for the list as sent. If it changed while the request ran, applying the
+    // plan would silently throw those edits away — keep them, and ask for another run.
+    if (itemsRef.current !== sent) {
+      setChangedDuringRun(true);
+      return;
     }
-    track("optimise-apply", { items: items.length, applied });
-    setOptimiseOpen(false);
-    setOptimiseResult(null);
-    setLockedPrintingIds(new Set());
+    const { items: after, flags: planned } = applyPlan(sent, data);
+    replaceItems(after);
+    setOptimised({ data, planned, before, after, prefs: withPrefs, overrides: storeShippingOverrides });
   }
 
-  // Compute totals
-  let grandCards = 0;
-  let grandPostage = 0;
-  for (const storeItems of byStore.values()) {
-    grandCards += storeItems.reduce((s, i) => s + i.priceAud, 0);
-    const { isPerItem, flatAmount } = getStoreShipping(storeItems, storeShippingOverrides, storeShippingAud);
-    if (isPerItem) {
-      grandPostage += storeItems.reduce((s, i) => s + (i.shippingAud ?? 0), 0);
-    } else {
-      grandPostage += flatAmount ?? 0;
-    }
-  }
-  const grandTotal = grandCards + grandPostage;
-  const hasUnknownPostage = Array.from(byStore.values()).some((storeItems) => {
-    const shipping = getStoreShipping(storeItems, storeShippingOverrides, storeShippingAud);
-    return !shipping.isPerItem && shipping.flatAmount === null;
-  });
-
-  function handlePrintingChange(item: WantListItem, p: StorePrinting) {
-    removeItem(item.id);
-    addItem(toWantListItem(p, item));
-    track("want-list-edit", { action: "swap", source: "want-list" });
+  function undo() {
+    if (!optimised) return;
+    replaceItems(optimised.before);
+    setOptimised(null);
+    track("optimise-undo", {});
   }
 
-  function handleRemove(item: WantListItem) {
-    removeItem(item.id);
-    track("want-list-edit", { action: "remove", source: "want-list" });
+  function handleExclude(store: StoreGroup) {
+    track("optimise-exclude-store", { store: store.storeId });
+    optimise(changePrefs({ excludeStores: [...prefs.excludeStores, store.storeId] }, "stores"));
   }
 
-  function handleClearAll() {
-    track("want-list-edit", { action: "clear", source: "want-list", items: items.length });
-    clearAll();
+  function handleMaxStores(n: number | null) {
+    track("optimise-alt", { stores: n });
+    optimise(changePrefs({ maxStores: n }, "max-stores"));
   }
+
+  // A store's flat postage, the user's override first; null (no rate) means per item, as the optimiser reads it.
+  const flatCents = (storeId: string) => {
+    if (rates[storeId] == null) return null;
+    return toCents(storeShippingOverrides[storeId] ?? rates[storeId]!);
+  };
+  // The last optimise, only while it still describes the list.
+  const current = fresh ? optimised : null;
+  const plan = current?.data ?? null;
+  // The plan's exact postage where it's current; the header sums the same groups the page lists.
+  const storeList = withPlan(listStores(items, flatCents), plan);
+  const totals = listTotals(storeList);
+
+  const unavailable = plan?.unavailable ?? [];
+  const copies = totalQty(items);
+  const locked = items.filter((i) => i.printingMode === "exact").length;
+
+  function unlockAll() {
+    replaceItems(items.map((i) => (i.printingMode === "exact" ? { ...i, printingMode: "any" } : i)));
+    track("optimise-unlock-all", { cards: locked });
+  }
+
+  const summary = (
+    <>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-xl font-bold text-price">
+                      {totals.estimated ? "~" : ""}{fmtCents(totals.totalCents)}
+                    </span>
+                    <span className="text-sm text-cream-dim">
+                      {plural(totals.storeCount, "store")} · postage {fmtCents(totals.postageCents)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-cream-dim">
+                    {plan ? (
+                      <>
+                        {plan.savingsCents !== null && plan.savingsCents > 0
+                          ? <span className="text-green-400">Optimised — saved {fmtCents(plan.savingsCents)}. </span>
+                          : <span>Optimised — {plan.savingsCents === 0 ? "already the cheapest. " : "done. "}</span>}
+                        <button onClick={undo} className="text-accent-light hover:underline">Undo</button>
+                      </>
+                    ) : changedDuringRun ? (
+                      "Your list changed while optimising, so nothing was moved — optimise again."
+                    ) : optimised ? (
+                      "List or preferences changed — optimise again for the cheapest plan."
+                    ) : (
+                      "Estimated. Optimise to find the cheapest stores for your preferences."
+                    )}
+                  </p>
+                </div>
+                <button
+                  onClick={() => optimise()}
+                  disabled={optimiser.loading || fresh}
+                  className="shrink-0 rounded-lg bg-cta px-4 py-3 sm:py-2 text-sm font-semibold text-white hover:bg-price disabled:opacity-60 disabled:hover:bg-cta transition-colors"
+                >
+                  {optimiser.loading ? "Optimising…" : fresh ? "Optimised ✓" : "✦ Optimise"}
+                </button>
+              </div>
+
+              {optimiser.error && (
+                <div role="alert" className="mt-1 flex flex-wrap items-center gap-3 text-sm">
+                  <span className="text-red-400">{optimiser.error}</span>
+                  <button onClick={() => optimise()} className="text-accent-light hover:underline">Try again</button>
+                </div>
+              )}
+
+              {plan && (plan.alternatives.length > 0 || prefs.maxStores !== null) && (
+                <div className="-mx-4 mt-2 flex gap-2 overflow-x-auto px-4 pb-0.5" role="group" aria-label="Number of stores">
+                  {[...plan.alternatives.map((a) => ({ n: a.storeCount, total: a.totalCents, active: false })),
+                    { n: plan.plan.totals.storeCount, total: plan.plan.totals.totalCents, active: true }].map((c) => (
+                    <button
+                      key={c.n}
+                      onClick={() => !c.active && handleMaxStores(c.n)}
+                      disabled={optimiser.loading}
+                      aria-pressed={c.active}
+                      className={`${pillClass(c.active)} !py-1`}
+                    >
+                      {plural(c.n, "store")} · {fmtCents(c.total)}
+                    </button>
+                  ))}
+                  {prefs.maxStores !== null && (
+                    <button onClick={() => handleMaxStores(null)} disabled={optimiser.loading} className={`${pillClass(false)} !py-1`}>
+                      All stores
+                    </button>
+                  )}
+                </div>
+              )}
+    </>
+  );
+
+  const listActions = (
+    <>
+      {locked > 0 && (
+        <button onClick={unlockAll} className="whitespace-nowrap py-2 sm:py-0 text-xs text-cream-dim hover:text-cream transition-colors">
+          Unlock all ({locked})
+        </button>
+      )}
+      <button onClick={() => { track("want-list-edit", { action: "clear", source: "want-list", items: items.length }); clearAll(); setOptimised(null); }} className="whitespace-nowrap py-2 sm:py-0 text-xs text-cream-dim hover:text-red-400 transition-colors">
+        Clear all
+      </button>
+    </>
+  );
 
   return (
-    <div className="max-w-3xl mx-auto">
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
+    <CardPreviewProvider>
+      <div className="mx-auto max-w-3xl">
+        <div className="mb-3">
           <h1 className="text-2xl font-bold text-cream">Want List</h1>
-          {totalCount > 0 && (
-            <p className="text-sm text-cream-dim/60 mt-0.5">
-              {totalCount} item{totalCount !== 1 ? "s" : ""} ·{" "}
-              <span className="text-price font-semibold">{fmtAUD(grandCards)}</span>
-              {grandPostage > 0 && (
-                <span className="text-cream-dim/40"> + ~{fmtAUD(grandPostage)} postage</span>
-              )}
-            </p>
+          {items.length > 0 && (
+            <p className="mt-0.5 text-sm text-cream-dim">{plural(items.length, "card")} · {plural(copies, "copy", "copies")}</p>
           )}
         </div>
-        {totalCount > 0 && (
-          <div className="flex items-center gap-3">
-            {/* Phones get Optimise in the sticky bar at the bottom instead. */}
-            <div className="hidden sm:flex items-center gap-1">
-              <button
-                onClick={handleOptimise}
-                title="Finds the cheapest available printing of each card across all stores. Lock cards in the review screen to keep their current printing."
-                className="rounded-lg border border-accent-border bg-accent-muted/40 px-3 py-1.5 text-xs font-semibold text-accent-light hover:bg-accent-muted transition-colors"
-              >
-                ✦ Optimise
+
+        {items.length === 0 ? (
+          <div className="mb-6 rounded-lg border border-subtle bg-surface px-6 py-10 text-center">
+            <p className="mb-1 text-cream">Your want list is empty.</p>
+            <p className="text-sm text-cream-dim">Paste a deck list below, or click <span className="text-price">+</span> on any card.</p>
+          </div>
+        ) : (
+          <>
+            {/* sm+: the summary sticks to the top. Phones get it as a bar at the bottom instead, below. */}
+            <div className="hidden sm:block sticky top-0 z-20 -mx-4 mb-3 border-b border-subtle bg-bg/95 px-4 py-2.5 backdrop-blur" aria-live="polite">
+              {summary}
+            </div>
+
+            {/* sm+: the preferences as pills. Phones: one Filters button opening them in a drawer, as search does. */}
+            <div className="mb-4 hidden sm:block">
+              <PrefsBar prefs={prefs} stores={stores} onChange={changePrefs}>{listActions}</PrefsBar>
+            </div>
+            <div className="mb-3 flex items-center gap-4 sm:hidden">
+              <button onClick={() => setPrefsOpen(true)} className={filtersButtonClass(activePrefCount(prefs) > 0)}>
+                Filters{activePrefCount(prefs) > 0 && ` (${activePrefCount(prefs)})`}
               </button>
-              <a
-                href="/faq#how-do-i-use-the-want-list-optimiser"
-                target="_blank"
-                rel="noopener noreferrer"
-                title="How does the optimiser work?"
-                className="w-4 h-4 rounded-full border border-accent-border text-cream-dim hover:text-cream hover:border-accent transition-colors flex items-center justify-center text-[10px] leading-none"
-              >
-                ?
-              </a>
+              <div className="ml-auto flex items-center gap-4">{listActions}</div>
             </div>
-            <button
-              onClick={handleClearAll}
-              className="text-xs text-cream-dim/40 hover:text-red-400 transition-colors"
-            >
-              Clear all
-            </button>
-          </div>
+            <PrefsSheet open={prefsOpen} onClose={() => setPrefsOpen(false)} prefs={prefs} stores={stores} onChange={changePrefs} />
+
+            {imported && (
+              <div role="status" className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-accent-border bg-surface px-3 py-2.5 text-sm">
+                <p className="text-cream-dim">
+                  <span className="text-cream">Added {plural(imported.added, "card")} ({plural(imported.copies, "copy", "copies")}).</span>
+                  {imported.alreadyListed > 0 && ` ${imported.alreadyListed} already on your list.`}
+                  {imported.notFound.length > 0 && ` Not found: ${imported.notFound.join(", ")}.`}
+                  {" "}Press Optimise for the cheapest stores.
+                </p>
+                <button onClick={() => setImported(null)} aria-label="Dismiss" className="shrink-0 text-cream-dim hover:text-cream">×</button>
+              </div>
+            )}
+
+            {unavailable.length > 0 && (
+              <div className="mb-3 rounded-lg border border-red-500/30 bg-surface px-3 py-2.5 text-sm">
+                <p className="font-semibold text-cream">Couldn’t find a better listing for</p>
+                <ul className="text-cream-dim">
+                  {unavailable.map((u) => (
+                    <li key={u.lineId}>
+                      <a href={cardHref(items.find((i) => i.id === u.lineId)?.cardSlug, u.cardId)} className="text-cream hover:text-accent">{u.cardName}</a>
+                      {" "}— {u.reason === "short" ? `${u.missing} short, ` : ""}{UNAVAILABLE_REASON[u.reason]}; left as it was
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="mb-8 space-y-3">
+              {storeList.map((store) => (
+                <React.Fragment key={store.storeId}>
+                  {/* EPN / ACL: disclosure must directly precede the affiliate links */}
+                  {store.storeId === EBAY_STORE_ID && <AffiliateDisclosure className="!mb-2 px-1" />}
+                  <StoreSection
+                    store={store}
+                    planned={current?.planned ?? null}
+                    onExclude={() => handleExclude(store)}
+                  />
+                </React.Fragment>
+              ))}
+            </div>
+
+            {/* Phones: total and Optimise in thumb reach. Sticky rather than fixed, so it settles above the import panel. */}
+            <div className="sm:hidden sticky bottom-0 z-20 -mx-4 mb-6 border-t border-subtle bg-bg/95 px-4 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] backdrop-blur" aria-live="polite">
+              {summary}
+            </div>
+          </>
         )}
+
+        <ImportCards onImported={(summary) => { setImported(summary); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
       </div>
-
-      {/* Empty state */}
-      {totalCount === 0 ? (
-        <div className="rounded-lg border border-subtle bg-surface px-6 py-12 text-center mb-8">
-          <p className="text-cream-dim/50 mb-2">Your want list is empty.</p>
-          <p className="text-xs text-cream-dim/30">
-            Browse cards and click <span className="text-price">+</span> on any price row to add it here.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-6 mb-8">
-          {Array.from(byStore.entries()).map(([storeId, storeItems]) => {
-            const storeName = storeItems[0].storeName;
-            const { isPerItem, flatAmount } = getStoreShipping(storeItems, storeShippingOverrides, storeShippingAud);
-            const itemsTotal = storeItems.reduce((s, i) => s + i.priceAud, 0);
-            const perItemPostage = isPerItem
-              ? storeItems.reduce((s, i) => s + (i.shippingAud ?? 0), 0)
-              : 0;
-            const storeTotal = itemsTotal + (isPerItem ? perItemPostage : (flatAmount ?? 0));
-
-            const collapsed = collapsedStores.has(storeId);
-            return (
-              <React.Fragment key={storeId}>
-              {/* EPN / ACL: disclosure must directly precede the affiliate links */}
-              {storeId === "ebay_au" && (
-                <AffiliateDisclosure className="!mb-2 px-1" />
-              )}
-              <div className="rounded-lg border border-subtle bg-surface">
-                {/* Store header */}
-                <button
-                  onClick={() => toggleStore(storeId)}
-                  aria-expanded={!collapsed}
-                  className="w-full flex items-center justify-between px-4 py-2.5 bg-cream-muted border-b border-subtle hover:bg-muted transition-colors rounded-t-lg"
-                >
-                  <span className="font-semibold text-cream text-sm">{storeName}</span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-cream-dim/50 text-xs">
-                      {storeItems.length} item{storeItems.length !== 1 ? "s" : ""}
-                      {collapsed && <span className="ml-2 text-price font-semibold">{fmtAUD(storeTotal)}</span>}
-                    </span>
-                    <span className="text-cream-dim/30 text-xs">{collapsed ? "▶" : "▼"}</span>
-                  </div>
-                </button>
-
-                {!collapsed && (
-                  <ul className="sm:hidden divide-y divide-subtle/60">
-                    {storeItems.map((item) => (
-                      <MobileItemRow
-                        key={item.id}
-                        item={item}
-                        isPerItem={isPerItem}
-                        onRemove={() => handleRemove(item)}
-                        onPrintingChange={(p) => handlePrintingChange(item, p)}
-                      />
-                    ))}
-                  </ul>
-                )}
-
-                {!collapsed && <table className="hidden sm:table w-full text-sm">
-                  <thead>
-                    <tr className="text-xs border-b border-subtle">
-                      <th className="px-3 py-1.5 text-left font-medium text-cream-dim">Card</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-cream-dim">Printing</th>
-                      {isPerItem && (
-                        <th className="px-2 py-1.5 text-right font-medium text-cream-dim">Postage</th>
-                      )}
-                      <th className="px-2 py-1.5 text-right font-medium text-cream-dim">Price</th>
-                      <th className="px-2 py-1.5" />
-                      <th className="px-2 py-1.5" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {storeItems.map((item) => (
-                      <tr
-                        key={item.id}
-                        className="border-b border-subtle/60 last:border-0 hover:bg-muted transition-colors"
-                      >
-                        {/* Card name */}
-                        <td className="px-3 py-1.5">
-                          <a
-                            href={cardHref(item.cardSlug, item.cardId)}
-                            className="font-medium text-cream hover:text-accent transition-colors"
-                            onMouseEnter={item.imageUri ? (e) => showCardPreview(item.imageUri!, e) : undefined}
-                            onMouseLeave={() => setCardPreview(null)}
-                          >
-                            {item.cardName}
-                          </a>
-                        </td>
-
-                        {/* Printing selector */}
-                        <td className="px-2 py-1.5">
-                          <PrintingSelector
-                            item={item}
-                            onSelect={(p) => handlePrintingChange(item, p)}
-                          />
-                        </td>
-
-                        {/* Per-item postage (eBay only) */}
-                        {isPerItem && (
-                          <td className="px-2 py-1.5 text-right text-xs text-cream-dim/50 whitespace-nowrap">
-                            {fmtPostage(item.shippingAud)}
-                          </td>
-                        )}
-
-                        {/* Price */}
-                        <td className="px-2 py-1.5 text-right text-price font-semibold whitespace-nowrap">
-                          {fmtAUD(item.priceAud)}
-                        </td>
-
-                        {/* Buy link */}
-                        <td className="px-2 py-1.5 text-right">
-                          <ItemBuyLink item={item} className="text-xs text-price hover:text-cream transition-colors" />
-                        </td>
-
-                        {/* Remove */}
-                        <td className="pr-2 py-1.5 text-right">
-                          <button
-                            onClick={() => handleRemove(item)}
-                            title="Remove"
-                            className="w-5 h-5 rounded flex items-center justify-center text-cream-dim/30 hover:text-red-400 hover:bg-red-900/20 transition-colors ml-auto"
-                          >
-                            ×
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>}
-
-                {!collapsed && <div className="flex justify-end px-3 py-2 sm:pr-[72px] border-t border-subtle bg-cream-muted/50 rounded-b-lg">
-                  <div className="flex flex-col items-end gap-0.5">
-                    {!isPerItem && (
-                      <EditablePostageRow
-                        amount={flatAmount}
-                        isOverride={storeId in storeShippingOverrides}
-                        onSave={(amt) => setStoreShipping(storeId, amt)}
-                      />
-                    )}
-                    {isPerItem && perItemPostage > 0 && (
-                      <span className="text-xs text-cream-dim/50">Postage: {fmtAUD(perItemPostage)}</span>
-                    )}
-                    <div className="text-sm">
-                      <span className="text-cream-dim/50 mr-2 text-xs">Store total</span>
-                      <span className="text-price font-bold">{fmtAUD(storeTotal)}</span>
-                      {!isPerItem && flatAmount === null && (
-                        <span className="text-[10px] text-cream-dim/30 ml-1">+ postage</span>
-                      )}
-                    </div>
-                  </div>
-                </div>}
-              </div>
-              </React.Fragment>
-            );
-          })}
-
-          {/* Grand total */}
-          <div className="flex justify-end">
-            <div className="rounded-lg border border-subtle bg-surface px-5 py-3 text-sm min-w-[200px]">
-              <div className="flex items-center justify-between gap-6">
-                <span className="text-cream-dim/60">Grand total</span>
-                <span className="text-price font-bold text-base">{fmtAUD(grandTotal)} AUD</span>
-              </div>
-              {grandPostage > 0 && (
-                <div className="text-right mt-0.5 text-[10px] text-cream-dim/40">
-                  incl. ~{fmtAUD(grandPostage)} estimated postage
-                </div>
-              )}
-              {hasUnknownPostage && (
-                <div className="text-right mt-0.5 text-[10px] text-cream-dim/30">
-                  + postage for some stores
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Card image preview on name hover */}
-      {cardPreview && (
-        <CardImagePopup uri={cardPreview.uri} top={cardPreview.top} left={cardPreview.left} width={244} />
-      )}
-
-      {/* Optimise modal */}
-      {optimiseOpen && (
-        <OptimiseModal
-          result={optimiseResult}
-          loading={optimiseLoading}
-          error={optimiseError}
-          currentItems={items}
-          currentPostage={grandPostage}
-          lockedPrintingIds={lockedPrintingIds}
-          checkedCardIds={checkedCardIds}
-          unchangedExpanded={unchangedExpanded}
-          onToggleLock={handleToggleLock}
-          onToggleChecked={handleToggleChecked}
-          onToggleAll={handleToggleAll}
-          onReoptimise={handleReoptimise}
-          onRetry={() => runOptimise(lockedPrintingIds, true)}
-          onApply={applyOptimisedPlan}
-          onDismiss={() => setOptimiseOpen(false)}
-          onToggleUnchanged={() => setUnchangedExpanded((v) => !v)}
-        />
-      )}
-
-      {/* Import section */}
-      <ImportCards />
-
-      {/* Phones: the total and the main action stay in reach however long the list gets.
-          Sticky rather than fixed, so it stops at the end of the page instead of covering the footer. */}
-      {totalCount > 0 && (
-        <div className="sm:hidden sticky bottom-0 z-40 -mx-4 mt-6 flex items-center justify-between gap-3 border-t border-subtle bg-surface/95 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur">
-          <div className="min-w-0">
-            <div className="text-[11px] text-cream-dim/60">{totalCount} item{totalCount !== 1 ? "s" : ""}{hasUnknownPostage ? " · + some postage" : ""}</div>
-            <div className="text-base font-bold text-price tabular-nums">{fmtAUD(grandTotal)}</div>
-          </div>
-          <button
-            onClick={handleOptimise}
-            className="flex h-11 shrink-0 items-center rounded-lg border border-accent-border bg-accent-muted/40 px-4 text-sm font-semibold text-accent-light active:bg-accent-muted"
-          >
-            ✦ Optimise
-          </button>
-        </div>
-      )}
-    </div>
+    </CardPreviewProvider>
   );
 }

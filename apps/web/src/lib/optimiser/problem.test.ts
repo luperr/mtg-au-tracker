@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { meetsCondition, offerFromRow, toCents, type OfferRow } from "./problem";
+import { isEligible, meetsCondition, offerFromRow, type OfferRow } from "./problem";
+import { toCents } from "./types";
 import { line, offer, prefs, problem, store } from "./test-fixtures";
 
 const stores = [store("a", 500), store("b", 700), store("ebay_au", null)];
@@ -41,15 +42,16 @@ describe("offerFromRow", () => {
 
 describe("meetsCondition", () => {
   it.each([
-    ["NM", "LP", true],
-    ["LP", "LP", true],
-    ["MP", "LP", false],
-    ["DMG", "HP", false],
-    ["HP", "any", true],
-    [null, "NM", true],
-    ["Signed", "NM", true],
-  ] as const)("%s against floor %s → %s", (condition, floor, ok) => {
-    expect(meetsCondition(condition, prefs({ minCondition: floor }))).toBe(ok);
+    ["NM", ["NM"], true],
+    ["LP", ["NM"], false],
+    ["LP", ["NM", "LP"], true],
+    ["MP", ["LP", "HP"], false],
+    ["HP", ["LP", "HP"], true],
+    ["DMG", ["NM", "LP", "MP", "HP"], false],
+    [null, ["NM"], true],
+    ["Signed", ["NM"], true],
+  ] as const)("%s against %j → %s", (condition, conditions, ok) => {
+    expect(meetsCondition(condition, prefs({ conditions: [...conditions] }))).toBe(ok);
   });
 });
 
@@ -63,8 +65,8 @@ describe("buildProblem eligibility", () => {
     ],
   };
 
-  it("applies the condition floor but lets unknown conditions through", () => {
-    expect(candidates([line("c1")], offers, stores, prefs({ minCondition: "LP" })))
+  it("applies the chosen conditions but lets unknown conditions through", () => {
+    expect(candidates([line("c1")], offers, stores, prefs({ conditions: ["NM", "LP"] })))
       .toEqual(["ebay_au:p1:null", "b:p2:NM", "a:p1:NM"]);
   });
 
@@ -73,20 +75,17 @@ describe("buildProblem eligibility", () => {
       .toEqual(["ebay_au:p1:null", "a:p1:HP"]);
   });
 
-  it("the finish pref applies to any-printing lines, and a line's own finish overrides it", () => {
-    expect(candidates([line("c1")], offers, stores, prefs({ finish: "nonfoil" })))
-      .not.toContain("b:p2:NM");
-    expect(candidates([line("c1", { finish: "foil" })], offers, stores, prefs({ finish: "nonfoil" })))
-      .toEqual(["b:p2:NM"]);
+  it("an any-printing line takes every printing, whatever its finish", () => {
+    expect(candidates([line("c1")], offers, stores)).toContain("b:p2:NM");
   });
 
-  it("drops excluded stores and, when asked, eBay", () => {
-    expect(candidates([line("c1")], offers, stores, prefs({ excludeStores: ["a"], includeEbay: false })))
+  it("drops excluded stores, eBay included", () => {
+    expect(candidates([line("c1")], offers, stores, prefs({ excludeStores: ["a", "ebay_au"] })))
       .toEqual(["b:p2:NM"]);
   });
 
   it("reports why a line has nothing to buy", () => {
-    const p = problem([line("c1", { finish: "etched" }), line("c2")], offers, stores);
+    const p = problem([line("c1"), line("c2")], offers, stores, prefs({ conditions: ["DMG"], excludeStores: ["ebay_au"] }));
     expect(p.unavailable).toEqual([
       { lineId: "c1", cardId: "c1", cardName: "c1", reason: "no-match", missing: 1 },
       { lineId: "c2", cardId: "c2", cardName: "c2", reason: "no-listings", missing: 1 },
@@ -116,5 +115,20 @@ describe("buildProblem eligibility", () => {
   it("applies postage overrides", () => {
     const p = problem([line("c1")], offers, stores, prefs({ postageOverrides: { b: 0 } }));
     expect(p.flat).toEqual([500, 0, null]);
+  });
+});
+
+describe("excluded sets", () => {
+  const tmnt = offer("a", 100, { setCode: "tmt", printingId: "p-tmt" });
+  const other = offer("a", 200, { setCode: "fdn", printingId: "p-fdn" });
+
+  it("rule a set's printings out for a card that takes any printing", () => {
+    const p = prefs({ excludeSets: ["tmt"] });
+    expect(isEligible(tmnt, line("c1"), p)).toBe(false);
+    expect(isEligible(other, line("c1"), p)).toBe(true);
+  });
+
+  it("leave a card locked to that printing alone — the lock is the more specific choice", () => {
+    expect(isEligible(tmnt, line("c1", { printing: "exact", printingId: "p-tmt" }), prefs({ excludeSets: ["tmt"] }))).toBe(true);
   });
 });

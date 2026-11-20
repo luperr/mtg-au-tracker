@@ -59,6 +59,7 @@ function WantListButton({
           removeItem(itemId);
           track("want-list-edit", { action: "remove", source: "card-detail" });
         } else {
+          // A price row is a specific printing, so the card is locked to it.
           addItem(toWantListItem({
             printingId: row.printing.id,
             setName: row.printing.setName,
@@ -75,7 +76,7 @@ function WantListButton({
             condition: row.condition,
             url: row.url,
             imageUri: row.printing.imageUri,
-          }, { cardId, cardSlug, cardName }));
+          }, { cardId, cardSlug, cardName }, { printingMode: "exact" }));
           track("want-list-add", { card: cardName, source: "card-detail" });
         }
       }}

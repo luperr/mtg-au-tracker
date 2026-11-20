@@ -2,79 +2,22 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 
-export interface WantListItem {
-  id: string;         // `${printingId}-${storeId}-${url ?? ""}` — unique per distinct listing
-  cardId: string;
-  cardSlug: string | null;
-  cardName: string;
-  printingId: string;
-  setName: string;
-  setCode: string;
-  rarity: string;
-  isFoil: boolean;
-  finish?: "nonfoil" | "foil" | "etched";   // optional: older localStorage items won't have this
-  borderColor?: string | null;               // for variant badge display
-  frameEffects?: string[];                   // for variant badge display
-  storeId: string;
-  storeName: string;
-  priceAud: number;
-  shippingAud: number | null;
-  condition: string | null;
-  url: string | null;
-  imageUri: string | null;
-}
+import { wantListItemId, type WantListItem } from "@/lib/want-list-item";
 
-/** The fields of a WantListItem that come from a specific store listing, as opposed to the card. */
-export type WantListListing = {
-  printingId: string;
-  setName: string;
-  setCode: string;
-  rarity: string;
-  isFoil: boolean;
-  finish?: "nonfoil" | "foil" | "etched";
-  borderColor?: string | null;
-  frameEffects?: string[];
-  storeId: string;
-  storeName: string;
-  priceAud: number;
-  shippingAud: number | null;
-  condition: string | null;
-  url: string | null;
-  imageUri: string | null;
-};
-
-/** The fields of a WantListItem that identify the card, independent of which listing was picked. */
-export type WantListCard = {
-  cardId: string;
-  cardSlug: string | null;
-  cardName: string;
-};
-
-/** The id recipe for a distinct listing — unique per printing/store/URL combination. */
-export function wantListItemId(printingId: string, storeId: string, url: string | null): string {
-  return `${printingId}-${storeId}-${url ?? ""}`;
-}
-
-/**
- * Builds a WantListItem from a listing + card pair, owning the id recipe
- * in exactly one place.
- */
-export function toWantListItem(listing: WantListListing, card: WantListCard): WantListItem {
-  return {
-    ...card,
-    ...listing,
-    id: wantListItemId(listing.printingId, listing.storeId, listing.url),
-  };
-}
+export { toWantListItem, wantListItemId, type WantListCard, type WantListItem, type WantListListing } from "@/lib/want-list-item";
 
 interface WantListContextValue {
   items: WantListItem[];
   addItem: (item: WantListItem) => void;
   removeItem: (id: string) => void;
+  updateItem: (id: string, patch: Partial<Pick<WantListItem, "qty" | "printingMode">>) => void;
+  /** Swaps one item for another in place (a new printing); merges into an existing item with the same id. */
+  replaceItem: (id: string, next: WantListItem) => void;
+  /** Swaps the whole list at once — applying an optimiser plan, or undoing one. */
+  replaceItems: (items: WantListItem[]) => void;
   hasItem: (id: string) => boolean;
   clearAll: () => void;
   totalCount: number;
-  totalPrice: number;
   storeShippingOverrides: Record<string, number>;
   setStoreShipping: (storeId: string, amount: number | null) => void;
 }
@@ -148,6 +91,22 @@ export function WantListProvider({ children }: { children: React.ReactNode }) {
     setItems((prev: WantListItem[]) => prev.filter((i: WantListItem) => i.id !== id));
   }, []);
 
+  const updateItem = useCallback((id: string, patch: Partial<Pick<WantListItem, "qty" | "printingMode">>) => {
+    setItems((prev: WantListItem[]) => prev.map((i) => i.id === id ? { ...i, ...patch } : i));
+  }, []);
+
+  const replaceItems = useCallback((next: WantListItem[]) => setItems(next), []);
+
+  const replaceItem = useCallback((id: string, next: WantListItem) => {
+    setItems((prev: WantListItem[]) => {
+      const clash = next.id !== id ? prev.find((i) => i.id === next.id) : undefined;
+      if (!clash) return prev.map((i) => (i.id === id ? next : i));
+      return prev
+        .filter((i) => i.id !== id)
+        .map((i) => (i.id === next.id ? { ...i, qty: (i.qty ?? 1) + (next.qty ?? 1), printingMode: next.printingMode } : i));
+    });
+  }, []);
+
   const hasItem = useCallback((id: string) => {
     return items.some((i: WantListItem) => i.id === id);
   }, [items]);
@@ -166,12 +125,11 @@ export function WantListProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const totalPrice = items.reduce((sum: number, i: WantListItem) => sum + i.priceAud, 0);
 
   return (
     <WantListContext.Provider value={{
-      items, addItem, removeItem, hasItem, clearAll,
-      totalCount: items.length, totalPrice,
+      items, addItem, removeItem, updateItem, replaceItem, replaceItems, hasItem, clearAll,
+      totalCount: items.length,
       storeShippingOverrides, setStoreShipping,
     }}>
       {children}

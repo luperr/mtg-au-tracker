@@ -4,6 +4,7 @@ import { activeFilterCount, SEARCH_SORTS, type SearchSort, type SearchView } fro
 import type { SearchV2Result } from "@/lib/search-v2/types";
 import { Dropdown, OptionItem, pillClass } from "@/app/Dropdown";
 import { useSearchNav } from "./SearchNav";
+import { filtersButtonClass } from "@/app/FilterGroup";
 
 const SORT_LABELS: Record<SearchSort, string> = {
   price_asc: "Price: low → high",
@@ -33,7 +34,7 @@ export function SearchToolbar({
     <div className="flex flex-col gap-2 mb-4 sticky top-0 z-30 -mx-4 px-4 py-2 bg-bg/95 backdrop-blur sm:static sm:z-auto sm:mx-0 sm:px-0 sm:py-0 sm:bg-transparent sm:backdrop-blur-none">
       {/* Phones: Filters · count · Sort on one row, the view tabs full width below. sm+: one row. */}
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={onOpenFilters} className={`md:hidden ${pillClass(activeCount > 0)}`}>
+        <button onClick={onOpenFilters} className={`md:hidden ${filtersButtonClass(activeCount > 0)}`}>
           Filters{activeCount > 0 && ` (${activeCount})`}
         </button>
 

@@ -22,24 +22,36 @@ export type AnalyticsEvents = {
   "store-click": { store: string; card: string; price: number; source: Surface };
   /** A listing added to the want list. */
   "want-list-add": { card: string; source: Surface };
-  /** A user-initiated want-list change. The optimiser's swaps are `optimise-apply`, not this. */
+  /** A user-initiated want-list change. Moves made by the optimiser are `optimise-run`, not this. */
   "want-list-edit": { action: "remove" | "swap" | "clear"; source: Surface; items?: number };
   /** A filter, sort or view change on the same search query. */
   "search-refine": SearchRefinement;
   /** A card image dragged onto the app started a search. */
   "drag-search": { method: "image-alt" | "text" };
-  /** Want-list optimiser run. `saving` is whole dollars — enough to tell nothing from $40 without logging the basket. */
+  /**
+   * Want-list optimiser run — every run is applied, so this also covers what `optimise-apply`
+   * used to. `version: "v2"` separates it from the old optimiser's events in history.
+   * `saving` is whole dollars (null when not comparable) — enough to tell nothing from $40.
+   */
   "optimise-run":
-    | { items: number; changed: number; stores: number; unavailable: number; saving: number; rerun: boolean }
-    | { items: number; error: true };
-  /** Optimiser suggestions accepted. */
-  "optimise-apply": { items: number; applied: number };
+    | { version: "v2"; lines: number; units: number; stores: number; unavailable: number; alternatives: number; saving: number | null; cached: boolean }
+    | { version: "v2"; error: true };
+  /** Undo back to the list before the first optimiser run. */
+  "optimise-undo": Record<string, never>;
+  /** An optimiser preference changed (conditions, max stores, buy-from). */
+  "optimise-pref": { pref: string };
+  /** A store-count alternative picked from the plan. */
+  "optimise-alt": { stores: number | null };
+  /** "Don't use this store" on a planned store. */
+  "optimise-exclude-store": { store: string };
+  /** A card locked to its printing or set back to any; `changed` when picking moved it to another printing. */
+  "optimise-line-mode": { mode: "exact" | "any"; changed?: boolean };
+  /** "Unlock all" on the want list. */
+  "optimise-unlock-all": { cards: number };
   /** Bulk card list looked up on the want list's import panel. */
   "bulk-import":
     | { source: string; cards: number; found: number }
     | { source: string; cards: number; error: true };
-  /** Bulk-import results added to the want list — all at once or one at a time. */
-  "bulk-add": { mode: "all" | "one"; added: number };
 };
 
 export type SearchRefinement = {

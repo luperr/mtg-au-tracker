@@ -45,7 +45,7 @@ describe("track", () => {
 
   it("caps the queue when the script never loads", async () => {
     const { track, flushQueue } = await load();
-    for (let i = 0; i < 50; i++) track("bulk-add", { mode: "one", added: 1 });
+    for (let i = 0; i < 50; i++) track("drag-search", { method: "text" });
     win.umami = { track: vi.fn() };
     flushQueue();
     expect(win.umami.track).toHaveBeenCalledTimes(20);
