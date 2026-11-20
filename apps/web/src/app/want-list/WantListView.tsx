@@ -247,13 +247,13 @@ export function WantListView({ stores, rates }: { stores: StoreSummary[]; rates:
               {summary}
             </div>
 
-            {/* sm+: the preferences as pills. Phones: one button opening them in a drawer, as search does its filters. */}
+            {/* sm+: the preferences as pills. Phones: one Filters button opening them in a drawer, as search does. */}
             <div className="mb-4 hidden sm:block">
               <PrefsBar prefs={prefs} stores={stores} onChange={changePrefs}>{listActions}</PrefsBar>
             </div>
             <div className="mb-3 flex items-center gap-4 sm:hidden">
               <button onClick={() => setPrefsOpen(true)} className={`${pillClass(activePrefCount(prefs) > 0, "rounded-lg")} min-h-10`}>
-                Preferences{activePrefCount(prefs) > 0 && ` (${activePrefCount(prefs)})`}
+                Filters{activePrefCount(prefs) > 0 && ` (${activePrefCount(prefs)})`}
               </button>
               <div className="ml-auto flex items-center gap-4">{listActions}</div>
             </div>

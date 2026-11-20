@@ -8,6 +8,7 @@ import {
 } from "@/lib/search-v2/params";
 import type { FacetCount, Facets } from "@/lib/search-v2/types";
 import { useSearchNav } from "./SearchNav";
+import { FilterGroup } from "@/app/FilterGroup";
 
 /** Group order in the sidebar — most-used first. */
 const GROUP_ORDER: FacetKey[] = ["store", "set", "condition", "finish", "treatment"];
@@ -47,34 +48,6 @@ function orderedOptions(key: FacetKey, options: FacetCount[], selected: string[]
   return [...all].sort((a, b) => rank(a.value) - rank(b.value));
 }
 
-/** A collapsible sidebar section. `active` is how many of its filters are set. */
-function Group({
-  title, active, defaultOpen = true, children,
-}: {
-  title: string;
-  active: number;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen || active > 0);
-  return (
-    <section>
-      <button
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium text-cream hover:bg-muted/40 transition-colors"
-      >
-        <span>
-          {title}
-          {active > 0 && <span className="ml-1.5 text-xs text-accent-light">({active})</span>}
-        </span>
-        <span aria-hidden className="text-[9px] text-cream-dim/50">{open ? "▲" : "▼"}</span>
-      </button>
-      {open && <div className="pb-2">{children}</div>}
-    </section>
-  );
-}
-
 /** "Clear" for the sidebar and drawer headers — nothing when no filter is set. */
 export function ClearFiltersButton() {
   const { state, navigate } = useSearchNav();
@@ -102,7 +75,7 @@ function PriceGroup() {
   }
 
   return (
-    <Group title="Price" active={priceFilterApplies(state) ? 1 : 0} defaultOpen={false}>
+    <FilterGroup title="Price" active={priceFilterApplies(state) ? 1 : 0} defaultOpen={false}>
       <form onSubmit={apply} className="flex items-center gap-1.5 px-3">
         <input type="number" inputMode="decimal" min={0} step="0.01" value={min} onChange={(e) => setMin(e.target.value)}
           placeholder="Min $" aria-label="Minimum price" className={INPUT_CLASS} />
@@ -111,7 +84,7 @@ function PriceGroup() {
           placeholder="Max $" aria-label="Maximum price" className={INPUT_CLASS} />
         <button type="submit" className={pillClass(false, "rounded-lg")}>Go</button>
       </form>
-    </Group>
+    </FilterGroup>
   );
 }
 
@@ -138,7 +111,7 @@ function FacetGroup({ facetKey, options }: { facetKey: FacetKey; options: FacetC
   const visible = needle || expanded ? matches : matches.slice(0, COLLAPSED_LIMIT);
 
   return (
-    <Group title={FACET_TITLES[facetKey]} active={selected.length}>
+    <FilterGroup title={FACET_TITLES[facetKey]} active={selected.length}>
           {searchable && (
             <div className="px-3 pb-1.5">
               <input
@@ -172,7 +145,7 @@ function FacetGroup({ facetKey, options }: { facetKey: FacetKey; options: FacetC
               {expanded ? "Show less" : `Show ${all.length - COLLAPSED_LIMIT} more`}
             </button>
           )}
-    </Group>
+    </FilterGroup>
   );
 }
 

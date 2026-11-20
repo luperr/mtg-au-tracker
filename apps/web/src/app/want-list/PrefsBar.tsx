@@ -2,6 +2,7 @@
 
 import { Dropdown, OptionItem, pillClass } from "@/app/Dropdown";
 import { Sheet } from "@/app/Sheet";
+import { FilterGroup } from "@/app/FilterGroup";
 import { CONDITIONS, type SavedPrefs } from "@/lib/optimiser/want-list";
 import type { ReactNode } from "react";
 import type { StoreSummary } from "@/lib/store-shipping";
@@ -21,7 +22,7 @@ const CONDITION_LABELS: Record<Condition, string> = {
 const UNSTATED_NOTE = "Listings that don’t state a condition are included, and flagged.";
 const EBAY_NOTE = "eBay listings aren’t counted — untick eBay under Buy from to leave them out.";
 
-/** Preferences changed from their defaults — the count on the phone's Preferences button. */
+/** Preferences changed from their defaults — the count on the phone's Filters button. */
 export function activePrefCount(prefs: SavedPrefs): number {
   const conditionsDefault = prefs.conditions.length === 1 && prefs.conditions[0] === "NM";
   return (conditionsDefault ? 0 : 1) + (prefs.maxStores === null ? 0 : 1) + (prefs.excludeStores.length > 0 ? 1 : 0);
@@ -78,13 +79,14 @@ function usePrefsControls(prefs: SavedPrefs, stores: StoreSummary[], onChange: O
 
 type Controls = ReturnType<typeof usePrefsControls>;
 
-function ConditionOptions({ c }: { c: Controls }) {
+/** `note`: the unstated-condition note inline (desktop); the drawer puts it behind an ⓘ. */
+function ConditionOptions({ c, note }: { c: Controls; note: boolean }) {
   return (
     <>
       {CONDITIONS.map((x) => (
         <OptionItem key={x} type="check" label={`${CONDITION_LABELS[x]} (${x})`} checked={c.chosen.has(x)} onClick={() => c.toggleCondition(x)} />
       ))}
-      <p className="px-3 pt-1 pb-2 text-xs text-cream-dim">{UNSTATED_NOTE}</p>
+      {note && <p className="px-3 pt-1 pb-2 text-xs text-cream-dim">{UNSTATED_NOTE}</p>}
     </>
   );
 }
@@ -146,7 +148,7 @@ export function PrefsBar({
   return (
     <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Optimiser preferences">
       <Dropdown label={c.conditionLabel} active={activePrefCount({ ...prefs, maxStores: null, excludeStores: [] }) > 0}>
-        <ConditionOptions c={c} />
+        <ConditionOptions c={c} note />
       </Dropdown>
 
       <div
@@ -170,7 +172,10 @@ export function PrefsBar({
   );
 }
 
-/** Phones: the same preferences in a drawer, opened from one button — the search page's filter pattern. */
+/**
+ * Phones: the same preferences in a "Filters" drawer, opened from one button — the search
+ * page's filter pattern. Each one folds away, showing its current value; notes sit behind ⓘ.
+ */
 export function PrefsSheet({
   open, onClose, prefs, stores, onChange,
 }: {
@@ -181,31 +186,37 @@ export function PrefsSheet({
   onChange: OnChange;
 }) {
   const c = usePrefsControls(prefs, stores, onChange);
-  const heading = "px-3 pt-3 pb-1 text-xs font-medium uppercase tracking-wide text-cream-dim/70";
+  const conditionsSet = activePrefCount({ ...prefs, maxStores: null, excludeStores: [] });
+  const conditionSummary = c.chosen.size === CONDITIONS.length ? "Any" : CONDITIONS.filter((x) => c.chosen.has(x)).join(", ");
+  const storesSummary = c.unticked === 0 ? "All" : `${c.storeList.length - c.unticked} of ${c.storeList.length}`;
 
   return (
     <Sheet
       open={open}
       onClose={onClose}
       side="left"
-      title="Preferences"
+      title="Filters"
       className="sm:hidden"
       footer={<button onClick={onClose} className="flex h-11 w-full items-center justify-center rounded-lg bg-cta font-medium text-cream">Done</button>}
     >
-      <h3 className={heading}>Condition</h3>
-      <ConditionOptions c={c} />
+      <div className="divide-y divide-subtle/60">
+        <FilterGroup title="Condition" active={conditionsSet} summary={conditionSummary} info={UNSTATED_NOTE} defaultOpen={false} openIfActive={false}>
+          <ConditionOptions c={c} note={false} />
+        </FilterGroup>
 
-      <h3 className={`${heading} border-t border-subtle`}>Max stores</h3>
-      <div className="flex items-center gap-2 px-3 pb-1">
-        <MaxStoresStepper c={c} large />
-        <button onClick={() => c.setMax(null)} disabled={c.max === null} className="ml-auto text-sm text-accent-light disabled:text-cream-dim/40">
-          All stores
-        </button>
+        <FilterGroup title="Max stores" active={c.max === null ? 0 : 1} summary={c.max === null ? "All" : String(c.max)} info={EBAY_NOTE} defaultOpen={false} openIfActive={false}>
+          <div className="flex items-center gap-2 px-3">
+            <MaxStoresStepper c={c} large />
+            <button onClick={() => c.setMax(null)} disabled={c.max === null} className="ml-auto py-2 text-sm text-accent-light disabled:text-cream-dim/40">
+              All stores
+            </button>
+          </div>
+        </FilterGroup>
+
+        <FilterGroup title="Buy from" active={c.unticked > 0 ? 1 : 0} summary={storesSummary} defaultOpen={false} openIfActive={false}>
+          <StoreOptions c={c} scroll={false} />
+        </FilterGroup>
       </div>
-      <p className="px-3 pb-3 text-xs text-cream-dim">{EBAY_NOTE}</p>
-
-      <h3 className={`${heading} border-t border-subtle`}>Buy from</h3>
-      <StoreOptions c={c} scroll={false} />
     </Sheet>
   );
 }
