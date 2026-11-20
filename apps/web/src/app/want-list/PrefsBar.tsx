@@ -4,7 +4,8 @@ import { Dropdown, OptionItem, pillClass } from "@/app/Dropdown";
 import { Sheet } from "@/app/Sheet";
 import { FilterGroup } from "@/app/FilterGroup";
 import { CONDITIONS, type SavedPrefs } from "@/lib/optimiser/want-list";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import type { SetFamily } from "@/lib/set-families";
 import type { StoreSummary } from "@/lib/store-shipping";
 import { MAX_STORES_CAP } from "@/lib/config";
 
@@ -25,8 +26,114 @@ const EBAY_NOTE = "eBay listings aren’t counted — untick eBay under Buy from
 /** Preferences changed from their defaults — the count on the phone's Filters button. */
 export function activePrefCount(prefs: SavedPrefs): number {
   const conditionsDefault = prefs.conditions.length === 1 && prefs.conditions[0] === "NM";
-  return (conditionsDefault ? 0 : 1) + (prefs.maxStores === null ? 0 : 1) + (prefs.excludeStores.length > 0 ? 1 : 0);
+  return (conditionsDefault ? 0 : 1) + (prefs.maxStores === null ? 0 : 1) + (prefs.excludeStores.length > 0 ? 1 : 0)
+    + (prefs.excludeSets.length > 0 ? 1 : 0);
 }
+
+/**
+ * Every set family, fetched once per page and shared by the pills and the drawer. A failed
+ * fetch isn't kept, so opening the picker again retries.
+ */
+let setFamilies: Promise<SetFamily[] | null> | null = null;
+
+function loadSetFamilies(): Promise<SetFamily[] | null> {
+  if (!setFamilies) {
+    setFamilies = fetch("/api/sets")
+      .then((r) => {
+        if (!r.ok) throw new Error(`sets ${r.status}`);
+        return r.json() as Promise<SetFamily[]>;
+      })
+      .catch(() => {
+        setFamilies = null;
+        return null;
+      });
+  }
+  return setFamilies;
+}
+
+/** Shown before anything is typed: the newest sets, where a reprint you'd rather skip usually lives. */
+const NEWEST_SHOWN = 20;
+
+/** The set families, loaded when `load` first turns true (a picker opens, or some are already excluded). */
+function useSetFamilies(load: boolean): { families: SetFamily[] | null; failed: boolean } {
+  const [families, setFamiliesState] = useState<SetFamily[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!load || families) return;
+    let live = true;
+    setFailed(false);
+    loadSetFamilies().then((f) => {
+      if (!live) return;
+      if (f) setFamiliesState(f);
+      else setFailed(true);
+    });
+    return () => { live = false; };
+  }, [load, families]);
+  return { families, failed };
+}
+
+/** "None", or how many set families are excluded — the label beside the picker. */
+function excludedSetsLabel(prefs: SavedPrefs, families: SetFamily[] | null): string {
+  if (prefs.excludeSets.length === 0) return "None";
+  if (!families) return "Some";
+  const n = families.filter((f) => prefs.excludeSets.includes(f.code)).length;
+  return n === 1 ? families.find((f) => prefs.excludeSets.includes(f.code))!.code.toUpperCase() : `${n} sets`;
+}
+
+/** Search box plus set checklist: excluded sets pinned first, then matches (or the newest). */
+function SetOptions({ c, families, failed, scroll }: {
+  c: Controls;
+  families: SetFamily[] | null;
+  failed: boolean;
+  scroll: boolean;
+}) {
+  const [query, setQuery] = useState("");
+  if (failed) return <p className="px-3 py-2 text-xs text-cream-dim">Couldn’t load sets — close this and try again.</p>;
+  if (!families) return <p className="px-3 py-2 text-xs text-cream-dim">Loading sets…</p>;
+
+  const q = query.trim().toLowerCase();
+  const excluded = families.filter((f) => c.isSetExcluded(f));
+  const rest = families.filter((f) => !c.isSetExcluded(f));
+  const shown = q
+    ? rest.filter((f) => f.name.toLowerCase().includes(q) || f.codes.some((code) => code.startsWith(q)))
+    : rest.slice(0, NEWEST_SHOWN);
+
+  return (
+    <>
+      <div className="px-3 pt-1 pb-1.5">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={`Search ${families.length} sets`}
+          aria-label="Search sets to exclude"
+          className="w-full min-w-0 rounded-lg border border-subtle bg-muted px-2.5 py-2 sm:py-1 text-xs text-cream placeholder:text-cream-dim/40 focus:border-accent focus:outline-none"
+        />
+      </div>
+      <div className={scroll ? "max-h-72 overflow-y-auto" : ""}>
+        {[...excluded, ...shown].map((f) => (
+          <OptionItem
+            key={f.code}
+            type="check"
+            label={f.name}
+            checked={c.isSetExcluded(f)}
+            onClick={() => c.toggleSetFamily(f)}
+            trailing={<span className="text-[11px] uppercase text-cream-dim/50">{f.code}</span>}
+          />
+        ))}
+        {shown.length === 0 && q && <p className="px-3 py-2 text-xs text-cream-dim">No set matches “{query}”.</p>}
+      </div>
+    </>
+  );
+}
+
+/** The picker loads sets when it's shown — the dropdown and the drawer section only render it open. */
+function SetPicker({ c, scroll }: { c: Controls; scroll: boolean }) {
+  const { families, failed } = useSetFamilies(true);
+  return <SetOptions c={c} families={families} failed={failed} scroll={scroll} />;
+}
+
+const SETS_NOTE = "Ticked sets, and their commander, promo and token sets, are never picked for a card set to any printing. A card locked to a printing keeps it.";
 
 /**
  * The rules behind the preference controls, shared by the desktop pills and the phone drawer.
@@ -71,6 +178,17 @@ function usePrefsControls(prefs: SavedPrefs, stores: StoreSummary[], onChange: O
       if (next.has(id)) next.delete(id);
       else next.add(id);
       onChange({ excludeStores: [...next] }, "stores");
+    },
+    /** A family counts as excluded by its main set's code; toggling adds or drops all its codes. */
+    isSetExcluded: (f: SetFamily) => prefs.excludeSets.includes(f.code),
+    toggleSetFamily(f: SetFamily) {
+      const codes = new Set(prefs.excludeSets);
+      const on = !codes.has(f.code);
+      for (const code of f.codes) {
+        if (on) codes.add(code);
+        else codes.delete(code);
+      }
+      onChange({ excludeSets: [...codes] }, "sets");
     },
     selectAllStores: () => onChange({ excludeStores: [] }, "stores"),
     clearStores: () => onChange({ excludeStores: storeList.map((s) => s.id) }, "stores"),
@@ -144,6 +262,8 @@ export function PrefsBar({
   children?: ReactNode;
 }) {
   const c = usePrefsControls(prefs, stores, onChange);
+  // Only needed up front to name what's already excluded.
+  const { families } = useSetFamilies(prefs.excludeSets.length > 0);
 
   return (
     <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Optimiser preferences">
@@ -165,6 +285,11 @@ export function PrefsBar({
 
       <Dropdown label={c.storesLabel} active={c.unticked > 0}>
         <StoreOptions c={c} scroll />
+      </Dropdown>
+
+      <Dropdown label={`Exclude sets: ${excludedSetsLabel(prefs, families)}`} active={prefs.excludeSets.length > 0}>
+        <SetPicker c={c} scroll />
+        <p className="px-3 pt-1 pb-2 text-xs text-cream-dim">{SETS_NOTE}</p>
       </Dropdown>
 
       {children && <div className="ml-auto flex shrink-0 items-center gap-4 pl-2">{children}</div>}
@@ -189,6 +314,7 @@ export function PrefsSheet({
   const conditionsSet = activePrefCount({ ...prefs, maxStores: null, excludeStores: [] });
   const conditionSummary = c.chosen.size === CONDITIONS.length ? "Any" : CONDITIONS.filter((x) => c.chosen.has(x)).join(", ");
   const storesSummary = c.unticked === 0 ? "All" : `${c.storeList.length - c.unticked} of ${c.storeList.length}`;
+  const { families } = useSetFamilies(prefs.excludeSets.length > 0);
 
   return (
     <Sheet
@@ -215,6 +341,17 @@ export function PrefsSheet({
 
         <FilterGroup title="Buy from" active={c.unticked > 0 ? 1 : 0} summary={storesSummary} defaultOpen={false} openIfActive={false}>
           <StoreOptions c={c} scroll={false} />
+        </FilterGroup>
+
+        <FilterGroup
+          title="Exclude sets"
+          active={prefs.excludeSets.length > 0 ? 1 : 0}
+          summary={excludedSetsLabel(prefs, families)}
+          info={SETS_NOTE}
+          defaultOpen={false}
+          openIfActive={false}
+        >
+          <SetPicker c={c} scroll={false} />
         </FilterGroup>
       </div>
     </Sheet>

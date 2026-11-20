@@ -46,6 +46,12 @@ export type Prefs = {
   conditions: CardCondition[];
   /** Stores to leave out, eBay included. */
   excludeStores: string[];
+  /**
+   * Set codes whose printings the optimiser won't pick for an "any printing" card (a set's
+   * sub-sets — commander, promos, tokens — are listed alongside it). A card locked to a
+   * printing keeps it: the lock is the more specific choice.
+   */
+  excludeSets: string[];
   /** Most flat-postage stores in the plan. Per-item stores (eBay) aren't counted. */
   maxStores: number | null;
   /** Per-store postage the user set, e.g. 0 for a store they collect from. */
@@ -56,6 +62,7 @@ export type Prefs = {
 export const DEFAULT_PREFS: Prefs = {
   conditions: ["NM"],
   excludeStores: [],
+  excludeSets: [],
   maxStores: null,
   postageOverrides: {},
 };

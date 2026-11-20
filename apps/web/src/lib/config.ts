@@ -81,6 +81,8 @@ export const MAX_BULK_CARDS = 200;
 export const MAX_CARD_QTY = 99;
 /** Highest "max stores" the optimiser accepts — more is no constraint at all, the roster is ~40. */
 export const MAX_STORES_CAP = 20;
+/** Most set codes a want list may exclude — a set plus its sub-sets is several codes. */
+export const MAX_EXCLUDED_SETS = 300;
 
 /** Below Tailwind's sm breakpoint: where pickers open as bottom sheets instead of popovers. */
 export const PHONE_MEDIA_QUERY = "(max-width: 639.98px)";

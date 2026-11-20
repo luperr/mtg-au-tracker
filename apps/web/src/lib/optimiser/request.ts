@@ -2,7 +2,7 @@
 // localStorage, so any of it can be stale or hand-edited.
 
 import { CARD_CONDITIONS } from "@mtg-au/shared";
-import { MAX_BULK_CARDS, MAX_CARD_QTY, MAX_STORES_CAP } from "../config";
+import { MAX_BULK_CARDS, MAX_CARD_QTY, MAX_EXCLUDED_SETS, MAX_STORES_CAP } from "../config";
 import { DEFAULT_PREFS, type OptimiseLine, type Prefs } from "./types";
 
 export type OptimiseRequest = { lines: OptimiseLine[]; prefs: Prefs };
@@ -70,6 +70,12 @@ function parsePrefs(raw: unknown): Prefs | string {
       return "excludeStores must be an array of store ids";
     }
     prefs.excludeStores = raw.excludeStores;
+  }
+  if (raw.excludeSets !== undefined) {
+    if (!Array.isArray(raw.excludeSets) || raw.excludeSets.length > MAX_EXCLUDED_SETS || !raw.excludeSets.every(isNonEmptyString)) {
+      return `excludeSets must be an array of at most ${MAX_EXCLUDED_SETS} set codes`;
+    }
+    prefs.excludeSets = [...new Set(raw.excludeSets as string[])];
   }
   if (raw.maxStores !== undefined && raw.maxStores !== null) {
     if (!isIntIn(raw.maxStores, 1, MAX_STORES_CAP)) return `maxStores must be from 1 to ${MAX_STORES_CAP}`;

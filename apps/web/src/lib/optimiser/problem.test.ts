@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { meetsCondition, offerFromRow, type OfferRow } from "./problem";
+import { isEligible, meetsCondition, offerFromRow, type OfferRow } from "./problem";
 import { toCents } from "./types";
 import { line, offer, prefs, problem, store } from "./test-fixtures";
 
@@ -115,5 +115,20 @@ describe("buildProblem eligibility", () => {
   it("applies postage overrides", () => {
     const p = problem([line("c1")], offers, stores, prefs({ postageOverrides: { b: 0 } }));
     expect(p.flat).toEqual([500, 0, null]);
+  });
+});
+
+describe("excluded sets", () => {
+  const tmnt = offer("a", 100, { setCode: "tmt", printingId: "p-tmt" });
+  const other = offer("a", 200, { setCode: "fdn", printingId: "p-fdn" });
+
+  it("rule a set's printings out for a card that takes any printing", () => {
+    const p = prefs({ excludeSets: ["tmt"] });
+    expect(isEligible(tmnt, line("c1"), p)).toBe(false);
+    expect(isEligible(other, line("c1"), p)).toBe(true);
+  });
+
+  it("leave a card locked to that printing alone — the lock is the more specific choice", () => {
+    expect(isEligible(tmnt, line("c1", { printing: "exact", printingId: "p-tmt" }), prefs({ excludeSets: ["tmt"] }))).toBe(true);
   });
 });

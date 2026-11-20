@@ -16,7 +16,7 @@ describe("parseOptimiseRequest", () => {
 
   it("keeps current listings and prefs", () => {
     const prefs = {
-      conditions: ["NM", "LP"], excludeStores: ["a", "ebay_au"], maxStores: 3,
+      conditions: ["NM", "LP"], excludeStores: ["a", "ebay_au"], excludeSets: ["tmt"], maxStores: 3,
       postageOverrides: { b: 0 },
     };
     const r = parseOptimiseRequest({ lines: [{ ...ln, printing: "exact", printingId: "p1", current }], prefs });
@@ -56,5 +56,12 @@ describe("parseOptimiseRequest", () => {
     const lines = Array.from({ length: MAX_BULK_CARDS + 1 }, (_, i) => ({ ...ln, lineId: `l${i}` }));
     expect(parseOptimiseRequest({ lines })).toHaveProperty("error");
     expect(parseOptimiseRequest({ lines: lines.slice(0, MAX_BULK_CARDS) })).not.toHaveProperty("error");
+  });
+
+  it("validates excluded sets", () => {
+    const ok = parseOptimiseRequest({ lines: [ln], prefs: { excludeSets: ["tmt", "tmc", "tmt"] } });
+    expect("prefs" in ok && ok.prefs.excludeSets).toEqual(["tmt", "tmc"]);
+    expect(parseOptimiseRequest({ lines: [ln], prefs: { excludeSets: "tmt" } })).toHaveProperty("error");
+    expect(parseOptimiseRequest({ lines: [ln], prefs: { excludeSets: [""] } })).toHaveProperty("error");
   });
 });

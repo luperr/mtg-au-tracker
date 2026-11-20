@@ -54,7 +54,9 @@ export function meetsCondition(condition: string | null, prefs: Prefs): boolean 
 export function isEligible(offer: Offer, line: OptimiseLine, prefs: Prefs): boolean {
   if (prefs.excludeStores.includes(offer.storeId)) return false;
   if (!meetsCondition(offer.condition, prefs)) return false;
-  return line.printing === "any" || offer.printingId === line.printingId;
+  if (line.printing === "exact") return offer.printingId === line.printingId;
+  // Excluded sets only narrow "any": a card locked to a printing keeps it.
+  return !prefs.excludeSets.includes(offer.setCode);
 }
 
 export function sameListing(offer: Offer, key: NonNullable<OptimiseLine["current"]>): boolean {

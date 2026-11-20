@@ -6,7 +6,7 @@
 // bought from. Running the optimiser moves each item to its planned listing
 // (`applyPlan`); until then it's the listing it was added at.
 
-import { MAX_CARD_QTY, MAX_STORES_CAP } from "../config";
+import { MAX_CARD_QTY, MAX_EXCLUDED_SETS, MAX_STORES_CAP } from "../config";
 import {
   DEFAULT_PREFS, toCents, type Cents, type Offer, type OptimiseLine, type OptimiseResponse, type PlanStore, type PlanUnit,
   type Prefs, type UnitFlags,
@@ -199,6 +199,10 @@ export function parseSavedPrefs(raw: string | null): SavedPrefs {
     conditions: conditions.length > 0 ? conditions : [...DEFAULT_PREFS.conditions],
     excludeStores: Array.isArray(v.excludeStores)
       ? v.excludeStores.filter((s): s is string => typeof s === "string" && s !== "")
+      : [],
+    // Within the server's limit, or every run would be rejected.
+    excludeSets: Array.isArray(v.excludeSets)
+      ? [...new Set(v.excludeSets.filter((s): s is string => typeof s === "string" && s !== ""))].slice(0, MAX_EXCLUDED_SETS)
       : [],
     // The server's own bounds: a saved value it would reject must not survive to every later run.
     maxStores: Number.isInteger(v.maxStores) && (v.maxStores as number) >= 1 && (v.maxStores as number) <= MAX_STORES_CAP

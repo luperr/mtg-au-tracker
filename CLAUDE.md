@@ -390,6 +390,11 @@ Listing-grained search with a filter sidebar (store, set, condition, finish, tre
   checklist of every store, eBay included, all ticked, saved as the *unticked* ids
   (`excludeStores`) so a store added later starts ticked. localStorage `scrymarket_optimiser_prefs`;
   per-store postage edits stay in `scrymarket_shipping_overrides`.
+- **Exclude sets** (`excludeSets`): set codes the optimiser won't pick for an "any printing"
+  card — a card locked to a printing keeps it. The picker lists set *families* from `/api/sets`
+  (`lib/sets.ts`, cached an hour; grouping in `lib/set-families.ts` follows `parent_set_code`
+  all the way up, so TMNT is `tmt` plus `tmc`, `pza`, tokens, art series). Ticking a family
+  saves all its codes; at most `MAX_EXCLUDED_SETS`.
 - Umami: `optimise-run` (one per run, since every run is applied; `version: "v2"`, kept so history separates from the
   old optimiser), `optimise-undo`, `optimise-pref`, `optimise-alt`, `optimise-exclude-store`,
   `optimise-line-mode`, `optimise-unlock-all`.
