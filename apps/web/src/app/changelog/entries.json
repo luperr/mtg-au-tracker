@@ -1,6 +1,10 @@
 [
   {
     "date": "2026-11-21",
+    "text": "Search responds the moment you press Enter, and pressing it twice no longer runs the search twice."
+  },
+  {
+    "date": "2026-11-21",
     "text": "Card images load much faster, especially on phones."
   },
   {
