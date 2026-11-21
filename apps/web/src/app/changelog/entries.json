@@ -1,6 +1,10 @@
 [
   {
     "date": "2026-11-21",
+    "text": "Added Cardtastic."
+  },
+  {
+    "date": "2026-11-21",
     "text": "Search responds the moment you press Enter, and pressing it twice no longer runs the search twice."
   },
   {
