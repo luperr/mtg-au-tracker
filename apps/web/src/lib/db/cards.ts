@@ -78,6 +78,8 @@ export type PrintingRow = {
 };
 
 export type CardMetadata = {
+  id: string;
+  slug: string | null;
   name: string;
   type_line: string;
   cheapest_price: string | null;
@@ -268,6 +270,8 @@ export async function getCard(slug: string): Promise<CardRow | null> {
 export async function getCardMetadata(slug: string): Promise<CardMetadata | null> {
   const rows = await sql<CardMetadata[]>`
     SELECT
+      c.id,
+      c.slug,
       c.name,
       c.type_line,
       (

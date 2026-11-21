@@ -29,6 +29,14 @@ function lowestInStockPrice(printing: PrintingWithPrices): number | null {
   return Math.min(...inStock.map((p) => parseFloat(p.priceAud)));
 }
 
+/**
+ * The card's one public path. getCard / getCardMetadata also resolve a card by id, so the
+ * request param isn't necessarily it — canonical and JSON-LD both point here.
+ */
+function cardUrl(card: { id: string; slug: string | null }): string {
+  return `${SITE_URL}/cards/${card.slug ?? card.id}`;
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -59,6 +67,7 @@ export async function generateMetadata({
   return {
     title,
     description,
+    alternates: { canonical: cardUrl(meta) },
     openGraph: { title, description, type: "website" },
     twitter: { card: "summary_large_image", title, description },
   };
@@ -100,10 +109,11 @@ export default async function CardPage({
   // the 488px original direct is as fast as it gets. The page's no-hotlinking rule is about
   // what viewers download, which this isn't.
   const image = defaultPrintingImage(printings);
-  // The slug, not the request param: getCard also resolves a card by id.
-  const url = `${SITE_URL}/cards/${card!.slug ?? card!.id}`;
+  const url = cardUrl(card!);
 
-  const jsonLd = {
+  // Only when something is in stock: a Product with no offers, review or rating is invalid,
+  // and Search Console would flag every unstocked card.
+  const jsonLd = cheapestPrice !== null && {
     "@context": "https://schema.org",
     "@type": "Product",
     name: card!.name,
@@ -111,25 +121,25 @@ export default async function CardPage({
     ...(image && { image }),
     description: `${card!.name} — Magic: The Gathering. Compare prices across ${inStockStores.size} Australian stores.`,
     brand: { "@type": "Brand", name: "Magic: The Gathering" },
-    ...(cheapestPrice !== null && {
-      offers: {
-        "@type": "AggregateOffer",
-        priceCurrency: "AUD",
-        lowPrice: cheapestPrice.toFixed(2),
-        highPrice: highestPrice!.toFixed(2),
-        offerCount: allInStockPrices.length,
-        availability: "https://schema.org/InStock",
-        url,
-      },
-    }),
+    offers: {
+      "@type": "AggregateOffer",
+      priceCurrency: "AUD",
+      lowPrice: cheapestPrice.toFixed(2),
+      highPrice: highestPrice!.toFixed(2),
+      offerCount: allInStockPrices.length,
+      availability: "https://schema.org/InStock",
+      url,
+    },
   };
 
   return (
     <div>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
-      />
+      {jsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
+        />
+      )}
       <Suspense fallback={<Breadcrumb items={[{ label: "Search", href: "/" }, { label: card!.name }]} />}>
         <CardBreadcrumb cardName={card!.name} />
       </Suspense>
