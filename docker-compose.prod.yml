@@ -149,6 +149,9 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       EBAY_AFFILIATE_CAMPAIGN_ID: ${EBAY_AFFILIATE_CAMPAIGN_ID:-}
       EBAY_AFFILIATE_ROTATION_ID: ${EBAY_AFFILIATE_ROTATION_ID:-}
+      # libuv's worker pool, default 4. sharp's resizes and DNS lookups share it, so a cold
+      # results page of 24 new images resized ~4 at a time. Only matters on cache misses.
+      UV_THREADPOOL_SIZE: "16"
     cap_drop:
       - ALL
     healthcheck:
