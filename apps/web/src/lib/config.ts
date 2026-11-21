@@ -18,6 +18,12 @@ export const RATE_LIMIT_BULK_LOOKUP_PER_MINUTE = 10;
  */
 export const RATE_LIMIT_OPTIMIZE_PER_MINUTE = 15;
 export const RATE_LIMIT_READ_PER_MINUTE = 120;
+/**
+ * Card-image fetches through /api/scryfall-image, per IP. Only reached when the image optimizer
+ * misses its cache, but a cold results page is 24 at once and the optimizer passes the
+ * viewer's headers along — high enough for fast scrolling, low enough not to be an open pipe.
+ */
+export const RATE_LIMIT_IMAGE_PER_MINUTE = 600;
 
 // ── Want List optimiser ──────────────────────────────────────────────────────
 
@@ -119,6 +125,9 @@ export const THEME_STORAGE_KEY = "theme";
 /** Set to "light" on <html> for the light theme; absent means dark. */
 export const THEME_ATTRIBUTE = "data-theme";
 export const GITHUB_API_URL = "https://api.github.com";
+/** Scryfall rejects default library User-Agents ("generic_user_agent"); it wants the app named. */
+export const SCRYFALL_USER_AGENT = "Scrymarket/1.0 (+https://scrymarket.au)";
+export const SCRYFALL_IMAGE_ORIGIN = "https://cards.scryfall.io";
 
 // ── eBay Partner Network (affiliate) ─────────────────────────────────────────
 //

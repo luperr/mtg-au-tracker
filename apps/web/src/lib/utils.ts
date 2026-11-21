@@ -32,13 +32,6 @@ export function fmtPostage(shippingAud: number | null): string {
   return shippingAud === null ? "—" : shippingAud === 0 ? "free" : fmtAUD(shippingAud);
 }
 
-/**
- * Convert a Scryfall "normal" image URI to its "small" variant.
- * Returns null if the input is null.
- */
-export function toSmallImage(uri: string | null): string | null {
-  return uri ? uri.replace("/normal/", "/small/") : null;
-}
 
 /** Client-side cookie write, site-wide. `maxAge` 0 deletes it; omitted, it lasts the session. */
 export function setCookie(name: string, value: string, maxAge?: number): void {

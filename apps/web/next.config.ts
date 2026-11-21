@@ -32,6 +32,22 @@ const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: path.resolve("../../"),
   transpilePackages: ["@mtg-au/shared"],
+  // Card art goes through /_next/image (app/CardImage.tsx): resized, WebP, and cached by
+  // Cloudflare at the AU edge — Scryfall's own CDN is ~1s to first byte from Australia.
+  // A Cloudflare Cache Rule makes /_next/image cacheable; it has no file extension, so by
+  // default Cloudflare passes it through.
+  images: {
+    // No remotePatterns: card art is fetched through the local /api/scryfall-image proxy,
+    // because the optimizer's own remote fetch can't send the User-Agent Scryfall requires.
+    // No AVIF: ~10x slower to encode, and cold resizes run on the home server.
+    formats: ["image/webp"],
+    // Scryfall image URLs carry a version query, so a given URL never changes.
+    minimumCacheTTL: 31536000,
+    // Few widths: fewer variants to resize, more Cloudflare hits. Scryfall "normal" is 488 wide
+    // and the optimizer never enlarges, so nothing above 488 would differ.
+    imageSizes: [64, 128, 256],
+    deviceSizes: [384, 488],
+  },
   webpack(config) {
     // transpilePackages processes @mtg-au/shared TypeScript source via webpack,
     // but webpack doesn't resolve .js → .ts by default (unlike TypeScript's

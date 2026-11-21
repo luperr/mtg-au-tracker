@@ -8,6 +8,7 @@ import { facetValueLabel, DEFAULT_TREATMENT, type SearchView } from "@/lib/searc
 import type { SearchTile, UnlistedCard } from "@/lib/search-v2/types";
 import { cardHref, fmtAUD } from "@/lib/utils";
 import { track } from "@/lib/analytics";
+import { CardImage } from "@/app/CardImage";
 
 /**
  * Adds the tile's own listing — the cheapest one in its group — straight from the
@@ -58,7 +59,11 @@ function AddToWantListButton({ tile, view }: { tile: SearchTile; view: SearchVie
   );
 }
 
-export function ListingTile({ tile, view, query }: { tile: SearchTile; view: SearchView; query: string }) {
+/** Tile width per breakpoint, matching the grid in SearchV2 (2 / 3 / 4–5 columns). */
+const TILE_SIZES = "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw";
+
+/** `priority`: an above-the-fold tile, loaded at once rather than lazily. */
+export function ListingTile({ tile, view, query, priority = false }: { tile: SearchTile; view: SearchView; query: string; priority?: boolean }) {
   const href = cardHref(tile.slug, tile.card_id, query);
   const onCardClick = () => track("card-click", { card: tile.name, source: "search-v2" });
   const badges = [
@@ -71,12 +76,12 @@ export function ListingTile({ tile, view, query }: { tile: SearchTile; view: Sea
     <div className="flex flex-col rounded-lg overflow-hidden border border-subtle bg-surface hover:border-accent transition-colors group">
       <a href={href} onClick={onCardClick} className="block w-full overflow-hidden">
         {tile.image_uri ? (
-          <img
-            src={tile.image_uri}
+          <CardImage
+            uri={tile.image_uri}
             alt={tile.name}
+            sizes={TILE_SIZES}
+            priority={priority}
             className="w-full object-cover group-hover:scale-[1.02] transition-transform duration-200"
-            style={{ aspectRatio: MTG_CARD_ASPECT_RATIO }}
-            loading="lazy"
           />
         ) : (
           <div className="w-full bg-muted flex items-center justify-center text-cream-dim/30 text-xs" style={{ aspectRatio: MTG_CARD_ASPECT_RATIO }}>
@@ -150,12 +155,11 @@ export function UnlistedTile({ card, query }: { card: UnlistedCard; query: strin
     <div className="flex flex-col rounded-lg overflow-hidden border border-subtle bg-surface hover:border-accent transition-colors group">
       <a href={href} onClick={onCardClick} className="block w-full overflow-hidden">
         {card.image_uri ? (
-          <img
-            src={card.image_uri}
+          <CardImage
+            uri={card.image_uri}
             alt={card.name}
+            sizes={TILE_SIZES}
             className="w-full object-cover opacity-70 group-hover:opacity-100 group-hover:scale-[1.02] transition duration-200"
-            style={{ aspectRatio: MTG_CARD_ASPECT_RATIO }}
-            loading="lazy"
           />
         ) : (
           <div className="w-full bg-muted flex items-center justify-center text-cream-dim/30 text-xs" style={{ aspectRatio: MTG_CARD_ASPECT_RATIO }}>

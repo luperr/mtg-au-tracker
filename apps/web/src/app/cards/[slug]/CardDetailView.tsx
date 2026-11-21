@@ -8,6 +8,7 @@ import { ColorSymbols } from "@/app/ColorSymbols";
 import { TrendBadge } from "@/app/TrendBadge";
 import { fmtAUD } from "@/lib/utils";
 import { MTG_CARD_ASPECT_RATIO } from "@/lib/config";
+import { CardImage } from "@/app/CardImage";
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -80,13 +81,14 @@ export function CardDetailView({
       <div className="lg:sticky lg:top-4 max-w-[200px] mx-auto lg:max-w-none mb-6 lg:mb-0">
         <div className="relative">
           {shownImage ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <CardImage
               key={shownImage}
-              src={shownImage}
+              uri={shownImage}
               alt={card.name}
-              className="w-full rounded-xl shadow-2xl shadow-black/60 transition-opacity duration-150"
-              style={{ aspectRatio: MTG_CARD_ASPECT_RATIO, objectFit: "cover" }}
+              // 200px on phones, the 220px column from lg up. The page's largest image: load it first.
+              sizes="220px"
+              priority
+              className="w-full rounded-xl object-cover shadow-2xl shadow-black/60 transition-opacity duration-150"
             />
           ) : (
             <div
