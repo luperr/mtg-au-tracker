@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     // Every in-stock listing for the cards, eligible or not: prefs are applied in
     // buildProblem, because the current plan is re-priced from the same rows and
     // a user's current listing can sit at a store their prefs now exclude.
-    // store_prices has no stock or variant column yet; both read as unknown.
+    // Listings carry no stock or variant column yet; both read as unknown.
     const started = performance.now();
     const [rows, rates] = await Promise.all([
       sql<OfferRow[]>`
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
           NULL::int AS stock_qty,
           NULL::text AS variant_id
         FROM printings p
-        JOIN store_prices sp ON sp.printing_id = p.id
+        JOIN card_listings sp ON sp.card_id = p.card_id AND sp.printing_id = p.id
           AND sp.in_stock = true
           AND sp.price_type = 'sell'
         JOIN stores s ON s.id = sp.store_id AND s.scraper_enabled = true

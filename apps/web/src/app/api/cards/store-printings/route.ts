@@ -34,13 +34,14 @@ export async function GET(req: NextRequest) {
         sp.store_id,
         s.name AS store_name
       FROM printings p
-      JOIN store_prices sp ON sp.printing_id = p.id
-      -- Disabled stores' last scrape lingers in store_prices; don't offer it.
+      JOIN card_listings sp ON sp.card_id = p.card_id AND sp.printing_id = p.id
+      -- Disabled stores' last scrape lingers in the listings; don't offer it.
       JOIN stores s ON s.id = sp.store_id AND s.scraper_enabled = true
       WHERE p.card_id = ${cardId}
         AND sp.in_stock = true
         AND sp.price_type = 'sell'
-      ORDER BY p.id, sp.store_id, sp.price_aud::numeric ASC
+      -- sp.id breaks equal-price ties, so the listing shown doesn't depend on row order on disk.
+      ORDER BY p.id, sp.store_id, sp.price_aud::numeric ASC, sp.id
     `;
 
     return NextResponse.json(

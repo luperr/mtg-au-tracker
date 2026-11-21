@@ -74,8 +74,8 @@ export default async function CardPage({
 
   // getCardPriceHistory is deliberately NOT awaited here. It is the only query on
   // this route that reads price_history (19GB, monthly partitions) instead of
-  // store_prices, and on a cold cache it costs tens of seconds — measured at 58s
-  // for Sol Ring. Everything below renders from printings + store_prices, which is
+  // card_listings, and on a cold cache it costs tens of seconds — measured at 58s
+  // for Sol Ring. Everything below renders from printings + card_listings, which is
   // ~3ms warm, so the chart streams in afterwards rather than holding the page.
   const [rawPrintings, trend, audPerUsd] = await Promise.all([
     getPrintingsWithPrices(card.id),

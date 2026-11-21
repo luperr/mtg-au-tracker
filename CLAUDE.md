@@ -171,7 +171,20 @@ Tables:
   at any time with `pnpm --filter @mtg-au/scraper refresh:card-aggregates`.
 - **`printings`** — One row per physical card version. ~141,656 rows. Has `card_id` FK, set code, foil flag, USD reference price, `released_at`.
 - **`stores`** — Australian retailers + eBay AU, including `flat_shipping_aud`. Seeded from `STORE_REGISTRY` (`apps/scraper/src/stores/stores.config.ts`).
-- **`store_prices`** — Current prices from stores/eBay. Overwritten each scrape run.
+- **`store_prices`** — Current prices from stores/eBay. Overwritten each scrape run. **Writers
+  only**: the scrapers and the eBay swap write here, and the web app never reads it.
+- **`card_listings`** — `store_prices` plus `card_id`, **physically ordered by card**, and what the
+  web app reads (search, card page, optimiser, import, printing picker). `store_prices` is written
+  store by store, so one card's listings sat on ~36 scattered pages. Measured on the dev DB, a
+  "dragon" search touched 6,815 pages, which in card order is 703 contiguous ones (~10×, and
+  sequential rather than one seek each). It's rebuilt wholesale and swapped in by
+  `rebuildCardListings()` (`market/card-listings.ts`) after each scrape lane, after `run-store.ts`
+  and after the eBay import: an ordered `INSERT` into `_next`, then a rename swap under a 2s
+  `lock_timeout` with retries, serialised by an advisory lock. **It never throws**: on failure the
+  old copy keeps serving. Rebuild by hand with
+  `pnpm --filter @mtg-au/scraper rebuild:card-listings` (~7s on the dev DB). Never update it in
+  place: an in-place `DELETE` + `INSERT` puts rows back in scattered free space, which is what it
+  exists to undo.
 - **`price_history`** — Daily snapshots. Append-only.
 - **`unmatched_cards`** — Scraped listings that couldn't be matched to a Scryfall printing. **Current run only** — every writer clears its own rows before inserting (`run-all.ts` per store, `ebay-import.ts` for `ebay_au`). An unmatched listing names no printing, so nothing in the UI can reach it; it's only useful for debugging the run that produced it. The eBay path used to append without ever deleting, which is how the table reached 14.4M rows / 3.4GB.
 - **`ebay_search_log`** — Tracks when each card name was last searched on eBay + result count. Drives tiered eBay scheduler.
@@ -318,7 +331,8 @@ Full eBay AU import pipeline:
 
 eBay prices are replaced **per card, inside a transaction** — `atomicSwapCardPrices()` deletes
 that card's `ebay_au` rows and inserts the fresh ones in one statement pair, so readers never
-see a zero-price window. An interrupted run therefore leaves already-processed cards fresh and
+see a zero-price window. The site reads `card_listings`, so eBay changes reach it when the import
+finishes and rebuilds that table, not card by card during the run. An interrupted run therefore leaves already-processed cards fresh and
 the rest merely stale; re-run to finish the remainder. (This used to be a delete-everything-then-
 repopulate run, which is where the "re-run to repopulate" advice came from.)
 
@@ -351,7 +365,8 @@ Listing-grained search with a filter sidebar (store, set, condition, finish, tre
   `search_filters` (store/condition/finish/treatment/price carried into the next search —
   used only when the URL names no filter; set is deliberately not sticky), `search_sidebar`
   (desktop sidebar collapsed), `search_last_q` (so `card_searches` logs each query once).
-- **It reads `store_prices` live**, which the old search's denormalised columns exist to avoid.
+- **It reads listings live, from `card_listings`** (card-ordered `store_prices`), which the old
+  search's denormalised columns exist to avoid.
   The bound is the name query: mandatory (≥3 chars) and capped at `SEARCH_V2_CARD_CAP` cards
   before any join. Don't add filter-only browsing without measuring it on prod disks.
 - One statement returns tiles and facet counts; `listings` is MATERIALIZED so it is read once.

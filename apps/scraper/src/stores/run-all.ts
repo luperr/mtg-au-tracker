@@ -31,6 +31,7 @@ import { CrystalCommerceScraper } from "./crystalcommerce.js";
 import { shopifyStores, crystalCommerceStores } from "./stores.config.js";
 import { seedStores } from "../seed.js";
 import { refreshCardPrices } from "../market/refresh-card-aggregates.js";
+import { rebuildCardListings } from "../market/card-listings.js";
 import type { BaseScraper } from "./base-scraper.js";
 import type { ScrapedCard } from "@mtg-au/shared";
 import { logger } from "../lib/logger.js";
@@ -332,6 +333,8 @@ async function refreshPrices(lane: string): Promise<void> {
   } catch (err) {
     log.error({ err, lane }, "Card price aggregate refresh failed — search prices are stale until the next run");
   }
+  // What the site reads listings from. Never throws; on failure the previous copy keeps serving.
+  await rebuildCardListings(`lane:${lane}`);
 }
 
 // Only run when invoked directly (pnpm scrape:stores), not when imported by index.ts

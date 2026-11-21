@@ -14,6 +14,7 @@
     "test:ebay:browse": "tsx src/ebay/browse-client.ts",
     "seed": "tsx src/seed.ts",
     "refresh:card-aggregates": "tsx src/market/refresh-card-aggregates-cli.ts",
+    "rebuild:card-listings": "tsx src/market/card-listings-cli.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

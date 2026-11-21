@@ -192,6 +192,38 @@ export const storePrices = pgTable(
   ]
 );
 
+// ─── Card listings ────────────────────────────────────────────────────────────
+// store_prices, physically ordered by card. The web app reads this, never store_prices.
+//
+// Why it exists: store_prices is written store by store, so one card's ~36 listings sit on
+// ~36 different pages. On the ~40 IOPS disks, a broad search ("dragon": 14k listings across
+// 6.8k pages) took seconds; in card order it is ~600 contiguous pages.
+//
+// A derived copy, rebuilt wholesale and swapped in by rebuildCardListings()
+// (market/card-listings.ts) after each scrape lane, run-store.ts and the eBay import, so it is
+// as fresh as the last of those. Every row of store_prices, so readers keep their own
+// filters (price_type, in_stock, store). No FKs, no PK: nothing writes to it but the rebuild.
+
+export const cardListings = pgTable(
+  "card_listings",
+  {
+    cardId: text("card_id").notNull(),
+    id: integer("id").notNull(),                           // store_prices.id
+    printingId: text("printing_id").notNull(),
+    storeId: text("store_id").notNull(),
+    priceAud: text("price_aud").notNull(),
+    shippingAud: text("shipping_aud"),
+    priceType: text("price_type").notNull(),
+    condition: text("condition"),
+    inStock: boolean("in_stock").notNull(),
+    url: text("url"),
+    scrapedAt: timestamp("scraped_at").notNull(),
+  },
+  (table) => [
+    index("card_listings_card_printing_idx").on(table.cardId, table.printingId),
+  ]
+);
+
 // ─── Price history ────────────────────────────────────────────────────────────
 // One row per printing/store/priceType per day. Append-only — never updated.
 // Partitioned by recorded_at (monthly RANGE). See migration 0004.

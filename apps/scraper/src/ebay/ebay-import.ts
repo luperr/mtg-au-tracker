@@ -36,6 +36,7 @@ import { buildSetRecognizer, type SetRecognizer } from "./set-recognizer.js";
 import type { EbayItemSummary } from "./browse-client.js";
 import { logger } from "../lib/logger.js";
 import { computeMarketStats } from "../market/compute-market-stats.js";
+import { rebuildCardListings } from "../market/card-listings.js";
 
 const log = logger.child({ component: "ebay-import" });
 
@@ -351,6 +352,10 @@ export async function runEbayImport(): Promise<void> {
     },
     "eBay import complete",
   );
+
+  // eBay's per-card swaps reach the site only through card_listings, so rebuild it now the run is
+  // done. Never throws.
+  await rebuildCardListings("ebay");
 
   // Trigger market stats immediately after eBay data lands — belt-and-suspenders
   // alongside the 7 AM cron in case eBay finishes early or is re-run manually.

@@ -10,6 +10,7 @@ import { SCRAPERS, runStore } from "./run-all.js";
 import { STORE_REGISTRY } from "./stores.config.js";
 import { seedStores } from "../seed.js";
 import { refreshCardPrices } from "../market/refresh-card-aggregates.js";
+import { rebuildCardListings } from "../market/card-listings.js";
 import { logger } from "../lib/logger.js";
 
 const log = logger.child({ component: "run-store" });
@@ -53,6 +54,7 @@ async function main() {
   // leaves the same aggregates a full run would. Cheap enough (seconds) that skipping
   // it only buys a confusing dev environment where search shows yesterday's prices.
   await refreshCardPrices();
+  await rebuildCardListings(`run-store:${storeId}`);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
