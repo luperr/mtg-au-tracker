@@ -271,22 +271,19 @@ export async function getCardMetadata(slug: string): Promise<CardMetadata | null
       c.type_line,
       (
         SELECT MIN(sp.price_aud::numeric)::text
-        FROM store_prices sp
-        JOIN printings p ON p.id = sp.printing_id
-        WHERE p.card_id = c.id AND sp.in_stock = true AND sp.price_type = 'sell'
+        FROM card_listings sp
+        WHERE sp.card_id = c.id AND sp.in_stock = true AND sp.price_type = 'sell'
       ) AS cheapest_price,
       (
         SELECT COUNT(DISTINCT sp.store_id)::int
-        FROM store_prices sp
-        JOIN printings p ON p.id = sp.printing_id
-        WHERE p.card_id = c.id AND sp.in_stock = true AND sp.price_type = 'sell'
+        FROM card_listings sp
+        WHERE sp.card_id = c.id AND sp.in_stock = true AND sp.price_type = 'sell'
       ) AS store_count,
       (
         SELECT s.name
-        FROM store_prices sp
-        JOIN printings p ON p.id = sp.printing_id
+        FROM card_listings sp
         JOIN stores s ON s.id = sp.store_id
-        WHERE p.card_id = c.id AND sp.in_stock = true AND sp.price_type = 'sell'
+        WHERE sp.card_id = c.id AND sp.in_stock = true AND sp.price_type = 'sell'
         ORDER BY sp.price_aud::numeric ASC
         LIMIT 1
       ) AS cheapest_store,
@@ -350,7 +347,7 @@ export async function getPrintingsWithPrices(
       sp.in_stock,
       sp.url AS store_url
     FROM printings p
-    LEFT JOIN store_prices sp ON sp.printing_id = p.id
+    LEFT JOIN card_listings sp ON sp.card_id = p.card_id AND sp.printing_id = p.id
     LEFT JOIN stores s ON s.id = sp.store_id
     WHERE p.card_id = ${cardId}
     ORDER BY p.set_name, p.is_foil, sp.price_aud

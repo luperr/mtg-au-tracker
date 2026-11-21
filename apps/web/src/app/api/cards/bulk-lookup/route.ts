@@ -114,7 +114,7 @@ async function lookupBySetCollector(
       sp.url
     FROM printings p
     JOIN cards c ON c.id = p.card_id
-    JOIN store_prices sp ON sp.printing_id = p.id
+    JOIN card_listings sp ON sp.card_id = p.card_id AND sp.printing_id = p.id
       AND sp.in_stock = true
       AND sp.price_type = 'sell'
     JOIN stores s ON s.id = sp.store_id
@@ -155,7 +155,7 @@ async function lookupByName(inputName: string, qty: number): Promise<BulkLookupR
       sp.url
     FROM cards c
     JOIN printings p ON p.card_id = c.id
-    JOIN store_prices sp ON sp.printing_id = p.id
+    JOIN card_listings sp ON sp.card_id = p.card_id AND sp.printing_id = p.id
       AND sp.in_stock = true
       AND sp.price_type = 'sell'
     JOIN stores s ON s.id = sp.store_id

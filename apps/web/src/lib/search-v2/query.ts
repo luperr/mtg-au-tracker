@@ -7,14 +7,14 @@ import { SEARCH_V2_PAGE_SIZE, type Facets, type SearchTile, type SearchV2Result,
 /**
  * v2 search — listing-grained, with filters, facets and three view modes.
  *
- * Unlike searchCards(), this reads store_prices live, which the denormalised card
- * columns exist to avoid (see CLAUDE.md: ~40 IOPS, store_prices cold every
- * morning). What keeps it bounded is the name query: it is mandatory, and it is
- * resolved against the trigram index on cards.name and capped *before* any join, so
- * the store_prices rows read are only those of at most SEARCH_V2_CARD_CAP cards,
- * reached through printings_card_id_idx → store_prices_printing_store_idx.
- * Filter-only browsing (no q) would scan the whole of store_prices and is
- * deliberately not supported until it has been measured.
+ * Unlike searchCards(), this reads listings live, from card_listings: store_prices
+ * in card order (market/card-listings.ts), so one card's listings are a few
+ * contiguous pages rather than one seek each on the ~40 IOPS disks. What keeps it
+ * bounded is the name query: it is mandatory, and it is resolved against the trigram
+ * index on cards.name and capped *before* any join, so the listings read are only
+ * those of at most SEARCH_V2_CARD_CAP cards, reached through
+ * card_listings_card_printing_idx. Filter-only browsing (no q) would scan the whole
+ * table and is deliberately not supported until it has been measured.
  *
  * One statement returns tiles and facets together so that listing set is read once:
  * `listings` is MATERIALIZED and every later CTE — the filtered tiles and each facet
@@ -193,7 +193,7 @@ export async function searchListings(state: SearchState): Promise<SearchV2Result
       JOIN printings p ON p.card_id = c.id
       -- In stock only: an out-of-stock listing is a price nobody can pay. A stock
       -- filter can come back once stores expose quantities rather than a flag.
-      JOIN store_prices sp ON sp.printing_id = p.id AND sp.price_type = 'sell' AND sp.in_stock
+      JOIN card_listings sp ON sp.card_id = p.card_id AND sp.printing_id = p.id AND sp.price_type = 'sell' AND sp.in_stock
       JOIN stores s ON s.id = sp.store_id
       WHERE c.rnk <= ${SEARCH_V2_CARD_CAP}
     ),
@@ -266,7 +266,7 @@ export async function searchListings(state: SearchState): Promise<SearchV2Result
       (SELECT id FROM cand ORDER BY rnk LIMIT 1) AS top_card_id
   `;
 
-  // Latency per query — v2 reads store_prices live,
+  // Latency per query — v2 reads listings live (card_listings),
   // which the old search's denormalised columns avoid. Grafana: component="search-v2".
   const ms = Math.round(performance.now() - started);
   const log = { component: "search-v2", q: state.q, view: state.view, page: state.page, ms, cards: row?.cand_count ?? 0, fuzzy: row?.fuzzy ?? false };
