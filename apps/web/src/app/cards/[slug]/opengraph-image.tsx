@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { getCardMetadata, getStores } from "@/lib/db";
+import { fetchScryfall } from "@/lib/scryfall";
 
 export const runtime = "nodejs";
 export const size = { width: 1200, height: 630 };
@@ -7,7 +8,8 @@ export const contentType = "image/png";
 
 async function fetchImageAsDataUrl(url: string): Promise<string | null> {
   try {
-    const res = await fetch(url);
+    // Card art is a Scryfall URL, which refuses Node's default User-Agent.
+    const res = await fetchScryfall(url);
     if (!res.ok) return null;
     const buf = await res.arrayBuffer();
     const mime = res.headers.get("content-type") ?? "image/jpeg";

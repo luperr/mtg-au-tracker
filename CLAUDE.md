@@ -450,8 +450,8 @@ name and payload is typed there, and `track()` is the only way to send one; don'
 - Renaming an event or a `source` value splits its Umami history at the deploy — add a field instead.
 
 ### Card images (`app/CardImage.tsx`, `app/api/scryfall-image/`, `lib/card-image.ts`)
-Card art is **never hotlinked from Scryfall**. `CardImage`, `CardThumb` (built on it) and
-`CardImagePopup` render through Next's image optimizer, which resizes to the rendered width and
+Card art is **never hotlinked from Scryfall**. `CardImage` (and `CardThumb` and the want
+list's hover preview, built on it) renders through Next's image optimizer, which resizes to the rendered width and
 serves WebP from `/_next/image`. Cloudflare caches that at the AU edge, through a **Cache Rule**
 on `/_next/image`: it has no file extension, so without the rule Cloudflare passes it through
 and every image hits the home server. Hotlinked, a search tile was an 80–160KB JPEG behind a
@@ -459,18 +459,21 @@ and every image hits the home server. Hotlinked, a search tile was an 80–160KB
 - The optimizer reads originals through `/api/scryfall-image/<path>`, not from
   `cards.scryfall.io`. Next 15's remote fetch sends Node's default User-Agent and can't be
   configured, and Scryfall rejects that with 400 `generic_user_agent`. The route accepts only
-  `CARD_IMAGE_PATH`, sends `SCRYFALL_USER_AGENT`, and remembers upstream misses for 10 minutes.
+  `CARD_IMAGE_PATH` and remembers upstream misses for 10 minutes. Every server-side Scryfall
+  fetch in web goes through `fetchScryfall()` (`lib/scryfall.ts`), which sends the one
+  `SCRYFALL_USER_AGENT` (`@mtg-au/shared`, also used by the scraper).
   `images.localPatterns` limits the optimizer to this route.
 - **The proxy rate-limits only outside callers** (`cf-connecting-ip` present). The optimizer's
   in-process request carries none of the viewer's headers, so limiting it would put every viewer
   in one bucket and break images site-wide.
 - A URL that isn't on `cards.scryfall.io` (e.g. `errors.scryfall.com/soon.jpg`) renders
   `unoptimized` rather than failing. Thumbnails resize from Scryfall's `small` rendition.
-- Set `sizes` to the real rendered width; it chooses the file. Use `priority` only for what's on
-  screen at load: the first results row and the card page's *initial* image (not on hover swaps).
+- Give `sizes` for art that scales with the layout (tiles), or a fixed `width` in CSS px
+  (thumbnails, the card page, popups) so only the 1x/2x files are listed. Use `priority` only for
+  what's on screen at load: the first results row and the card page's *initial* image.
 - Widths are few on purpose (`imageSizes` / `deviceSizes`, capped at 488, Scryfall "normal").
-  `minimumCacheTTL` is a week: Next 15 never evicts its image cache by size, only once entries go
-  stale, and prod keeps it in a tmpfs capped at `size=512m`.
+  Resized images are cached a year (`minimumCacheTTL`; the URLs are versioned) in an LRU capped at
+  400MB (`maximumDiskCacheSize`), inside prod's 512m tmpfs.
 
 ### `apps/web/src/lib/store-shipping.ts`
 `getStoreShippingRates()` — flat-rate postage per store (AUD), keyed by `store_id`, read from `stores.flat_shipping_aud` (seeded from `STORE_REGISTRY` in `stores.config.ts`) and cached in memory for an hour. Fallback when a store_prices row doesn't supply `shipping_aud`. eBay is `null` (per-item shipping).

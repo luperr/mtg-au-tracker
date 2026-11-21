@@ -32,25 +32,20 @@ const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: path.resolve("../../"),
   transpilePackages: ["@mtg-au/shared"],
-  // Card art goes through /_next/image (app/CardImage.tsx): resized, WebP, and cached by
-  // Cloudflare at the AU edge — Scryfall's own CDN is ~1s to first byte from Australia.
-  // A Cloudflare Cache Rule makes /_next/image cacheable; it has no file extension, so by
-  // default Cloudflare passes it through.
+  // Card art: resized WebP via /_next/image, cached by Cloudflare (see "Card images" in CLAUDE.md).
   images: {
-    // No remotePatterns: card art is fetched through the local /api/scryfall-image proxy,
-    // because the optimizer's own remote fetch can't send the User-Agent Scryfall requires.
+    // Originals come through the local /api/scryfall-image route, not remotePatterns: the
+    // optimizer's own remote fetch can't send the User-Agent Scryfall requires. Nothing else
+    // local may be optimised, and Next 16 requires this for query-string srcs.
+    localPatterns: [{ pathname: "/api/scryfall-image/**" }],
     // No AVIF: ~10x slower to encode, and cold resizes run on the home server.
     formats: ["image/webp"],
-    // Only our proxy route may be optimised (and its version query is allowed). Without this,
-    // /_next/image?url=/api/<anything> runs any local route through the optimizer, and
-    // Next 16 requires it for query-string srcs.
-    localPatterns: [{ pathname: "/api/scryfall-image/**" }],
-    // A week, in the web container's tmpfs and at Cloudflare's edge. Not a year: Next 15 never
-    // evicts its image cache by size, only once an entry goes stale, so this bounds how long a
-    // resized image can sit in RAM (the tmpfs is size-capped in docker-compose.prod.yml too).
-    minimumCacheTTL: 604800,
-    // Few widths: fewer variants to resize, more Cloudflare hits. Scryfall "normal" is 488 wide
-    // and the optimizer never enlarges, so nothing above 488 would differ.
+    // Proxied URLs keep Scryfall's version query, so a resized image never changes. The disk
+    // cache is an LRU capped below the 512m tmpfs it lives on (docker-compose.prod.yml).
+    minimumCacheTTL: 31536000,
+    maximumDiskCacheSize: 400 * 1024 * 1024,
+    // Few widths: fewer variants to resize, more Cloudflare hits. Nothing above 488 (Scryfall
+    // "normal") differs, as the optimizer never enlarges.
     imageSizes: [64, 128, 256],
     deviceSizes: [384, 488],
   },

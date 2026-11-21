@@ -103,7 +103,7 @@ export const SCRYFALL_BULK_API_URL = stringEnv(
  * read once and discarded. Prod points this at the scraper_data volume instead.
  */
 export const SCRYFALL_OUTPUT_DIR = stringEnv("SCRYFALL_OUTPUT_DIR", "/tmp/mtg-scraper");
-export const SCRYFALL_USER_AGENT = "Scrymarket/1.0 (learning project)";
+export { SCRYFALL_USER_AGENT } from "@mtg-au/shared";
 
 // ── eBay ─────────────────────────────────────────────────────────────────────
 

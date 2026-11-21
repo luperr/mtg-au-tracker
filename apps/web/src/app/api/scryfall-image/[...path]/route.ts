@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withApiGuard } from "@/lib/api-helpers";
 import { createRateLimiter } from "@/lib/rate-limit";
-import { RATE_LIMIT_IMAGE_PER_MINUTE, SCRYFALL_IMAGE_ORIGIN, SCRYFALL_USER_AGENT } from "@/lib/config";
+import { RATE_LIMIT_READ_PER_MINUTE, SCRYFALL_IMAGE_ORIGIN } from "@/lib/config";
+import { fetchScryfall } from "@/lib/scryfall";
 import { CARD_IMAGE_PATH } from "@/lib/card-image";
 
-const checkRateLimit = createRateLimiter(RATE_LIMIT_IMAGE_PER_MINUTE, 60 * 1000);
+// Only outside callers are limited (see below), so the ordinary read limit fits.
+const checkRateLimit = createRateLimiter(RATE_LIMIT_READ_PER_MINUTE, 60 * 1000);
 
 /**
  * Upstream misses (a stale image_uri, a Scryfall outage) remembered briefly, so every view of a
@@ -46,10 +48,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ path
 
     let res: Response;
     try {
-      res = await fetch(upstream, {
-        headers: { "User-Agent": SCRYFALL_USER_AGENT, Accept: "image/*" },
-        signal: AbortSignal.timeout(7000),
-      });
+      res = await fetchScryfall(upstream);
     } catch {
       // Timeout or network error: Scryfall is slow or down. Quietly — one log per image would
       // flood Loki during an incident.
