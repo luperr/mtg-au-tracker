@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import Image from "next/image";
+import { proxiedCardSrc } from "@/lib/card-image";
 
 // ── Shared positioning helper ─────────────────────────────────────────────────
 // Positions a popup image relative to a trigger element's rect: to the right
@@ -22,7 +23,7 @@ export function computePopupPos(rect: DOMRect, popupW: number, popupH: number): 
 }
 
 // ── Shared popup image ────────────────────────────────────────────────────────
-// The fixed-position card image rendered by every preview popup.
+// The fixed-position card image rendered by every preview popup (the want list's hover preview).
 
 export function CardImagePopup({
   uri,
@@ -39,79 +40,18 @@ export function CardImagePopup({
   zIndex?: number;
   alt?: string;
 }) {
+  // Through the optimizer like all card art (app/CardImage.tsx), sized to the popup.
+  const proxied = proxiedCardSrc(uri);
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={uri}
+    <Image
+      src={proxied ?? uri}
+      unoptimized={proxied === null}
       alt={alt}
       width={width}
+      height={Math.round((width * 680) / 488)}
+      sizes={`${width}px`}
       className="fixed pointer-events-none rounded-xl shadow-2xl shadow-black/80 border border-subtle"
       style={{ top, left, zIndex }}
     />
-  );
-}
-
-// ── CardMagnifier — thumbnail that pops up a large image on hover ─────────────
-
-interface Props {
-  smallSrc: string;
-  largeSrc: string;
-  alt: string;
-  /** Milliseconds to wait before showing the popup. Defaults to 0 (immediate). */
-  delayMs?: number;
-}
-
-export function CardMagnifier({ smallSrc, largeSrc, alt, delayMs = 0 }: Props) {
-  const [show, setShow] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  function computePos() {
-    if (!wrapperRef.current) return null;
-    return computePopupPos(wrapperRef.current.getBoundingClientRect(), 380, 530);
-  }
-
-  function open() {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (delayMs > 0) {
-      timerRef.current = setTimeout(() => {
-        const p = computePos();
-        if (p) { setPos(p); setShow(true); }
-      }, delayMs);
-    } else {
-      const p = computePos();
-      if (p) { setPos(p); setShow(true); }
-    }
-  }
-
-  function close() {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setShow(false);
-  }
-
-  return (
-    <>
-      <div
-        ref={wrapperRef}
-        className="w-full h-full"
-        onMouseEnter={open}
-        onMouseLeave={close}
-        onClick={(e) => {
-          e.preventDefault();
-          show ? close() : open();
-        }}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={smallSrc}
-          alt={alt}
-          className="w-full h-full object-cover object-top"
-          loading="lazy"
-        />
-      </div>
-
-      {show && <CardImagePopup uri={largeSrc} top={pos.top} left={pos.left} width={380} alt={alt} />}
-    </>
   );
 }

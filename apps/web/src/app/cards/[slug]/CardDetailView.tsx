@@ -85,9 +85,10 @@ export function CardDetailView({
               key={shownImage}
               uri={shownImage}
               alt={card.name}
-              // 200px on phones, the 220px column from lg up. The page's largest image: load it first.
+              // 200px on phones, the 220px column from lg up. Only the initial image is the LCP;
+              // hovering rows remounts this (key) and mustn't preload each printing at high priority.
               sizes="220px"
-              priority
+              priority={shownImage === defaultImage}
               className="w-full rounded-xl object-cover shadow-2xl shadow-black/60 transition-opacity duration-150"
             />
           ) : (

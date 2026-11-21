@@ -41,8 +41,14 @@ const nextConfig: NextConfig = {
     // because the optimizer's own remote fetch can't send the User-Agent Scryfall requires.
     // No AVIF: ~10x slower to encode, and cold resizes run on the home server.
     formats: ["image/webp"],
-    // Scryfall image URLs carry a version query, so a given URL never changes.
-    minimumCacheTTL: 31536000,
+    // Only our proxy route may be optimised (and its version query is allowed). Without this,
+    // /_next/image?url=/api/<anything> runs any local route through the optimizer, and
+    // Next 16 requires it for query-string srcs.
+    localPatterns: [{ pathname: "/api/scryfall-image/**" }],
+    // A week, in the web container's tmpfs and at Cloudflare's edge. Not a year: Next 15 never
+    // evicts its image cache by size, only once an entry goes stale, so this bounds how long a
+    // resized image can sit in RAM (the tmpfs is size-capped in docker-compose.prod.yml too).
+    minimumCacheTTL: 604800,
     // Few widths: fewer variants to resize, more Cloudflare hits. Scryfall "normal" is 488 wide
     // and the optimizer never enlarges, so nothing above 488 would differ.
     imageSizes: [64, 128, 256],

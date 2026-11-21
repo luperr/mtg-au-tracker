@@ -59,8 +59,11 @@ function AddToWantListButton({ tile, view }: { tile: SearchTile; view: SearchVie
   );
 }
 
-/** Tile width per breakpoint, matching the grid in SearchV2 (2 / 3 / 4–5 columns). */
-const TILE_SIZES = "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw";
+/**
+ * Tile width per breakpoint, matching the grid in SearchV2 (2 / 3 / 4–5 columns). Max-widths
+ * one below Tailwind's sm (640) and lg (1024) min-widths, so the two agree at the boundary.
+ */
+const TILE_SIZES = "(max-width: 639px) 50vw, (max-width: 1023px) 33vw, 20vw";
 
 /** `priority`: an above-the-fold tile, loaded at once rather than lazily. */
 export function ListingTile({ tile, view, query, priority = false }: { tile: SearchTile; view: SearchView; query: string; priority?: boolean }) {

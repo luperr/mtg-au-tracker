@@ -122,8 +122,8 @@ function Results({ result, rendered, filtersHidden }: { result: SearchV2Result; 
         ) : (
           <div className={gridClass}>
             {result.tiles.map((tile, i) => (
-              // The first row is on screen at load (2 columns on a phone, up to 5 on desktop).
-              <ListingTile key={tile.key} tile={tile} view={rendered.view} query={rendered.q} priority={i < 4} />
+              // The first row is on screen at load: up to 5 columns on desktop (2 rows of 2 on a phone).
+              <ListingTile key={tile.key} tile={tile} view={rendered.view} query={rendered.q} priority={i < 5} />
             ))}
           </div>
         )}
