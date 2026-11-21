@@ -136,7 +136,9 @@ services:
         max-file: "5"
     tmpfs:
       - /tmp
-      - /app/apps/web/.next/cache:uid=1001,gid=1001   # Next.js image optimisation + ISR cache
+      # Next.js image optimisation + ISR cache. Sized: tmpfs is RAM. The image cache's own LRU
+      # cap (images.maximumDiskCacheSize, 400MB) sits below this, leaving room for ISR.
+      - /app/apps/web/.next/cache:uid=1001,gid=1001,size=512m
     restart: always
     security_opt:
       - no-new-privileges:true
@@ -147,6 +149,10 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       EBAY_AFFILIATE_CAMPAIGN_ID: ${EBAY_AFFILIATE_CAMPAIGN_ID:-}
       EBAY_AFFILIATE_ROTATION_ID: ${EBAY_AFFILIATE_ROTATION_ID:-}
+      # libuv's worker pool, default 4: sharp's resizes and DNS lookups share it, so a cold
+      # results page resized ~4 at a time. Not higher: each resize already runs on several
+      # libvips threads, so more jobs than cores only adds contention. Matters only on cache misses.
+      UV_THREADPOOL_SIZE: "8"
     cap_drop:
       - ALL
     healthcheck:

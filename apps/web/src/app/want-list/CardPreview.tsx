@@ -1,10 +1,26 @@
 "use client";
 
 import { createContext, useCallback, useContext, useMemo, useState, type MouseEvent, type ReactNode } from "react";
-import { computePopupPos, CardImagePopup } from "@/app/CardMagnifier";
+import { CardImage } from "@/app/CardImage";
+import { CARD_IMAGE_HEIGHT, CARD_IMAGE_WIDTH } from "@/lib/card-image";
 
 const WIDTH = 244;
-const HEIGHT = 340;
+const HEIGHT = Math.round((WIDTH * CARD_IMAGE_HEIGHT) / CARD_IMAGE_WIDTH);
+
+/** Beside the trigger if there's room on the right, else on the left; centred and kept on screen. */
+function computePopupPos(rect: DOMRect, popupW: number, popupH: number): { top: number; left: number } {
+  const spaceRight = window.innerWidth - rect.right;
+  let left = spaceRight >= popupW + 16
+    ? rect.right + 8
+    : rect.left - popupW - 8;
+  left = Math.max(8, Math.min(left, window.innerWidth - popupW - 8));
+
+  const midY = rect.top + rect.height / 2;
+  let top = midY - popupH / 2;
+  top = Math.max(8, Math.min(top, window.innerHeight - popupH - 8));
+
+  return { top, left };
+}
 
 type HoverProps = { onMouseEnter?: (e: MouseEvent<HTMLElement>) => void; onMouseLeave?: () => void };
 
@@ -32,7 +48,15 @@ export function CardPreviewProvider({ children }: { children: ReactNode }) {
   return (
     <CardHoverContext.Provider value={value}>
       {children}
-      {preview && <CardImagePopup uri={preview.uri} top={preview.top} left={preview.left} width={WIDTH} />}
+      {preview && (
+        <CardImage
+          uri={preview.uri}
+          alt=""
+          width={WIDTH}
+          className="fixed z-50 pointer-events-none rounded-xl shadow-2xl shadow-black/80 border border-subtle"
+          style={{ top: preview.top, left: preview.left, width: WIDTH }}
+        />
+      )}
     </CardHoverContext.Provider>
   );
 }

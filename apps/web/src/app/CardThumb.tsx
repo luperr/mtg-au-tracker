@@ -1,16 +1,9 @@
-import { MTG_CARD_ASPECT_RATIO } from "@/lib/config";
-import { toSmallImage } from "@/lib/utils";
+import { CardImage } from "./CardImage";
 
 /**
- * A small card image at the card's aspect ratio, or a blank card-shaped placeholder.
- * Loads Scryfall's "small" rendition — these show at 40–48px, and the stored "normal"
- * URI is a ~488px file.
+ * A small card image (want-list rows, pickers), from Scryfall's 146px "small" rendition —
+ * enough for 3x screens at 36–48px, and a tenth of the original to fetch on a cold cache.
  */
 export function CardThumb({ uri, className }: { uri: string | null; className: string }) {
-  const src = toSmallImage(uri);
-  return src ? (
-    <img src={src} alt="" loading="lazy" className={`rounded ${className}`} style={{ aspectRatio: MTG_CARD_ASPECT_RATIO }} />
-  ) : (
-    <div className={`rounded bg-muted ${className}`} style={{ aspectRatio: MTG_CARD_ASPECT_RATIO }} />
-  );
+  return <CardImage uri={uri} alt="" width={48} rendition="small" className={`rounded ${className}`} />;
 }

@@ -48,12 +48,12 @@ export default function PrivacyPage() {
       <section className="space-y-3">
         <h2 className="text-xl font-semibold text-cream">Third-party services</h2>
         <p className="text-cream-dim leading-relaxed">
-          The site loads card images and mana cost symbol SVGs directly from Scryfall&apos;s CDN
-          (<code className="text-accent bg-muted px-1 py-0.5 rounded text-xs">svgs.scryfall.io</code> and{" "}
-          <code className="text-accent bg-muted px-1 py-0.5 rounded text-xs">cards.scryfall.io</code>).
-          When your browser fetches these assets, Scryfall&apos;s servers will receive your IP
-          address as part of the standard HTTP request. Scryfall&apos;s privacy policy governs
-          that data.
+          Card images come from Scryfall, but Scrymarket&apos;s server fetches and resizes them and
+          serves them to you itself, so Scryfall doesn&apos;t see your IP address for those. Set and
+          mana cost symbol SVGs still load directly from Scryfall&apos;s CDN
+          (<code className="text-accent bg-muted px-1 py-0.5 rounded text-xs">svgs.scryfall.io</code>),
+          so Scryfall&apos;s servers receive your IP address as part of those standard HTTP
+          requests. Scryfall&apos;s privacy policy governs that data.
         </p>
         <p className="text-cream-dim leading-relaxed">
           No other third-party scripts, fonts, or tracking services are loaded.

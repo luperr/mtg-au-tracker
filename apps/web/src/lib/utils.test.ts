@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fmtAUD, cardHref, toSmallImage } from "./utils.js";
+import { fmtAUD, cardHref } from "./utils.js";
 
 describe("fmtAUD", () => {
   it("formats a whole number", () => {
@@ -41,18 +41,3 @@ describe("cardHref", () => {
   });
 });
 
-describe("toSmallImage", () => {
-  it("converts /normal/ to /small/ in a Scryfall URI", () => {
-    expect(toSmallImage("https://cards.scryfall.io/normal/front/a/b/abc.jpg"))
-      .toBe("https://cards.scryfall.io/small/front/a/b/abc.jpg");
-  });
-
-  it("returns null for null input", () => {
-    expect(toSmallImage(null)).toBeNull();
-  });
-
-  it("leaves URIs without /normal/ unchanged", () => {
-    const uri = "https://cards.scryfall.io/large/front/a/b/abc.jpg";
-    expect(toSmallImage(uri)).toBe(uri);
-  });
-});

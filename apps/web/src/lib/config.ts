@@ -89,7 +89,7 @@ export const PHONE_MEDIA_QUERY = "(max-width: 639.98px)";
 
 // ── Price trends ─────────────────────────────────────────────────────────────
 
-export { TREND_UP_THRESHOLD, TREND_DOWN_THRESHOLD } from "@mtg-au/shared";
+export { TREND_UP_THRESHOLD, TREND_DOWN_THRESHOLD, SCRYFALL_USER_AGENT } from "@mtg-au/shared";
 
 // ── Cache durations (seconds) ────────────────────────────────────────────────
 
@@ -119,6 +119,7 @@ export const THEME_STORAGE_KEY = "theme";
 /** Set to "light" on <html> for the light theme; absent means dark. */
 export const THEME_ATTRIBUTE = "data-theme";
 export const GITHUB_API_URL = "https://api.github.com";
+export const SCRYFALL_IMAGE_ORIGIN = "https://cards.scryfall.io";
 
 // ── eBay Partner Network (affiliate) ─────────────────────────────────────────
 //

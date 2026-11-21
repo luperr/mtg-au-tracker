@@ -3,4 +3,4 @@ export { normalizeName, stripVariant, levenshteinDistance, normalizeSetName, ext
 export { normaliseCondition, isKnownCondition, CARD_CONDITIONS, type CardCondition } from "./utils/condition.js";
 export { createLogger } from "./utils/logger.js";
 export { getAudPerUsd } from "./utils/currency.js";
-export { TREND_UP_THRESHOLD, TREND_DOWN_THRESHOLD } from "./constants.js";
+export { TREND_UP_THRESHOLD, TREND_DOWN_THRESHOLD, SCRYFALL_USER_AGENT } from "./constants.js";
