@@ -26,3 +26,16 @@ export function cardImageProps(uri: string, rendition: "normal" | "small" = "nor
   const proxied = proxiedCardSrc(uri, rendition);
   return proxied ? { src: proxied, unoptimized: false } : { src: uri, unoptimized: true };
 }
+
+/**
+ * The image a card page opens on: the first non-foil printing with art, else any with art.
+ * Pass printings already in page order (cheapest in stock first). Shared by the page's image
+ * and its JSON-LD, so search results show the art the page leads with.
+ */
+export function defaultPrintingImage(printings: { imageUri: string | null; isFoil: boolean }[]): string | null {
+  return (
+    printings.find((p) => p.imageUri && !p.isFoil)?.imageUri ??
+    printings.find((p) => p.imageUri)?.imageUri ??
+    null
+  );
+}

@@ -9,6 +9,8 @@ import { CardDetailView } from "./CardDetailView";
 import { PriceChartSection, PriceChartSkeleton } from "./PriceChartSection";
 import { CardBreadcrumb } from "@/app/CardBreadcrumb";
 import { Breadcrumb } from "@/app/Breadcrumb";
+import { defaultPrintingImage } from "@/lib/card-image";
+import { SITE_URL } from "@/lib/config";
 
 function sortPrintings(printings: PrintingWithPrices[]): PrintingWithPrices[] {
   return [...printings].sort((a, b) => {
@@ -94,10 +96,19 @@ export default async function CardPage({
   const cheapestPrice = allInStockPrices.length > 0 ? Math.min(...allInStockPrices) : null;
   const highestPrice = allInStockPrices.length > 0 ? Math.max(...allInStockPrices) : null;
 
+  // Scryfall's own URL, not our proxy: robots.txt disallows /api/, and Googlebot fetching
+  // the 488px original direct is as fast as it gets. The page's no-hotlinking rule is about
+  // what viewers download, which this isn't.
+  const image = defaultPrintingImage(printings);
+  // The slug, not the request param: getCard also resolves a card by id.
+  const url = `${SITE_URL}/cards/${card!.slug ?? card!.id}`;
+
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
     name: card!.name,
+    url,
+    ...(image && { image }),
     description: `${card!.name} — Magic: The Gathering. Compare prices across ${inStockStores.size} Australian stores.`,
     brand: { "@type": "Brand", name: "Magic: The Gathering" },
     ...(cheapestPrice !== null && {
@@ -108,6 +119,7 @@ export default async function CardPage({
         highPrice: highestPrice!.toFixed(2),
         offerCount: allInStockPrices.length,
         availability: "https://schema.org/InStock",
+        url,
       },
     }),
   };
@@ -116,7 +128,7 @@ export default async function CardPage({
     <div>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
       />
       <Suspense fallback={<Breadcrumb items={[{ label: "Search", href: "/" }, { label: card!.name }]} />}>
         <CardBreadcrumb cardName={card!.name} />
