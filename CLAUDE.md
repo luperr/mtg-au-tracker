@@ -179,12 +179,17 @@ Tables:
   "dragon" search touched 6,815 pages, which in card order is 703 contiguous ones (~10×, and
   sequential rather than one seek each). It's rebuilt wholesale and swapped in by
   `rebuildCardListings()` (`market/card-listings.ts`) after each scrape lane, after `run-store.ts`
-  and after the eBay import: an ordered `INSERT` into `_next`, then a rename swap under a 2s
-  `lock_timeout` with retries, serialised by an advisory lock. **It never throws**: on failure the
-  old copy keeps serving. Rebuild by hand with
-  `pnpm --filter @mtg-au/scraper rebuild:card-listings` (~7s on the dev DB). Never update it in
-  place: an in-place `DELETE` + `INSERT` puts rows back in scattered free space, which is what it
-  exists to undo.
+  and after the eBay import: `CREATE TABLE … AS SELECT … ORDER BY` into `_next` (not CREATE +
+  INSERT, which backfills later rows into earlier pages and runs twice as slow), then a rename swap
+  under a 2s `lock_timeout` with retries, serialised by an advisory lock. **It never throws**: on
+  failure the old copy keeps serving. ~3.5s and ~400MB of WAL per rebuild on the dev DB. Rebuild by
+  hand with `pnpm --filter @mtg-au/scraper rebuild:card-listings`. Never update it in place: an
+  in-place `DELETE` + `INSERT` puts rows back in scattered free space, which is what it exists to
+  undo. Don't make it `UNLOGGED` to save the WAL: Postgres empties unlogged tables after a crash,
+  which would leave the site with no listings until the next rebuild. A stress harness (2026-11-22)
+  ran ~6k requests across 50+ rebuilds, concurrent rebuilds, simulated store and eBay writers, and
+  killed rebuilds, with zero failed requests and invariants intact. A swap costs a direct reader at
+  most ~21ms.
 - **`price_history`** — Daily snapshots. Append-only.
 - **`unmatched_cards`** — Scraped listings that couldn't be matched to a Scryfall printing. **Current run only** — every writer clears its own rows before inserting (`run-all.ts` per store, `ebay-import.ts` for `ebay_au`). An unmatched listing names no printing, so nothing in the UI can reach it; it's only useful for debugging the run that produced it. The eBay path used to append without ever deleting, which is how the table reached 14.4M rows / 3.4GB.
 - **`ebay_search_log`** — Tracks when each card name was last searched on eBay + result count. Drives tiered eBay scheduler.
