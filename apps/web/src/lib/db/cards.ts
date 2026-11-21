@@ -45,6 +45,7 @@ export type CardSearchPage = {
 
 export type CardRow = {
   id: string;
+  slug: string | null;
   name: string;
   mana_cost: string | null;
   type_line: string;
@@ -77,6 +78,8 @@ export type PrintingRow = {
 };
 
 export type CardMetadata = {
+  id: string;
+  slug: string | null;
   name: string;
   type_line: string;
   cheapest_price: string | null;
@@ -257,7 +260,7 @@ export async function getCardTrend(cardId: string): Promise<"up" | "down" | "neu
 
 export async function getCard(slug: string): Promise<CardRow | null> {
   const rows = await sql<CardRow[]>`
-    SELECT id, name, mana_cost, type_line, oracle_text, colors
+    SELECT id, slug, name, mana_cost, type_line, oracle_text, colors
     FROM cards
     WHERE slug = ${slug} OR id = ${slug}
   `;
@@ -267,6 +270,8 @@ export async function getCard(slug: string): Promise<CardRow | null> {
 export async function getCardMetadata(slug: string): Promise<CardMetadata | null> {
   const rows = await sql<CardMetadata[]>`
     SELECT
+      c.id,
+      c.slug,
       c.name,
       c.type_line,
       (
@@ -347,7 +352,8 @@ export async function getPrintingsWithPrices(
       sp.in_stock,
       sp.url AS store_url
     FROM printings p
-    LEFT JOIN card_listings sp ON sp.card_id = p.card_id AND sp.printing_id = p.id
+    LEFT JOIN card_listings sp
+      ON sp.card_id = p.card_id AND sp.printing_id = p.id AND sp.price_type = 'sell'
     LEFT JOIN stores s ON s.id = sp.store_id
     WHERE p.card_id = ${cardId}
     ORDER BY p.set_name, p.is_foil, sp.price_aud

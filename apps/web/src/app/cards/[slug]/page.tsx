@@ -9,6 +9,8 @@ import { CardDetailView } from "./CardDetailView";
 import { PriceChartSection, PriceChartSkeleton } from "./PriceChartSection";
 import { CardBreadcrumb } from "@/app/CardBreadcrumb";
 import { Breadcrumb } from "@/app/Breadcrumb";
+import { defaultPrintingImage } from "@/lib/card-image";
+import { SITE_URL } from "@/lib/config";
 
 function sortPrintings(printings: PrintingWithPrices[]): PrintingWithPrices[] {
   return [...printings].sort((a, b) => {
@@ -25,6 +27,14 @@ function lowestInStockPrice(printing: PrintingWithPrices): number | null {
   const inStock = printing.prices.filter((p) => p.inStock);
   if (inStock.length === 0) return null;
   return Math.min(...inStock.map((p) => parseFloat(p.priceAud)));
+}
+
+/**
+ * The card's one public path. getCard / getCardMetadata also resolve a card by id, so the
+ * request param isn't necessarily it — canonical and JSON-LD both point here.
+ */
+function cardUrl(card: { id: string; slug: string | null }): string {
+  return `${SITE_URL}/cards/${card.slug ?? card.id}`;
 }
 
 export async function generateMetadata({
@@ -57,6 +67,7 @@ export async function generateMetadata({
   return {
     title,
     description,
+    alternates: { canonical: cardUrl(meta) },
     openGraph: { title, description, type: "website" },
     twitter: { card: "summary_large_image", title, description },
   };
@@ -94,30 +105,41 @@ export default async function CardPage({
   const cheapestPrice = allInStockPrices.length > 0 ? Math.min(...allInStockPrices) : null;
   const highestPrice = allInStockPrices.length > 0 ? Math.max(...allInStockPrices) : null;
 
-  const jsonLd = {
+  // Scryfall's own URL, not our proxy: robots.txt disallows /api/, and Googlebot fetching
+  // the 488px original direct is as fast as it gets. The page's no-hotlinking rule is about
+  // what viewers download, which this isn't.
+  const image = defaultPrintingImage(printings);
+  const url = cardUrl(card!);
+
+  // Only when something is in stock: a Product with no offers, review or rating is invalid,
+  // and Search Console would flag every unstocked card.
+  const jsonLd = cheapestPrice !== null && {
     "@context": "https://schema.org",
     "@type": "Product",
     name: card!.name,
+    url,
+    ...(image && { image }),
     description: `${card!.name} — Magic: The Gathering. Compare prices across ${inStockStores.size} Australian stores.`,
     brand: { "@type": "Brand", name: "Magic: The Gathering" },
-    ...(cheapestPrice !== null && {
-      offers: {
-        "@type": "AggregateOffer",
-        priceCurrency: "AUD",
-        lowPrice: cheapestPrice.toFixed(2),
-        highPrice: highestPrice!.toFixed(2),
-        offerCount: allInStockPrices.length,
-        availability: "https://schema.org/InStock",
-      },
-    }),
+    offers: {
+      "@type": "AggregateOffer",
+      priceCurrency: "AUD",
+      lowPrice: cheapestPrice.toFixed(2),
+      highPrice: highestPrice!.toFixed(2),
+      offerCount: allInStockPrices.length,
+      availability: "https://schema.org/InStock",
+      url,
+    },
   };
 
   return (
     <div>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
+      {jsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
+        />
+      )}
       <Suspense fallback={<Breadcrumb items={[{ label: "Search", href: "/" }, { label: card!.name }]} />}>
         <CardBreadcrumb cardName={card!.name} />
       </Suspense>

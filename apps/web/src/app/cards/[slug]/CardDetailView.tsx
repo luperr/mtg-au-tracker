@@ -9,6 +9,7 @@ import { TrendBadge } from "@/app/TrendBadge";
 import { fmtAUD } from "@/lib/utils";
 import { MTG_CARD_ASPECT_RATIO } from "@/lib/config";
 import { CardImage } from "@/app/CardImage";
+import { defaultPrintingImage } from "@/lib/card-image";
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -32,10 +33,7 @@ export function CardDetailView({
   chart: ReactNode;
   audPerUsd: number;
 }) {
-  const defaultImage =
-    printings.find((p) => p.imageUri && !p.isFoil)?.imageUri ??
-    printings.find((p) => p.imageUri)?.imageUri ??
-    null;
+  const defaultImage = defaultPrintingImage(printings);
 
   const defaultImageBack =
     printings.find((p) => p.imageUriBack && !p.isFoil)?.imageUriBack ??
