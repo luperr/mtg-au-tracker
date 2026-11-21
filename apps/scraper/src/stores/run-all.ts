@@ -25,6 +25,7 @@ import { BATCH_SIZE, STORE_CONCURRENCY } from "../lib/config.js";
 import { todayISO, matchRate, mapWithConcurrency } from "../lib/utils.js";
 import { CardMatcher } from "../matching/card-matcher.js";
 import { MtgMateScraper } from "./mtgmate.js";
+import { CardtasticScraper } from "./cardtastic.js";
 import { ShopifyScraper } from "./shopify.js";
 import { CrystalCommerceScraper } from "./crystalcommerce.js";
 import { shopifyStores, crystalCommerceStores } from "./stores.config.js";
@@ -41,6 +42,7 @@ const log = logger.child({ component: "run-all" });
 // Scrapers for bespoke platforms are registered here manually.
 export const SCRAPERS: Record<string, () => BaseScraper> = {
   mtg_mate: () => new MtgMateScraper(),
+  cardtastic: () => new CardtasticScraper(),
   ...Object.fromEntries(
     shopifyStores().map((config) => [config.id, () => new ShopifyScraper(config)])
   ),

@@ -286,6 +286,16 @@ block in `STORE_REGISTRY` — no scraper code changes.
 ### `apps/scraper/src/stores/mtgmate.ts`
 MTG Mate HTML scraper.
 
+### `apps/scraper/src/stores/cardtastic.ts`
+Cardtastic — a bespoke ASP.NET WebForms store, registered by hand in `run-all.ts` like MTG Mate.
+`category-single-cards-15.aspx` is a grid of ~186 per-set subcategories; each is paged with
+`?page=N` (24/page, total from the hidden `lblRecCount`). ~28.6k products, ~1,290 pages,
+sequential. Titles are bare card names, so set comes from the category and everything else
+from nothing. **Non-foil only:** the listing price is the product's "Regular" option even when
+the product page defaults to Foil, and the foil price is only reachable by a WebForms
+postback per product. Alternate arts are separate same-named products in the same set and
+match by name + set.
+
 ### `apps/scraper/src/scryfall/bulk-import.ts`
 Downloads Scryfall's "default_cards" bulk data (~300MB JSON), transforms all cards, batch-upserts into `cards` and `printings`. Safe to rerun.
 

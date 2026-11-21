@@ -58,6 +58,7 @@
     "scrape:arcanealfred": "tsx src/stores/run-store.ts arcane_alfred",
     "scrape:dragonslair": "tsx src/stores/run-store.ts dragons_lair",
     "scrape:archivumcustodio": "tsx src/stores/run-store.ts archivum_custodio",
+    "scrape:cardtastic": "tsx src/stores/run-store.ts cardtastic",
     "compute:market-stats": "tsx src/market/compute-market-stats.ts",
     "refresh:set-card-daily": "tsx src/market/refresh-set-card-daily.ts",
     "test": "vitest run"
